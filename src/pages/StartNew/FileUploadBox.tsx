@@ -132,6 +132,7 @@ const FileUploadBox: React.FC<FileUploadBoxProps> = ({ onClose }) => {
                   cx="50%"
                   cy="50%"
                 />
+                
               </svg>
               <span className="absolute inset-0 flex items-center justify-center text-lg font-semibold text-gray-700">
                 {progress}%
