@@ -1,7 +1,7 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FiPlusCircle, FiLogOut } from 'react-icons/fi'
-import { MdSportsBasketball, MdLeaderboard } from 'react-icons/md'
+import { FiPlusCircle, FiLogOut, FiUsers } from 'react-icons/fi'
+import { MdSportsBasketball, MdLeaderboard, MdGroup } from 'react-icons/md'
 import { IoStatsChart } from 'react-icons/io5'
 import { HiUsers } from 'react-icons/hi'
 import { BiHome } from 'react-icons/bi'
@@ -45,6 +45,24 @@ const Sidebar: React.FC<SidebarProps> = ({ activeItem = '', onNavigate }) => {
       icon: <HiUsers className="text-xl" />,
       path: '/statisticians',
     },
+    {
+      id: 'teams',
+      label: 'Teams',
+      icon: <MdGroup className="text-xl" />,
+      path: '/teams-management',
+    },
+    {
+      id: 'players',
+      label: 'Players',
+      icon: <FiUsers className="text-xl" />,
+      path: '/players-management',
+    },
+    {
+      id: 'users',
+      label: 'Users',
+      icon: <HiUsers className="text-xl" />,
+      path: '/users',
+    },
   ];
 
   const handleNavigation = (path: string) => {
@@ -56,6 +74,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeItem = '', onNavigate }) => {
 
   const handleLogout = () => {
     localStorage.removeItem('isAuthenticated');
+    localStorage.removeItem('userRole');
+    localStorage.removeItem('currentUser');
     navigate('/login');
     if (onNavigate) {
       onNavigate(); // Close sidebar on mobile after logout

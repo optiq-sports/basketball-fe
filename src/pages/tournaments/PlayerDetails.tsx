@@ -1,5 +1,5 @@
 import React from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 
 export default function PlayerDetails() {
   const { id, matchId, playerId } = useParams<{
@@ -8,9 +8,17 @@ export default function PlayerDetails() {
     playerId: string;
   }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  
+  // Check if navigation came from Players page
+  const fromPlayersPage = location.state?.from === 'players-page';
 
   const handleBackToMatch = () => {
     navigate(`/tournaments/${id}/match/${matchId}`);
+  };
+
+  const handleBackToPlayers = () => {
+    navigate('/players-management');
   };
 
   const games = Array(8).fill({
@@ -271,14 +279,26 @@ export default function PlayerDetails() {
         </div>
 
         {/* Back Button */}
-        <div className="mt-6 text-center">
-          <button
-            onClick={handleBackToMatch}
-            className="px-8 py-3 bg-[#21409A] hover:bg-blue-800 text-white font-medium rounded-lg transition-colors"
-          >
-            Back to Match
-          </button>
-        </div>
+        {!fromPlayersPage && (
+          <div className="mt-6 text-center">
+            <button
+              onClick={handleBackToMatch}
+              className="px-8 py-3 bg-[#21409A] hover:bg-blue-800 text-white font-medium rounded-lg transition-colors"
+            >
+              Back to Match
+            </button>
+          </div>
+        )}
+        {fromPlayersPage && (
+          <div className="mt-6 text-center">
+            <button
+              onClick={handleBackToPlayers}
+              className="px-8 py-3 bg-[#21409A] hover:bg-blue-800 text-white font-medium rounded-lg transition-colors"
+            >
+              Back to Players
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

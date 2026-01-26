@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaGoogle, FaApple } from 'react-icons/fa';
 
 const AdminLoginPage: React.FC = () => {
   const [email, setEmail] = useState<string>('');
@@ -9,25 +8,60 @@ const AdminLoginPage: React.FC = () => {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    // Simple authentication (replace with real API call)
-    if (email && password) {
+    
+    // Demo credentials check
+    if (email === 'superadmin@optiqsports.com' && password === 'superadmin123') {
       localStorage.setItem('isAuthenticated', 'true');
+      localStorage.setItem('userRole', 'super_admin');
+      localStorage.setItem('currentUser', JSON.stringify({
+        id: 1,
+        name: 'Super Admin',
+        email: 'superadmin@optiqsports.com',
+        role: 'super_admin'
+      }));
+      navigate('/dashboard');
+    } else if (email === 'admin@optiqsports.com' && password === 'admin123') {
+      localStorage.setItem('isAuthenticated', 'true');
+      localStorage.setItem('userRole', 'admin');
+      localStorage.setItem('currentUser', JSON.stringify({
+        id: 2,
+        name: 'Admin User',
+        email: 'admin@optiqsports.com',
+        role: 'admin'
+      }));
+      navigate('/dashboard');
+    } else if (email && password) {
+      // Default to admin for other credentials
+      localStorage.setItem('isAuthenticated', 'true');
+      localStorage.setItem('userRole', 'admin');
+      localStorage.setItem('currentUser', JSON.stringify({
+        id: Date.now(),
+        name: email.split('@')[0],
+        email: email,
+        role: 'admin'
+      }));
       navigate('/dashboard');
     } else {
       alert('Please enter email and password');
     }
   };
 
-  const handleGoogleLogin = () => {
-    // Simulate Google login
-    localStorage.setItem('isAuthenticated', 'true');
-    navigate('/dashboard');
-  };
-
-  const handleAppleLogin = () => {
-    // Simulate Apple login
-    localStorage.setItem('isAuthenticated', 'true');
-    navigate('/dashboard');
+  const handleQuickLogin = (userEmail: string, userPassword: string, userRole: 'super_admin' | 'admin', userName: string, userId: number) => {
+    setEmail(userEmail);
+    setPassword(userPassword);
+    
+    // Small delay to show the credentials being filled, then login
+    setTimeout(() => {
+      localStorage.setItem('isAuthenticated', 'true');
+      localStorage.setItem('userRole', userRole);
+      localStorage.setItem('currentUser', JSON.stringify({
+        id: userId,
+        name: userName,
+        email: userEmail,
+        role: userRole
+      }));
+      navigate('/dashboard');
+    }, 100);
   };
 
   const handleForgotPassword = () => {
@@ -81,30 +115,33 @@ const AdminLoginPage: React.FC = () => {
           </button>
         </form>
 
-        <div className="space-y-3.5 mt-3.5">
+        <div className="space-y-3.5 mt-6">
+          {/* Quick Login Credentials */}
+          <div className="space-y-2.5">
+            <p className="text-sm text-gray-600 text-center mb-3">Quick Login:</p>
+            
+            {/* Super Admin Credential */}
+            <button
+              onClick={() => handleQuickLogin('superadmin@optiqsports.com', 'superadmin123', 'super_admin', 'Super Admin', 1)}
+              className="w-full py-3 bg-gradient-to-r from-purple-50 to-purple-100 hover:from-purple-100 hover:to-purple-200 border border-purple-200 text-gray-700 font-medium rounded-xl transition-all text-sm"
+            >
+              <div className="text-left px-2">
+                <div className="font-semibold text-purple-900">Super Admin</div>
+                <div className="text-xs text-gray-600 mt-0.5">superadmin@optiqsports.com</div>
+              </div>
+            </button>
 
-          {/* OR Divider */}
-          <div className="flex items-center justify-center py-2">
-            <span className="text-xs text-gray-500 font-medium uppercase">OR</span>
+            {/* Admin Credential */}
+            <button
+              onClick={() => handleQuickLogin('admin@optiqsports.com', 'admin123', 'admin', 'Admin User', 2)}
+              className="w-full py-3 bg-gradient-to-r from-blue-50 to-blue-100 hover:from-blue-100 hover:to-blue-200 border border-blue-200 text-gray-700 font-medium rounded-xl transition-all text-sm"
+            >
+              <div className="text-left px-2">
+                <div className="font-semibold text-blue-900">Admin</div>
+                <div className="text-xs text-gray-600 mt-0.5">admin@optiqsports.com</div>
+              </div>
+            </button>
           </div>
-
-          {/* Google Login Button */}
-          <button
-            onClick={handleGoogleLogin}
-            className="w-full py-3.5 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 font-normal rounded-xl transition-all flex items-center justify-center gap-3 text-base"
-          >
-            <FaGoogle className="text-base" />
-            <span>Continue with Google</span>
-          </button>
-
-          {/* Apple Login Button */}
-          <button
-            onClick={handleAppleLogin}
-            className="w-full py-3.5 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 font-normal rounded-xl transition-all flex items-center justify-center gap-3 text-base"
-          >
-            <FaApple className="text-xl" />
-            <span>Continue with Apple</span>
-          </button>
 
           {/* Forgot Password Link */}
           <div className="text-center pt-4">

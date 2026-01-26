@@ -1,0 +1,718 @@
+import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { FiSearch, FiFilter, FiChevronDown, FiMapPin, FiEdit2, FiTrash2 } from 'react-icons/fi';
+import { GiBasketballBall } from 'react-icons/gi';
+import { MdCancel } from 'react-icons/md';
+
+interface Team {
+  id: number;
+  name: string;
+  shortName: string;
+  shortTeamCode: string;
+  longTeamCode: string;
+  teamColor: string;
+  country: string;
+  state: string;
+  logo: string | null;
+  tournamentId: number;
+  tournamentName: string;
+  status: 'active' | 'inactive';
+}
+
+const Teams: React.FC = () => {
+  const navigate = useNavigate();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filter, setFilter] = useState('All');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTeam, setEditingTeam] = useState<Team | null>(null);
+  const itemsPerPage = 9;
+
+  // Initialize teams data
+  React.useEffect(() => {
+    setTeams([
+    {
+      id: 1,
+      name: 'Lakers',
+      shortName: 'LAL',
+      shortTeamCode: 'LAL',
+      longTeamCode: 'LAKERS',
+      teamColor: '#552583',
+      country: 'United States',
+      state: 'California',
+      logo: null,
+      tournamentId: 1,
+      tournamentName: 'KCBL Club Championship',
+      status: 'active',
+    },
+    {
+      id: 2,
+      name: 'Warriors',
+      shortName: 'GSW',
+      shortTeamCode: 'GSW',
+      longTeamCode: 'WARRIORS',
+      teamColor: '#1D428A',
+      country: 'United States',
+      state: 'California',
+      logo: null,
+      tournamentId: 1,
+      tournamentName: 'KCBL Club Championship',
+      status: 'active',
+    },
+    {
+      id: 3,
+      name: 'Bulls',
+      shortName: 'CHI',
+      shortTeamCode: 'CHI',
+      longTeamCode: 'BULLS',
+      teamColor: '#CE1141',
+      country: 'United States',
+      state: 'Illinois',
+      logo: null,
+      tournamentId: 1,
+      tournamentName: 'KCBL Club Championship',
+      status: 'active',
+    },
+    {
+      id: 4,
+      name: 'Celtics',
+      shortName: 'BOS',
+      shortTeamCode: 'BOS',
+      longTeamCode: 'CELTICS',
+      teamColor: '#007A33',
+      country: 'United States',
+      state: 'Massachusetts',
+      logo: null,
+      tournamentId: 2,
+      tournamentName: 'Premier League',
+      status: 'active',
+    },
+    {
+      id: 5,
+      name: 'Heat',
+      shortName: 'MIA',
+      shortTeamCode: 'MIA',
+      longTeamCode: 'HEAT',
+      teamColor: '#98002E',
+      country: 'United States',
+      state: 'Florida',
+      logo: null,
+      tournamentId: 2,
+      tournamentName: 'Premier League',
+      status: 'active',
+    },
+    {
+      id: 6,
+      name: 'Nets',
+      shortName: 'BKN',
+      shortTeamCode: 'BKN',
+      longTeamCode: 'NETS',
+      teamColor: '#000000',
+      country: 'United States',
+      state: 'New York',
+      logo: null,
+      tournamentId: 2,
+      tournamentName: 'Premier League',
+      status: 'inactive',
+    },
+    {
+      id: 7,
+      name: 'Rockets',
+      shortName: 'HOU',
+      shortTeamCode: 'HOU',
+      longTeamCode: 'ROCKETS',
+      teamColor: '#CE1141',
+      country: 'United States',
+      state: 'Texas',
+      logo: null,
+      tournamentId: 3,
+      tournamentName: 'Division 1',
+      status: 'active',
+    },
+    {
+      id: 8,
+      name: 'Spurs',
+      shortName: 'SAS',
+      shortTeamCode: 'SAS',
+      longTeamCode: 'SPURS',
+      teamColor: '#C4CED4',
+      country: 'United States',
+      state: 'Texas',
+      logo: null,
+      tournamentId: 3,
+      tournamentName: 'Division 1',
+      status: 'active',
+    },
+    {
+      id: 9,
+      name: 'Thunder',
+      shortName: 'OKC',
+      shortTeamCode: 'OKC',
+      longTeamCode: 'THUNDER',
+      teamColor: '#007AC1',
+      country: 'United States',
+      state: 'Oklahoma',
+      logo: null,
+      tournamentId: 3,
+      tournamentName: 'Division 1',
+      status: 'inactive',
+    },
+    {
+      id: 10,
+      name: 'Knicks',
+      shortName: 'NYK',
+      shortTeamCode: 'NYK',
+      longTeamCode: 'KNICKS',
+      teamColor: '#F58426',
+      country: 'United States',
+      state: 'New York',
+      logo: null,
+      tournamentId: 1,
+      tournamentName: 'KCBL Club Championship',
+      status: 'active',
+    },
+    {
+      id: 11,
+      name: 'Mavericks',
+      shortName: 'DAL',
+      shortTeamCode: 'DAL',
+      longTeamCode: 'MAVERICKS',
+      teamColor: '#00538C',
+      country: 'United States',
+      state: 'Texas',
+      logo: null,
+      tournamentId: 2,
+      tournamentName: 'Premier League',
+      status: 'active',
+    },
+    {
+      id: 12,
+      name: 'Clippers',
+      shortName: 'LAC',
+      shortTeamCode: 'LAC',
+      longTeamCode: 'CLIPPERS',
+      teamColor: '#C8102E',
+      country: 'United States',
+      state: 'California',
+      logo: null,
+      tournamentId: 1,
+      tournamentName: 'KCBL Club Championship',
+      status: 'inactive',
+    },
+    ]);
+  }, []);
+
+  // Form state for Add/Edit Team
+  const [formData, setFormData] = useState({
+    name: '',
+    shortTeamCode: '',
+    longTeamCode: '',
+    teamColor: '#21409A',
+    country: '',
+    state: '',
+    tournamentId: 1,
+    tournamentName: '',
+    status: 'active' as 'active' | 'inactive',
+  });
+
+  // Filter teams by search query and status
+  const filteredTeams = useMemo(() => {
+    let filtered = teams;
+
+    // Filter by status
+    if (filter !== 'All') {
+      filtered = filtered.filter(team => team.status === filter.toLowerCase());
+    }
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(team =>
+        team.name.toLowerCase().includes(query) ||
+        team.shortTeamCode.toLowerCase().includes(query) ||
+        team.longTeamCode.toLowerCase().includes(query) ||
+        team.tournamentName.toLowerCase().includes(query) ||
+        team.country.toLowerCase().includes(query) ||
+        team.state.toLowerCase().includes(query)
+      );
+    }
+
+    return filtered;
+  }, [searchQuery, filter, teams]);
+
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredTeams.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedTeams = filteredTeams.slice(startIndex, endIndex);
+
+  // Reset to page 1 when filters change
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [filter, searchQuery]);
+
+  const handleTeamClick = (team: Team) => {
+    navigate(`/teams-management/${team.id}`);
+  };
+
+  const handleAddTeam = () => {
+    setEditingTeam(null);
+    setFormData({
+      name: '',
+      shortTeamCode: '',
+      longTeamCode: '',
+      teamColor: '#21409A',
+      country: '',
+      state: '',
+      tournamentId: 1,
+      tournamentName: 'KCBL Club Championship',
+      status: 'active',
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleEditTeam = (team: Team, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingTeam(team);
+    setFormData({
+      name: team.name,
+      shortTeamCode: team.shortTeamCode,
+      longTeamCode: team.longTeamCode,
+      teamColor: team.teamColor,
+      country: team.country,
+      state: team.state,
+      tournamentId: team.tournamentId,
+      tournamentName: team.tournamentName,
+      status: team.status,
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleDeleteTeam = (team: Team, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (window.confirm(`Are you sure you want to delete ${team.name}? This action cannot be undone.`)) {
+      setTeams(teams.filter(t => t.id !== team.id));
+      alert('Team deleted successfully!');
+    }
+  };
+
+  const handleSaveTeam = () => {
+    if (!formData.name || !formData.shortTeamCode || !formData.longTeamCode) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    if (editingTeam) {
+      setTeams(teams.map(t => 
+        t.id === editingTeam.id 
+          ? { 
+              ...t, 
+              name: formData.name,
+              shortTeamCode: formData.shortTeamCode,
+              longTeamCode: formData.longTeamCode,
+              teamColor: formData.teamColor,
+              country: formData.country,
+              state: formData.state,
+              tournamentId: formData.tournamentId,
+              tournamentName: formData.tournamentName,
+              status: formData.status
+            }
+          : t
+      ));
+      alert('Team updated successfully!');
+    } else {
+      const newTeam: Team = {
+        id: Math.max(...teams.map(t => t.id), 0) + 1,
+        name: formData.name,
+        shortName: formData.shortTeamCode,
+        shortTeamCode: formData.shortTeamCode,
+        longTeamCode: formData.longTeamCode,
+        teamColor: formData.teamColor,
+        country: formData.country,
+        state: formData.state,
+        logo: null,
+        tournamentId: formData.tournamentId,
+        tournamentName: formData.tournamentName,
+        status: formData.status,
+      };
+      setTeams([...teams, newTeam]);
+      alert('Team created successfully!');
+    }
+
+    setIsModalOpen(false);
+    setEditingTeam(null);
+    setFormData({
+      name: '',
+      shortTeamCode: '',
+      longTeamCode: '',
+      teamColor: '#21409A',
+      country: '',
+      state: '',
+      tournamentId: 1,
+      tournamentName: 'KCBL Club Championship',
+      status: 'active',
+    });
+  };
+
+  return (
+    <div className="min-h-screen bg-white p-8">
+      {/* Header Section */}
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-4xl font-bold text-gray-900">Teams</h1>
+      </div>
+
+      {/* Action Bar */}
+      <div className="flex items-center gap-4 mb-8">
+        {/* Add Team Button */}
+        <button 
+          onClick={handleAddTeam}
+          className="px-6 py-3 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors"
+        >
+          Add Team
+        </button>
+
+        {/* Search Bar */}
+        <div className="flex-1 relative">
+          <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+          <input
+            type="text"
+            placeholder="Search Team"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
+
+        {/* Filter Dropdown */}
+        <div className="relative">
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            className="appearance-none pl-10 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white cursor-pointer"
+          >
+            <option value="All">All</option>
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+          </select>
+          <FiFilter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+          <FiChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+        </div>
+      </div>
+
+      {/* Teams Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        {paginatedTeams.map((team) => (
+          <div
+            key={team.id}
+            onClick={() => handleTeamClick(team)}
+            className="bg-white rounded-lg overflow-hidden hover:shadow-lg transition-shadow cursor-pointer border border-gray-200"
+          >
+            {/* Team Logo/Color Section */}
+            <div 
+              className="w-full h-48 relative flex items-center justify-center"
+              style={{ backgroundColor: team.teamColor }}
+            >
+              {team.logo ? (
+                <img
+                  src={team.logo}
+                  alt={team.name}
+                  className="w-24 h-24 object-contain"
+                />
+              ) : (
+                <GiBasketballBall className="text-white text-6xl opacity-80" />
+              )}
+              {/* Status Badge */}
+              <div className="absolute top-3 right-3">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setTeams(teams.map(t => 
+                      t.id === team.id 
+                        ? { ...t, status: t.status === 'active' ? 'inactive' : 'active' }
+                        : t
+                    ));
+                  }}
+                  className={`px-2 py-1 rounded-full text-xs font-medium transition-colors ${
+                    team.status === 'active' 
+                      ? 'bg-green-100 text-green-800 hover:bg-green-200' 
+                      : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                  }`}
+                  title="Click to toggle status"
+                >
+                  {team.status === 'active' ? 'Active' : 'Inactive'}
+                </button>
+              </div>
+            </div>
+
+            {/* Card Content */}
+            <div className="p-4">
+              <div className="flex justify-between items-start mb-2">
+                <h3 className="text-lg font-bold text-gray-900">{team.name}</h3>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={(e) => handleEditTeam(team, e)}
+                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                    title="Edit Team"
+                  >
+                    <FiEdit2 size={16} />
+                  </button>
+                  <button
+                    onClick={(e) => handleDeleteTeam(team, e)}
+                    className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    title="Delete Team"
+                  >
+                    <FiTrash2 size={16} />
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2 text-sm text-gray-600">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">Code:</span>
+                  <span>{team.shortTeamCode} / {team.longTeamCode}</span>
+                </div>
+                <div>
+                  <span className="font-medium">Tournament:</span>
+                  <span className="ml-2">{team.tournamentName}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <FiMapPin size={16} className="text-gray-400" />
+                  <span>{team.state}, {team.country}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Empty State */}
+      {paginatedTeams.length === 0 && (
+        <div className="text-center py-12">
+          <p className="text-gray-500 text-lg">No teams found</p>
+          <p className="text-gray-400 text-sm mt-2">Try adjusting your search or filter criteria</p>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex justify-center items-center gap-2">
+          <button
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            disabled={currentPage === 1}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              currentPage === 1
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            Previous
+          </button>
+          
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+            <button
+              key={page}
+              onClick={() => setCurrentPage(page)}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                currentPage === page
+                  ? 'bg-blue-900 text-white'
+                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              {page}
+            </button>
+          ))}
+
+          <button
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            disabled={currentPage === totalPages}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              currentPage === totalPages
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            Next
+          </button>
+        </div>
+      )}
+
+      {/* Add/Edit Team Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-white/20 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-2xl font-semibold text-gray-900">
+                {editingTeam ? 'Edit Team' : 'Add Team'}
+              </h2>
+              <button
+                onClick={() => {
+                  setIsModalOpen(false);
+                  setEditingTeam(null);
+                  setFormData({
+                    name: '',
+                    shortTeamCode: '',
+                    longTeamCode: '',
+                    teamColor: '#21409A',
+                    country: '',
+                    state: '',
+                    tournamentId: 1,
+                    tournamentName: 'KCBL Club Championship',
+                    status: 'active',
+                  });
+                }}
+                className="text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                <MdCancel size={20} />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6">
+              <div className="space-y-6">
+                {/* Name */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Team Name *</label>
+                  <input
+                    type="text"
+                    placeholder="Enter team name"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Short Code */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Short Team Code *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., LAL"
+                    value={formData.shortTeamCode}
+                    onChange={(e) => setFormData({ ...formData, shortTeamCode: e.target.value.toUpperCase() })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    maxLength={10}
+                  />
+                </div>
+
+                {/* Long Code */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Long Team Code *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., LAKERS"
+                    value={formData.longTeamCode}
+                    onChange={(e) => setFormData({ ...formData, longTeamCode: e.target.value.toUpperCase() })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    maxLength={20}
+                  />
+                </div>
+
+                {/* Team Color */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Team Color</label>
+                  <div className="flex items-center gap-4">
+                    <input
+                      type="color"
+                      value={formData.teamColor}
+                      onChange={(e) => setFormData({ ...formData, teamColor: e.target.value })}
+                      className="w-20 h-10 border border-gray-300 rounded-lg cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={formData.teamColor}
+                      onChange={(e) => setFormData({ ...formData, teamColor: e.target.value })}
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="#21409A"
+                    />
+                  </div>
+                </div>
+
+                {/* Country */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Country</label>
+                  <input
+                    type="text"
+                    placeholder="Enter country"
+                    value={formData.country}
+                    onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* State */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">State</label>
+                  <input
+                    type="text"
+                    placeholder="Enter state"
+                    value={formData.state}
+                    onChange={(e) => setFormData({ ...formData, state: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Tournament */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Tournament</label>
+                  <input
+                    type="text"
+                    placeholder="Enter tournament name"
+                    value={formData.tournamentName}
+                    onChange={(e) => setFormData({ ...formData, tournamentName: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Status */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Status *</label>
+                  <select
+                    value={formData.status}
+                    onChange={(e) => setFormData({ ...formData, status: e.target.value as 'active' | 'inactive' })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex justify-end gap-4 p-6 border-t border-gray-200">
+              <button
+                onClick={() => {
+                  setIsModalOpen(false);
+                  setEditingTeam(null);
+                  setFormData({
+                    name: '',
+                    shortTeamCode: '',
+                    longTeamCode: '',
+                    teamColor: '#21409A',
+                    country: '',
+                    state: '',
+                    tournamentId: 1,
+                    tournamentName: 'KCBL Club Championship',
+                    status: 'active',
+                  });
+                }}
+                className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveTeam}
+                className="px-6 py-2.5 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors"
+              >
+                {editingTeam ? 'Update' : 'Create'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Teams;

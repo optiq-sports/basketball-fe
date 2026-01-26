@@ -19,10 +19,36 @@ import Results from '../pages/results/result'
 import ShotChart from '../pages/tournaments/ShotChart'
 import Statisticians from '../pages/Statisticians/Statisticians'
 import ViewStat from '../pages/Statisticians/viewStat'
+import TeamsManagement from '../pages/Teams/Teams'
+import TeamDetails from '../pages/Teams/TeamDetails'
+import PlayersManagement from '../pages/Players/Players'
+import Users from '../pages/Users/Users'
 
 const Wrapper: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const location = useLocation();
+
+  // Get current user info from localStorage
+  const getCurrentUser = () => {
+    try {
+      const userStr = localStorage.getItem('currentUser');
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        return {
+          name: user.name || 'Admin User',
+          role: user.role === 'super_admin' ? 'Super Administrator' : 'Administrator'
+        };
+      }
+    } catch (e) {
+      console.error('Error parsing user data:', e);
+    }
+    return {
+      name: 'Admin User',
+      role: 'Administrator'
+    };
+  };
+
+  const currentUser = getCurrentUser();
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
@@ -36,6 +62,9 @@ const Wrapper: React.FC = () => {
     if (path.startsWith('/tournaments')) return 'tournaments';
     if (path.startsWith('/results')) return 'results';
     if (path.startsWith('/statisticians')) return 'statisticians';
+    if (path.startsWith('/teams-management')) return 'teams';
+    if (path.startsWith('/players-management')) return 'players';
+    if (path.startsWith('/users')) return 'users';
     return '';
   };
 
@@ -43,8 +72,8 @@ const Wrapper: React.FC = () => {
     <div className="h-screen bg-gray-50 overflow-hidden flex flex-col">
       {/* Navbar - Full Width at Top */}
       <Navbar 
-        userName="Ibrahim Maina" 
-        userRole="Administrator" 
+        userName={currentUser.name}
+        userRole={currentUser.role}
         onMenuClick={toggleSidebar}
       />
 
@@ -87,6 +116,10 @@ const Wrapper: React.FC = () => {
             <Route path="/results" element={<Results />} />
             <Route path="/statisticians" element={<Statisticians />} />
             <Route path="/statisticians/:id" element={<ViewStat />} />
+            <Route path="/teams-management" element={<TeamsManagement />} />
+            <Route path="/teams-management/:id" element={<TeamDetails />} />
+            <Route path="/players-management" element={<PlayersManagement />} />
+            <Route path="/users" element={<Users />} />
             <Route path="/" element={<Dashboard />} />
           </Routes>
         </main>
