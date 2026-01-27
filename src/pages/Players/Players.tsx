@@ -23,7 +23,10 @@ interface Player {
 const Players: React.FC = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
-  const [filter, setFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState<string>('All');
+  const [teamFilter, setTeamFilter] = useState<string>('All');
+  const [tournamentFilter, setTournamentFilter] = useState<string>('All');
+  const [positionFilter, setPositionFilter] = useState<string>('All');
   const [currentPage, setCurrentPage] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
@@ -245,19 +248,28 @@ const Players: React.FC = () => {
   const uniqueTournaments = Array.from(new Set(players.map(p => p.tournamentName))).sort();
   const uniquePositions = Array.from(new Set(players.map(p => p.position))).sort();
 
-  // Filter players by search query and filter
+  // Filter players by search query and filters
   const filteredPlayers = useMemo(() => {
     let filtered = players;
 
     // Filter by status
-    if (filter === 'Active' || filter === 'Inactive') {
-      filtered = filtered.filter(player => player.status === filter.toLowerCase());
-    } else if (filter !== 'All' && uniqueTeams.includes(filter)) {
-      filtered = filtered.filter(player => player.teamName === filter);
-    } else if (filter !== 'All' && uniqueTournaments.includes(filter)) {
-      filtered = filtered.filter(player => player.tournamentName === filter);
-    } else if (filter !== 'All' && uniquePositions.includes(filter)) {
-      filtered = filtered.filter(player => player.position === filter);
+    if (statusFilter !== 'All') {
+      filtered = filtered.filter(player => player.status === statusFilter.toLowerCase());
+    }
+
+    // Filter by team
+    if (teamFilter !== 'All') {
+      filtered = filtered.filter(player => player.teamName === teamFilter);
+    }
+
+    // Filter by tournament
+    if (tournamentFilter !== 'All') {
+      filtered = filtered.filter(player => player.tournamentName === tournamentFilter);
+    }
+
+    // Filter by position
+    if (positionFilter !== 'All') {
+      filtered = filtered.filter(player => player.position === positionFilter);
     }
 
     // Filter by search query
@@ -275,7 +287,7 @@ const Players: React.FC = () => {
     }
 
     return filtered;
-  }, [searchQuery, filter, players, uniqueTeams, uniqueTournaments, uniquePositions]);
+  }, [searchQuery, statusFilter, teamFilter, tournamentFilter, positionFilter, players]);
 
   // Calculate pagination
   const totalPages = Math.ceil(filteredPlayers.length / itemsPerPage);
@@ -286,7 +298,7 @@ const Players: React.FC = () => {
   // Reset to page 1 when filters change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [filter, searchQuery]);
+  }, [statusFilter, teamFilter, tournamentFilter, positionFilter, searchQuery]);
 
   const handlePlayerClick = (player: Player) => {
     navigate(`/tournaments/${player.tournamentId}/match/1/player/${player.id}`, {
@@ -347,6 +359,34 @@ const Players: React.FC = () => {
     if (!formData.name || !formData.surname || !formData.number) {
       alert('Please fill in all required fields');
       return;
+    }
+
+    // Duplication checks
+    // Check for duplicate jersey number in the same team
+    const duplicateJersey = players.find(p => 
+      p.teamId === formData.teamId && 
+      p.number === formData.number &&
+      (!editingPlayer || p.id !== editingPlayer.id)
+    );
+    if (duplicateJersey) {
+      alert(`Jersey number ${formData.number} is already taken by another player in ${formData.teamName}. Please choose a different number.`);
+      return;
+    }
+
+    // Check for duplicate name and surname in the same team (optional but recommended)
+    const duplicateName = players.find(p => 
+      p.teamId === formData.teamId && 
+      p.name.toLowerCase() === formData.name.toLowerCase() &&
+      p.surname.toLowerCase() === formData.surname.toLowerCase() &&
+      (!editingPlayer || p.id !== editingPlayer.id)
+    );
+    if (duplicateName) {
+      const confirmDuplicate = window.confirm(
+        `A player named ${formData.name} ${formData.surname} already exists in ${formData.teamName}. Do you want to continue anyway?`
+      );
+      if (!confirmDuplicate) {
+        return;
+      }
     }
 
     if (editingPlayer) {
@@ -411,15 +451,6 @@ const Players: React.FC = () => {
     });
   };
 
-  // Build filter options
-  const filterOptions = [
-    'All',
-    'Active',
-    'Inactive',
-    ...(uniqueTeams.length > 0 ? ['--- Teams ---', ...uniqueTeams] : []),
-    ...(uniqueTournaments.length > 0 ? ['--- Tournaments ---', ...uniqueTournaments] : []),
-    ...(uniquePositions.length > 0 ? ['--- Positions ---', ...uniquePositions] : []),
-  ];
 
   return (
     <div className="min-h-screen bg-white p-8">
@@ -429,17 +460,17 @@ const Players: React.FC = () => {
       </div>
 
       {/* Action Bar */}
-      <div className="flex items-center gap-4 mb-8">
+      <div className="flex flex-wrap items-center gap-3 mb-8">
         {/* Add Player Button */}
         <button 
           onClick={handleAddPlayer}
-          className="px-6 py-3 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors"
+          className="px-6 py-3 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors whitespace-nowrap"
         >
           Add Player
         </button>
 
-        {/* Search Bar */}
-        <div className="flex-1 relative">
+        {/* Search Bar - Reduced Width */}
+        <div className="relative" style={{ width: '250px', minWidth: '200px' }}>
           <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
           <input
             type="text"
@@ -450,22 +481,63 @@ const Players: React.FC = () => {
           />
         </div>
 
-        {/* Filter Dropdown */}
+        {/* Status Filter */}
         <div className="relative">
           <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="appearance-none pl-10 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white cursor-pointer min-w-[200px]"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="appearance-none pl-10 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white cursor-pointer min-w-[140px]"
           >
-            {filterOptions.map((option, index) => (
-              <option 
-                key={index} 
-                value={option}
-                disabled={option.startsWith('---')}
-                className={option.startsWith('---') ? 'text-gray-400 font-semibold' : ''}
-              >
-                {option}
-              </option>
+            <option value="All">All Status</option>
+            <option value="Active">Active</option>
+            <option value="Inactive">Inactive</option>
+          </select>
+          <FiFilter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+          <FiChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+        </div>
+
+        {/* Team Filter */}
+        <div className="relative">
+          <select
+            value={teamFilter}
+            onChange={(e) => setTeamFilter(e.target.value)}
+            className="appearance-none pl-10 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white cursor-pointer min-w-[160px]"
+          >
+            <option value="All">All Teams</option>
+            {uniqueTeams.map((team) => (
+              <option key={team} value={team}>{team}</option>
+            ))}
+          </select>
+          <FiFilter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+          <FiChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+        </div>
+
+        {/* Tournament Filter */}
+        <div className="relative">
+          <select
+            value={tournamentFilter}
+            onChange={(e) => setTournamentFilter(e.target.value)}
+            className="appearance-none pl-10 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white cursor-pointer min-w-[180px]"
+          >
+            <option value="All">All Tournaments</option>
+            {uniqueTournaments.map((tournament) => (
+              <option key={tournament} value={tournament}>{tournament}</option>
+            ))}
+          </select>
+          <FiFilter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+          <FiChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+        </div>
+
+        {/* Position Filter */}
+        <div className="relative">
+          <select
+            value={positionFilter}
+            onChange={(e) => setPositionFilter(e.target.value)}
+            className="appearance-none pl-10 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white cursor-pointer min-w-[160px]"
+          >
+            <option value="All">All Positions</option>
+            {uniquePositions.map((position) => (
+              <option key={position} value={position}>{position}</option>
             ))}
           </select>
           <FiFilter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />

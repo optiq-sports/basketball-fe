@@ -16,13 +16,16 @@ interface Team {
   logo: string | null;
   tournamentId: number;
   tournamentName: string;
+  session?: string;
   status: 'active' | 'inactive';
 }
 
 const Teams: React.FC = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
-  const [filter, setFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState<string>('All');
+  const [tournamentFilter, setTournamentFilter] = useState<string>('All');
+  const [sessionFilter, setSessionFilter] = useState<string>('All');
   const [currentPage, setCurrentPage] = useState(1);
   const [teams, setTeams] = useState<Team[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -44,6 +47,7 @@ const Teams: React.FC = () => {
       logo: null,
       tournamentId: 1,
       tournamentName: 'KCBL Club Championship',
+      session: '2024-2025',
       status: 'active',
     },
     {
@@ -58,6 +62,7 @@ const Teams: React.FC = () => {
       logo: null,
       tournamentId: 1,
       tournamentName: 'KCBL Club Championship',
+      session: '2024-2025',
       status: 'active',
     },
     {
@@ -72,6 +77,7 @@ const Teams: React.FC = () => {
       logo: null,
       tournamentId: 1,
       tournamentName: 'KCBL Club Championship',
+      session: '2024-2025',
       status: 'active',
     },
     {
@@ -86,6 +92,7 @@ const Teams: React.FC = () => {
       logo: null,
       tournamentId: 2,
       tournamentName: 'Premier League',
+      session: '2023-2024',
       status: 'active',
     },
     {
@@ -100,6 +107,7 @@ const Teams: React.FC = () => {
       logo: null,
       tournamentId: 2,
       tournamentName: 'Premier League',
+      session: '2023-2024',
       status: 'active',
     },
     {
@@ -114,6 +122,7 @@ const Teams: React.FC = () => {
       logo: null,
       tournamentId: 2,
       tournamentName: 'Premier League',
+      session: '2023-2024',
       status: 'inactive',
     },
     {
@@ -128,6 +137,7 @@ const Teams: React.FC = () => {
       logo: null,
       tournamentId: 3,
       tournamentName: 'Division 1',
+      session: '2024-2025',
       status: 'active',
     },
     {
@@ -142,6 +152,7 @@ const Teams: React.FC = () => {
       logo: null,
       tournamentId: 3,
       tournamentName: 'Division 1',
+      session: '2024-2025',
       status: 'active',
     },
     {
@@ -156,6 +167,7 @@ const Teams: React.FC = () => {
       logo: null,
       tournamentId: 3,
       tournamentName: 'Division 1',
+      session: '2024-2025',
       status: 'inactive',
     },
     {
@@ -170,6 +182,7 @@ const Teams: React.FC = () => {
       logo: null,
       tournamentId: 1,
       tournamentName: 'KCBL Club Championship',
+      session: '2024-2025',
       status: 'active',
     },
     {
@@ -184,6 +197,7 @@ const Teams: React.FC = () => {
       logo: null,
       tournamentId: 2,
       tournamentName: 'Premier League',
+      session: '2023-2024',
       status: 'active',
     },
     {
@@ -198,6 +212,7 @@ const Teams: React.FC = () => {
       logo: null,
       tournamentId: 1,
       tournamentName: 'KCBL Club Championship',
+      session: '2024-2025',
       status: 'inactive',
     },
     ]);
@@ -213,16 +228,31 @@ const Teams: React.FC = () => {
     state: '',
     tournamentId: 1,
     tournamentName: '',
+    session: '',
     status: 'active' as 'active' | 'inactive',
   });
 
-  // Filter teams by search query and status
+  // Get unique tournaments and sessions for filters
+  const uniqueTournaments = Array.from(new Set(teams.map(t => t.tournamentName))).sort();
+  const uniqueSessions = Array.from(new Set(teams.map(t => t.session).filter(Boolean))).sort();
+
+  // Filter teams by search query and filters
   const filteredTeams = useMemo(() => {
     let filtered = teams;
 
     // Filter by status
-    if (filter !== 'All') {
-      filtered = filtered.filter(team => team.status === filter.toLowerCase());
+    if (statusFilter !== 'All') {
+      filtered = filtered.filter(team => team.status === statusFilter.toLowerCase());
+    }
+
+    // Filter by tournament
+    if (tournamentFilter !== 'All') {
+      filtered = filtered.filter(team => team.tournamentName === tournamentFilter);
+    }
+
+    // Filter by session
+    if (sessionFilter !== 'All') {
+      filtered = filtered.filter(team => team.session === sessionFilter);
     }
 
     // Filter by search query
@@ -234,12 +264,13 @@ const Teams: React.FC = () => {
         team.longTeamCode.toLowerCase().includes(query) ||
         team.tournamentName.toLowerCase().includes(query) ||
         team.country.toLowerCase().includes(query) ||
-        team.state.toLowerCase().includes(query)
+        team.state.toLowerCase().includes(query) ||
+        (team.session && team.session.toLowerCase().includes(query))
       );
     }
 
     return filtered;
-  }, [searchQuery, filter, teams]);
+  }, [searchQuery, statusFilter, tournamentFilter, sessionFilter, teams]);
 
   // Calculate pagination
   const totalPages = Math.ceil(filteredTeams.length / itemsPerPage);
@@ -250,7 +281,7 @@ const Teams: React.FC = () => {
   // Reset to page 1 when filters change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [filter, searchQuery]);
+  }, [statusFilter, tournamentFilter, sessionFilter, searchQuery]);
 
   const handleTeamClick = (team: Team) => {
     navigate(`/teams-management/${team.id}`);
@@ -267,6 +298,7 @@ const Teams: React.FC = () => {
       state: '',
       tournamentId: 1,
       tournamentName: 'KCBL Club Championship',
+      session: '',
       status: 'active',
     });
     setIsModalOpen(true);
@@ -284,6 +316,7 @@ const Teams: React.FC = () => {
       state: team.state,
       tournamentId: team.tournamentId,
       tournamentName: team.tournamentName,
+      session: team.session || '',
       status: team.status,
     });
     setIsModalOpen(true);
@@ -316,6 +349,7 @@ const Teams: React.FC = () => {
               state: formData.state,
               tournamentId: formData.tournamentId,
               tournamentName: formData.tournamentName,
+              session: formData.session,
               status: formData.status
             }
           : t
@@ -334,6 +368,7 @@ const Teams: React.FC = () => {
         logo: null,
         tournamentId: formData.tournamentId,
         tournamentName: formData.tournamentName,
+        session: formData.session,
         status: formData.status,
       };
       setTeams([...teams, newTeam]);
@@ -351,6 +386,7 @@ const Teams: React.FC = () => {
       state: '',
       tournamentId: 1,
       tournamentName: 'KCBL Club Championship',
+      session: '',
       status: 'active',
     });
   };
@@ -363,17 +399,17 @@ const Teams: React.FC = () => {
       </div>
 
       {/* Action Bar */}
-      <div className="flex items-center gap-4 mb-8">
+      <div className="flex flex-wrap items-center gap-3 mb-8">
         {/* Add Team Button */}
         <button 
           onClick={handleAddTeam}
-          className="px-6 py-3 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors"
+          className="px-6 py-3 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors whitespace-nowrap"
         >
           Add Team
         </button>
 
-        {/* Search Bar */}
-        <div className="flex-1 relative">
+        {/* Search Bar - Reduced Width */}
+        <div className="relative" style={{ width: '250px', minWidth: '200px' }}>
           <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
           <input
             type="text"
@@ -384,16 +420,48 @@ const Teams: React.FC = () => {
           />
         </div>
 
-        {/* Filter Dropdown */}
+        {/* Status Filter */}
         <div className="relative">
           <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="appearance-none pl-10 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white cursor-pointer"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="appearance-none pl-10 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white cursor-pointer min-w-[140px]"
           >
-            <option value="All">All</option>
+            <option value="All">All Status</option>
             <option value="Active">Active</option>
             <option value="Inactive">Inactive</option>
+          </select>
+          <FiFilter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+          <FiChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+        </div>
+
+        {/* Tournament Filter */}
+        <div className="relative">
+          <select
+            value={tournamentFilter}
+            onChange={(e) => setTournamentFilter(e.target.value)}
+            className="appearance-none pl-10 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white cursor-pointer min-w-[180px]"
+          >
+            <option value="All">All Tournaments</option>
+            {uniqueTournaments.map((tournament) => (
+              <option key={tournament} value={tournament}>{tournament}</option>
+            ))}
+          </select>
+          <FiFilter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+          <FiChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+        </div>
+
+        {/* Session Filter */}
+        <div className="relative">
+          <select
+            value={sessionFilter}
+            onChange={(e) => setSessionFilter(e.target.value)}
+            className="appearance-none pl-10 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white cursor-pointer min-w-[160px]"
+          >
+            <option value="All">All Sessions</option>
+            {uniqueSessions.map((session) => (
+              <option key={session} value={session}>{session}</option>
+            ))}
           </select>
           <FiFilter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
           <FiChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
@@ -660,6 +728,18 @@ const Teams: React.FC = () => {
                     placeholder="Enter tournament name"
                     value={formData.tournamentName}
                     onChange={(e) => setFormData({ ...formData, tournamentName: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                {/* Session */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Session</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., 2024-2025"
+                    value={formData.session}
+                    onChange={(e) => setFormData({ ...formData, session: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
