@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FiArrowLeft, FiMapPin, FiCalendar, FiUsers, FiAward, FiTrendingUp, FiEdit2, FiTrash2 } from 'react-icons/fi';
+import { FiArrowLeft, FiMapPin, FiCalendar, FiUsers, FiAward, FiTrendingUp, FiEdit2 } from 'react-icons/fi';
 import { GiBasketballBall, GiTrophy } from 'react-icons/gi';
 
 interface MatchHistory {
@@ -41,6 +41,8 @@ interface Player {
   number: string;
   position: string;
   image: string;
+  released?: boolean;
+  releaseDate?: string;
 }
 
 interface CoachingStaff {
@@ -54,6 +56,15 @@ const TeamDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'players' | 'stats'>('overview');
+  const [teamPlayers, setTeamPlayers] = useState<Player[]>([
+    { id: 1, name: 'John', surname: 'Doe', number: '23', position: 'Point Guard', image: '/player1.png' },
+    { id: 2, name: 'Jane', surname: 'Smith', number: '11', position: 'Shooting Guard', image: '/player1.png' },
+    { id: 3, name: 'Mike', surname: 'Johnson', number: '7', position: 'Small Forward', image: '/player1.png' },
+  ]);
+  const [isAddPlayerOpen, setIsAddPlayerOpen] = useState(false);
+  const [newPlayer, setNewPlayer] = useState({ name: '', surname: '', number: '', position: 'Forward', image: '/player1.png' });
+  const [releasingPlayer, setReleasingPlayer] = useState<Player | null>(null);
+  const [releaseDate, setReleaseDate] = useState('');
 
   // Mock team data - in a real app, this would come from an API
   const teamData = {
@@ -603,9 +614,17 @@ const TeamDetails: React.FC = () => {
           {/* Players Tab */}
           {activeTab === 'players' && (
             <div className="mb-8">
-              <h2 className="text-2xl font-bold text-gray-800 mb-6">Current Players</h2>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-gray-800">Current Players</h2>
+                <button
+                  onClick={() => setIsAddPlayerOpen(true)}
+                  className="px-5 py-2.5 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors"
+                >
+                  Add Player
+                </button>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {players.map((player) => (
+                {teamPlayers.map((player) => (
                   <div
                     key={player.id}
                     onClick={() => navigate(`/tournaments/${teamData.tournamentId}/match/1/player/${player.id}`)}
@@ -627,10 +646,161 @@ const TeamDetails: React.FC = () => {
                           </h3>
                         </div>
                         <p className="text-xs text-gray-600">{player.position}</p>
+                        {player.released && (
+                          <p className="text-xs text-red-600 mt-1 font-medium">
+                            Released{player.releaseDate ? ` • ${player.releaseDate}` : ''}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // For now, edit navigates to player profile; can be replaced with a true edit modal later
+                            navigate(`/tournaments/${teamData.tournamentId}/match/1/player/${player.id}`);
+                          }}
+                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Edit Player"
+                        >
+                          <FiEdit2 size={18} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setReleasingPlayer(player);
+                            setReleaseDate('');
+                          }}
+                          className="p-2 text-yellow-700 hover:bg-yellow-50 rounded-lg transition-colors"
+                          title="Release Player"
+                        >
+                          <span className="text-sm font-bold">R</span>
+                        </button>
                       </div>
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Release Player Modal */}
+          {releasingPlayer && (
+            <div className="fixed inset-0 bg-white/20 backdrop-blur-md z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-lg w-full max-w-md overflow-hidden">
+                <div className="p-6 border-b border-gray-200">
+                  <h3 className="text-xl font-semibold text-gray-900">Release Player</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Select release date for {releasingPlayer.name} {releasingPlayer.surname}
+                  </p>
+                </div>
+                <div className="p-6 space-y-4">
+                  <input
+                    type="date"
+                    value={releaseDate}
+                    onChange={(e) => setReleaseDate(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+                  <button
+                    onClick={() => setReleasingPlayer(null)}
+                    className="px-5 py-2.5 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!releaseDate) {
+                        alert('Please select a release date');
+                        return;
+                      }
+                      setTeamPlayers(teamPlayers.map(p => p.id === releasingPlayer.id ? { ...p, released: true, releaseDate } : p));
+                      setReleasingPlayer(null);
+                    }}
+                    className="px-5 py-2.5 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors"
+                  >
+                    Release
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Add Player Modal */}
+          {isAddPlayerOpen && (
+            <div className="fixed inset-0 bg-white/20 backdrop-blur-md z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-lg w-full max-w-2xl overflow-hidden">
+                <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+                  <h3 className="text-xl font-semibold text-gray-900">Add Player</h3>
+                  <button
+                    onClick={() => setIsAddPlayerOpen(false)}
+                    className="text-gray-500 hover:text-gray-800"
+                    title="Close"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <input
+                    type="text"
+                    placeholder="First Name"
+                    value={newPlayer.name}
+                    onChange={(e) => setNewPlayer({ ...newPlayer, name: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Last Name"
+                    value={newPlayer.surname}
+                    onChange={(e) => setNewPlayer({ ...newPlayer, surname: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Jersey Number"
+                    value={newPlayer.number}
+                    onChange={(e) => setNewPlayer({ ...newPlayer, number: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  />
+                  <select
+                    value={newPlayer.position}
+                    onChange={(e) => setNewPlayer({ ...newPlayer, position: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white"
+                  >
+                    <option value="Point Guard">Point Guard</option>
+                    <option value="Shooting Guard">Shooting Guard</option>
+                    <option value="Small Forward">Small Forward</option>
+                    <option value="Power Forward">Power Forward</option>
+                    <option value="Center">Center</option>
+                    <option value="Forward">Forward</option>
+                  </select>
+                </div>
+                <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+                  <button
+                    onClick={() => setIsAddPlayerOpen(false)}
+                    className="px-5 py-2.5 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!newPlayer.name || !newPlayer.surname || !newPlayer.number) {
+                        alert('Please fill name, surname and jersey number');
+                        return;
+                      }
+                      const nextId = Math.max(0, ...teamPlayers.map(p => p.id)) + 1;
+                      setTeamPlayers([
+                        ...teamPlayers,
+                        { id: nextId, name: newPlayer.name, surname: newPlayer.surname, number: newPlayer.number, position: newPlayer.position, image: newPlayer.image },
+                      ]);
+                      setNewPlayer({ name: '', surname: '', number: '', position: 'Forward', image: '/player1.png' });
+                      setIsAddPlayerOpen(false);
+                    }}
+                    className="px-5 py-2.5 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors"
+                  >
+                    Add
+                  </button>
+                </div>
               </div>
             </div>
           )}

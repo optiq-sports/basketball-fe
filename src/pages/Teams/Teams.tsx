@@ -25,6 +25,12 @@ interface Team {
   tournamentName: string;
   session?: string;
   status: 'active' | 'inactive';
+  coachingStaff?: {
+    id: number;
+    name: string;
+    role: string;
+    country: string;
+  }[];
 }
 
 const Teams: React.FC = () => {
@@ -237,6 +243,10 @@ const Teams: React.FC = () => {
     tournamentName: '',
     session: '',
     status: 'active' as 'active' | 'inactive',
+    coachingStaff: [
+      { id: 1, name: '', role: 'Coach', country: '' },
+      { id: 2, name: '', role: 'Assistant Coach', country: '' },
+    ] as { id: number; name: string; role: string; country: string }[],
   });
 
   // Get unique tournaments and sessions for filters / dropdowns
@@ -308,6 +318,10 @@ const Teams: React.FC = () => {
       tournamentName: '',
       session: '',
       status: 'active',
+      coachingStaff: [
+        { id: 1, name: '', role: 'Coach', country: '' },
+        { id: 2, name: '', role: 'Assistant Coach', country: '' },
+      ],
     });
     setIsModalOpen(true);
   };
@@ -326,6 +340,13 @@ const Teams: React.FC = () => {
       tournamentName: team.tournamentName,
       session: team.session || '',
       status: team.status,
+      coachingStaff:
+        team.coachingStaff && team.coachingStaff.length > 0
+          ? team.coachingStaff
+          : [
+              { id: 1, name: '', role: 'Coach', country: '' },
+              { id: 2, name: '', role: 'Assistant Coach', country: '' },
+            ],
     });
     setIsModalOpen(true);
   };
@@ -358,7 +379,8 @@ const Teams: React.FC = () => {
               tournamentId: formData.tournamentId,
               tournamentName: formData.tournamentName,
               session: formData.session,
-              status: formData.status
+              status: formData.status,
+              coachingStaff: formData.coachingStaff
             }
           : t
       ));
@@ -378,6 +400,7 @@ const Teams: React.FC = () => {
         tournamentName: formData.tournamentName,
         session: formData.session,
         status: formData.status,
+        coachingStaff: formData.coachingStaff,
       };
       setTeams([...teams, newTeam]);
       alert('Team created successfully!');
@@ -396,6 +419,10 @@ const Teams: React.FC = () => {
       tournamentName: '',
       session: '',
       status: 'active',
+      coachingStaff: [
+        { id: 1, name: '', role: 'Coach', country: '' },
+        { id: 2, name: '', role: 'Assistant Coach', country: '' },
+      ],
     });
   };
 
@@ -794,6 +821,112 @@ const Teams: React.FC = () => {
                     <option value="inactive">Inactive</option>
                   </select>
                 </div>
+
+                {/* Coaching Staff */}
+                <div className="pt-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">Coaching Staff</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextId =
+                          Math.max(0, ...formData.coachingStaff.map((s) => s.id)) + 1;
+                        setFormData({
+                          ...formData,
+                          coachingStaff: [
+                            ...formData.coachingStaff,
+                            { id: nextId, name: '', role: 'Assistant Coach', country: '' },
+                          ],
+                        });
+                      }}
+                      className="px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                    >
+                      Add Staff
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {formData.coachingStaff.map((staff) => (
+                      <div
+                        key={staff.id}
+                        className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center bg-gray-50 border border-gray-200 rounded-lg p-3"
+                      >
+                        <div className="md:col-span-5">
+                          <input
+                            type="text"
+                            placeholder="Name Surname"
+                            value={staff.name}
+                            onChange={(e) => {
+                              setFormData({
+                                ...formData,
+                                coachingStaff: formData.coachingStaff.map((s) =>
+                                  s.id === staff.id ? { ...s, name: e.target.value } : s
+                                ),
+                              });
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          />
+                        </div>
+
+                        <div className="md:col-span-4">
+                          <select
+                            value={staff.role}
+                            onChange={(e) => {
+                              setFormData({
+                                ...formData,
+                                coachingStaff: formData.coachingStaff.map((s) =>
+                                  s.id === staff.id ? { ...s, role: e.target.value } : s
+                                ),
+                              });
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                          >
+                            <option value="Coach">Coach</option>
+                            <option value="Head Coach">Head Coach</option>
+                            <option value="Assistant Coach">Assistant Coach</option>
+                            <option value="Trainer">Trainer</option>
+                          </select>
+                        </div>
+
+                        <div className="md:col-span-3 flex items-center gap-2">
+                          <select
+                            value={staff.country}
+                            onChange={(e) => {
+                              setFormData({
+                                ...formData,
+                                coachingStaff: formData.coachingStaff.map((s) =>
+                                  s.id === staff.id ? { ...s, country: e.target.value } : s
+                                ),
+                              });
+                            }}
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                          >
+                            <option value="">Country</option>
+                            {Object.keys(countriesData).map((country) => (
+                              <option key={country} value={country}>
+                                {country}
+                              </option>
+                            ))}
+                          </select>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormData({
+                                ...formData,
+                                coachingStaff: formData.coachingStaff.filter((s) => s.id !== staff.id),
+                              });
+                            }}
+                            className="px-3 py-2 text-sm font-medium text-red-700 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
+                            title="Remove"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -811,8 +944,13 @@ const Teams: React.FC = () => {
                     country: '',
                     state: '',
                     tournamentId: 1,
-                    tournamentName: 'KCBL Club Championship',
+                    tournamentName: '',
+                    session: '',
                     status: 'active',
+                    coachingStaff: [
+                      { id: 1, name: '', role: 'Coach', country: '' },
+                      { id: 2, name: '', role: 'Assistant Coach', country: '' },
+                    ],
                   });
                 }}
                 className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors"
