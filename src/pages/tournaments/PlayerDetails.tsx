@@ -10,8 +10,10 @@ export default function PlayerDetails() {
   const navigate = useNavigate();
   const location = useLocation();
   
-  // Check if navigation came from Players page
+  // Check navigation source
   const fromPlayersPage = location.state?.from === 'players-page';
+  const fromTournamentLeaders = location.state?.from === 'tournament-leaders';
+  const backTournamentId = location.state?.tournamentId ?? id;
 
   const handleBackToMatch = () => {
     navigate(`/tournaments/${id}/match/${matchId}`);
@@ -19,6 +21,10 @@ export default function PlayerDetails() {
 
   const handleBackToPlayers = () => {
     navigate('/players-management');
+  };
+
+  const handleBackToTournament = () => {
+    navigate(`/tournaments/${backTournamentId}`);
   };
 
   const games = Array(8).fill({
@@ -116,12 +122,12 @@ export default function PlayerDetails() {
         <div className="bg-white rounded-2xl shadow-sm p-8 mb-8">
           <div className="grid grid-cols-6 gap-6">
             {[
-              { label: "Points", value: 12 },
-              { label: "Rebounds", value: 9 },
-              { label: "Assists", value: 5 },
-              { label: "FG%", value: "52%" },
-              { label: "Steals", value: 3 },
-              { label: "Blocks", value: 2 },
+              { label: "PPG", value: 12 },    // Points per game
+              { label: "RPG", value: 9 },     // Rebounds per game
+              { label: "APG", value: 5 },     // Assists per game
+              { label: "BPG", value: 2 },     // Blocks per game
+              { label: "SPG", value: 3 },     // Steals per game
+              { label: "FG%", value: "52%" }, // Field goal percentage
             ].map((stat, i) => (
               <div
                 key={i}
@@ -279,13 +285,23 @@ export default function PlayerDetails() {
         </div>
 
         {/* Back Button */}
-        {!fromPlayersPage && (
+        {!fromPlayersPage && !fromTournamentLeaders && (
           <div className="mt-6 text-center">
             <button
               onClick={handleBackToMatch}
               className="px-8 py-3 bg-[#21409A] hover:bg-blue-800 text-white font-medium rounded-lg transition-colors"
             >
               Back to Match
+            </button>
+          </div>
+        )}
+        {fromTournamentLeaders && (
+          <div className="mt-6 text-center">
+            <button
+              onClick={handleBackToTournament}
+              className="px-8 py-3 bg-[#21409A] hover:bg-blue-800 text-white font-medium rounded-lg transition-colors"
+            >
+              Back to Tournament
             </button>
           </div>
         )}

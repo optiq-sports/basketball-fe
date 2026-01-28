@@ -12,7 +12,8 @@ const Complete: React.FC = () => {
 
   const handleGoToGameSchedule = () => {
     console.log('Navigating to game schedule')
-    navigate('/schedule')
+    // TODO: Replace '1' with real tournament id when backend is connected
+    navigate('/tournaments/1/schedules')
   }
 
   return (

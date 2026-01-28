@@ -89,8 +89,14 @@ const CompetitionDetailPage: React.FC = () => {
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-6">
+        <div className="mb-6 flex items-center justify-between gap-3">
           <h1 className="text-2xl font-semibold text-gray-800">Competition Name</h1>
+          <button
+            onClick={() => navigate(`/tournaments/${id ?? '1'}/fixtures`)}
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 transition-colors"
+          >
+            View Fixtures
+          </button>
         </div>
 
         {/* Ongoing Game Card */}
@@ -316,7 +322,9 @@ const CompetitionDetailPage: React.FC = () => {
                   className="rounded-2xl overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
                   style={{ width: '335px', height: '374px', backgroundColor: player.bgColor }}
                   onClick={() => {
-                    navigate(`/tournaments/${id ?? '1'}/match/${firstMatchId}/player/${player.id}`);
+                    navigate(`/tournaments/${id ?? '1'}/match/${firstMatchId}/player/${player.id}`, {
+                      state: { from: 'tournament-leaders', tournamentId: id ?? '1' }
+                    });
                   }}
                 >
                   <div className="p-4">

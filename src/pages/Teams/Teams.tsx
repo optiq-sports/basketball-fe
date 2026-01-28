@@ -4,6 +4,13 @@ import { FiSearch, FiFilter, FiChevronDown, FiMapPin, FiEdit2, FiTrash2 } from '
 import { GiBasketballBall } from 'react-icons/gi';
 import { MdCancel } from 'react-icons/md';
 
+// Simple country/state data for dropdowns
+const countriesData: Record<string, string[]> = {
+  'United States': ['California', 'Texas', 'Florida', 'New York', 'Illinois', 'Massachusetts', 'Oklahoma'],
+  'Canada': ['Ontario', 'Quebec', 'British Columbia', 'Alberta'],
+  'United Kingdom': ['England', 'Scotland', 'Wales'],
+};
+
 interface Team {
   id: number;
   name: string;
@@ -232,9 +239,10 @@ const Teams: React.FC = () => {
     status: 'active' as 'active' | 'inactive',
   });
 
-  // Get unique tournaments and sessions for filters
+  // Get unique tournaments and sessions for filters / dropdowns
   const uniqueTournaments = Array.from(new Set(teams.map(t => t.tournamentName))).sort();
   const uniqueSessions = Array.from(new Set(teams.map(t => t.session).filter(Boolean))).sort();
+  const seasonOptions = uniqueSessions.length > 0 ? uniqueSessions : ['2023-2024', '2024-2025'];
 
   // Filter teams by search query and filters
   const filteredTeams = useMemo(() => {
@@ -297,7 +305,7 @@ const Teams: React.FC = () => {
       country: '',
       state: '',
       tournamentId: 1,
-      tournamentName: 'KCBL Club Championship',
+      tournamentName: '',
       session: '',
       status: 'active',
     });
@@ -385,7 +393,7 @@ const Teams: React.FC = () => {
       country: '',
       state: '',
       tournamentId: 1,
-      tournamentName: 'KCBL Club Championship',
+      tournamentName: '',
       session: '',
       status: 'active',
     });
@@ -699,49 +707,79 @@ const Teams: React.FC = () => {
                 {/* Country */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Country</label>
-                  <input
-                    type="text"
-                    placeholder="Enter country"
+                  <select
                     value={formData.country}
-                    onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        country: e.target.value,
+                        state: '',
+                      })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                  >
+                    <option value="">Select country</option>
+                    {Object.keys(countriesData).map((country) => (
+                      <option key={country} value={country}>
+                        {country}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* State */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">State</label>
-                  <input
-                    type="text"
-                    placeholder="Enter state"
+                  <select
                     value={formData.state}
                     onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
+                    disabled={!formData.country}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  >
+                    <option value="">Select state</option>
+                    {formData.country &&
+                      countriesData[formData.country]?.map((stateName) => (
+                        <option key={stateName} value={stateName}>
+                          {stateName}
+                        </option>
+                      ))}
+                  </select>
                 </div>
 
                 {/* Tournament */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Tournament</label>
-                  <input
-                    type="text"
-                    placeholder="Enter tournament name"
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Competition</label>
+                  <select
                     value={formData.tournamentName}
                     onChange={(e) => setFormData({ ...formData, tournamentName: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                  >
+                    <option value="">Select competition</option>
+                    {(uniqueTournaments.length ? uniqueTournaments : ['KCBL Club Championship', 'Premier League', 'Division 1']).map(
+                      (tournament) => (
+                        <option key={tournament} value={tournament}>
+                          {tournament}
+                        </option>
+                      )
+                    )}
+                  </select>
                 </div>
 
                 {/* Session */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Session</label>
-                  <input
-                    type="text"
-                    placeholder="e.g., 2024-2025"
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Season</label>
+                  <select
                     value={formData.session}
                     onChange={(e) => setFormData({ ...formData, session: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                  >
+                    <option value="">Select season</option>
+                    {seasonOptions.map((season) => (
+                      <option key={season} value={season}>
+                        {season}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Status */}

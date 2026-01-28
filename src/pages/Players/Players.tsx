@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiSearch, FiFilter, FiChevronDown, FiEdit2, FiTrash2 } from 'react-icons/fi';
+import { FiSearch, FiFilter, FiChevronDown, FiEdit2, FiTrash2, FiLogOut } from 'react-icons/fi';
 import { MdCancel } from 'react-icons/md';
 
 interface Player {
@@ -18,6 +18,7 @@ interface Player {
   height: string;
   dob: string;
   status: 'active' | 'inactive';
+  releaseDate?: string;
 }
 
 const Players: React.FC = () => {
@@ -30,6 +31,8 @@ const Players: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
+  const [releasePlayer, setReleasePlayer] = useState<Player | null>(null);
+  const [releaseDate, setReleaseDate] = useState<string>('');
   const [players, setPlayers] = useState<Player[]>([
     {
       id: 1,
@@ -329,10 +332,33 @@ const Players: React.FC = () => {
 
   const handleDeletePlayer = (player: Player, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (window.confirm(`Are you sure you want to delete ${player.name} ${player.surname}? This action cannot be undone.`)) {
-      setPlayers(players.filter(p => p.id !== player.id));
-      alert('Player deleted successfully!');
+    // Open release modal instead of hard delete
+    setReleasePlayer(player);
+    setReleaseDate('');
+  };
+
+  const handleConfirmRelease = () => {
+    if (!releasePlayer) return;
+    if (!releaseDate) {
+      alert('Please select a release date.');
+      return;
     }
+
+    setPlayers(players.map(p =>
+      p.id === releasePlayer.id
+        ? {
+            ...p,
+            status: 'inactive',
+            teamId: 0,
+            teamName: 'Free Agent',
+            releaseDate,
+          }
+        : p
+    ));
+
+    alert(`Player ${releasePlayer.name} ${releasePlayer.surname} released successfully!`);
+    setReleasePlayer(null);
+    setReleaseDate('');
   };
 
   const handleAddPlayer = () => {
@@ -620,10 +646,10 @@ const Players: React.FC = () => {
                       </button>
                       <button
                         onClick={(e) => handleDeletePlayer(player, e)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Delete Player"
+                        className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                        title="Release Player"
                       >
-                        <FiTrash2 size={18} />
+                        <FiLogOut size={18} />
                       </button>
                     </div>
                   </td>
@@ -681,6 +707,61 @@ const Players: React.FC = () => {
           >
             Next
           </button>
+        </div>
+      )}
+
+      {/* Release Player Modal */}
+      {releasePlayer && (
+        <div className="fixed inset-0 bg-white/20 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg w-full max-w-md shadow-lg">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">Release Player</h2>
+              <button
+                onClick={() => {
+                  setReleasePlayer(null);
+                  setReleaseDate('');
+                }}
+                className="text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                <MdCancel size={20} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-700">
+                Select a release date for{' '}
+                <span className="font-semibold">
+                  {releasePlayer.name} {releasePlayer.surname}
+                </span>
+                . After this date, the player will be available to join another team.
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Release date *</label>
+                <input
+                  type="date"
+                  value={releaseDate}
+                  onChange={(e) => setReleaseDate(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-200">
+              <button
+                onClick={() => {
+                  setReleasePlayer(null);
+                  setReleaseDate('');
+                }}
+                className="px-5 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmRelease}
+                className="px-5 py-2.5 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors"
+              >
+                Confirm Release
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
