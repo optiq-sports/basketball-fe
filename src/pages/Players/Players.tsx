@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiSearch, FiFilter, FiChevronDown, FiEdit2, FiTrash2, FiLogOut } from 'react-icons/fi';
+import { FiSearch, FiFilter, FiChevronDown, FiEdit2, FiTrash, FiLogOut } from 'react-icons/fi';
 import { MdCancel } from 'react-icons/md';
 
 interface Player {

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiSearch, FiFilter, FiChevronDown, FiMapPin, FiEdit2, FiTrash2 } from 'react-icons/fi';
+import { FiSearch, FiFilter, FiChevronDown, FiMapPin, FiEdit2, FiTrash } from 'react-icons/fi';
 import { GiBasketballBall } from 'react-icons/gi';
 import { MdCancel } from 'react-icons/md';
 
@@ -565,7 +565,7 @@ const Teams: React.FC = () => {
                     className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     title="Delete Team"
                   >
-                    <FiTrash2 size={16} />
+                      <FiTrash size={16} />
                   </button>
                 </div>
               </div>

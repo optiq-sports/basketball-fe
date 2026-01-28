@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { GiBasketballBall } from 'react-icons/gi'
-import { FiTrash2 } from 'react-icons/fi'
+import { FiTrash } from 'react-icons/fi'
 
 interface TeamOverview {
   id: number;
@@ -135,7 +135,7 @@ const TeamOverview: React.FC = () => {
                   className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                   aria-label="Delete team"
                 >
-                  <FiTrash2 className="text-lg" />
+                  <FiTrash className="text-lg" />
                 </button>
               </div>
             </div>

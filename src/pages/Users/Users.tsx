@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { FiSearch, FiFilter, FiChevronDown, FiEdit2, FiTrash2 } from 'react-icons/fi';
+import { FiSearch, FiFilter, FiChevronDown, FiEdit2, FiTrash } from 'react-icons/fi';
 import { MdCancel } from 'react-icons/md';
 
 interface User {
@@ -533,7 +533,7 @@ const Users: React.FC = () => {
                           className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
                           title="Delete User"
                         >
-                          <FiTrash2 size={18} />
+                          <FiTrash size={18} />
                         </button>
                       )}
                     </div>
