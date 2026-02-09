@@ -10,11 +10,11 @@ interface ProtectedRouteProps {
   children: React.ReactNode;
 }
 
+const TOKEN_KEY = 'access_token';
+
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
-  // Check if user is authenticated (you can replace this with your auth logic)
-  const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
-  
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+  const hasToken = !!localStorage.getItem(TOKEN_KEY);
+  return hasToken ? <>{children}</> : <Navigate to="/login" replace />;
 };
 
 // Main Routes Component

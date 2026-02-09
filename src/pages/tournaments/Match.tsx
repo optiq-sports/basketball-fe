@@ -1,17 +1,7 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-
-// Basketball Icon Component
-const BasketballIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-    <path d="M12 2C12 2 8 6 8 12C8 18 12 22 12 22" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-    <path d="M12 2C12 2 16 6 16 12C16 18 12 22 12 22" stroke="currentColor" strokeWidth="1.5" fill="none"/>
-    <path d="M2 12H22" stroke="currentColor" strokeWidth="1.5"/>
-    <path d="M4 7H20" stroke="currentColor" strokeWidth="1.5"/>
-    <path d="M4 17H20" stroke="currentColor" strokeWidth="1.5"/>
-  </svg>
-);
+import { useMatch, useTeams, useUpdateMatch, useDeleteMatch } from '../../api/hooks';
+import type { MatchStatus } from '../../types/api';
 
 interface QuarterScore {
   q1: number;
@@ -32,43 +22,116 @@ interface Player {
 
 type LeaderCategory = 'points' | 'rebounds' | 'assists' | 'block' | 'steals';
 
+function formatMatchTime(scheduledDate?: string): string {
+  if (!scheduledDate) return '—';
+  try {
+    return new Date(scheduledDate).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  } catch {
+    return scheduledDate;
+  }
+}
+
 const GameScorePage: React.FC = () => {
-  const { id, matchId } = useParams<{ id: string; matchId: string }>();
+  const { id: tournamentId, matchId } = useParams<{ id: string; matchId: string }>();
   const navigate = useNavigate();
   const [activeCategory, setActiveCategory] = useState<LeaderCategory>('points');
   const [showBoxScore, setShowBoxScore] = useState(false);
   const [activeTeam, setActiveTeam] = useState<'A' | 'B'>('A');
   const [activeTab, setActiveTab] = useState<'stats' | 'boxscore' | 'shotchart'>('stats');
-  
-  // Team A player selection state
   const [teamAAllPlayers, setTeamAAllPlayers] = useState(true);
   const [teamASelectedPlayers, setTeamASelectedPlayers] = useState<number[]>([]);
-  
-  // Team B player selection state
   const [teamBAllPlayers, setTeamBAllPlayers] = useState(true);
   const [teamBSelectedPlayers, setTeamBSelectedPlayers] = useState<number[]>([]);
-  
-  // Legend filter state
   const [showMade, setShowMade] = useState(true);
   const [showMissed, setShowMissed] = useState(true);
 
-  const teamAScore: QuarterScore = { q1: 17, q2: 0, q3: 0, q4: 0 };
-  const teamBScore: QuarterScore = { q1: 17, q2: 0, q3: 0, q4: 0 };
+  const matchQuery = useMatch(matchId);
+  const teamsQuery = useTeams();
+  const updateMatch = useUpdateMatch();
+  const deleteMatch = useDeleteMatch();
 
-  const totalScoreA = teamAScore.q1 + teamAScore.q2 + teamAScore.q3 + teamAScore.q4;
-  const totalScoreB = teamBScore.q1 + teamBScore.q2 + teamBScore.q3 + teamBScore.q4;
+  const teamMap = useMemo(() => {
+    const map = new Map<string, string>();
+    (teamsQuery.data ?? []).forEach((t) => map.set(t.id, t.name));
+    return map;
+  }, [teamsQuery.data]);
+
+  const match = matchQuery.data;
+  const homeTeamName = match ? (teamMap.get(match.homeTeamId) ?? 'Home') : 'Home';
+  const awayTeamName = match ? (teamMap.get(match.awayTeamId) ?? 'Away') : 'Away';
+
+  const teamAScore: QuarterScore = useMemo(() => ({
+    q1: match?.quarter1Home ?? 0,
+    q2: match?.quarter2Home ?? 0,
+    q3: match?.quarter3Home ?? 0,
+    q4: match?.quarter4Home ?? 0,
+  }), [match]);
+  const teamBScore: QuarterScore = useMemo(() => ({
+    q1: match?.quarter1Away ?? 0,
+    q2: match?.quarter2Away ?? 0,
+    q3: match?.quarter3Away ?? 0,
+    q4: match?.quarter4Away ?? 0,
+  }), [match]);
+
+  const totalScoreA = match?.totalHome ?? (teamAScore.q1 + teamAScore.q2 + teamAScore.q3 + teamAScore.q4);
+  const totalScoreB = match?.totalAway ?? (teamBScore.q1 + teamBScore.q2 + teamBScore.q3 + teamBScore.q4);
 
   const players: Player[] = [
     { id: 1, name: 'Name', surname: 'Surname', number: '11', image: '/player1.png', points: 25, team: 'yellow' },
     { id: 2, name: 'Name', surname: 'Surname', number: '23', image: '/player2.png', points: 22, team: 'blue' },
   ];
 
+  const handleUpdateStatus = (status: MatchStatus) => {
+    if (!matchId || !match) return;
+    updateMatch.mutate(
+      { id: matchId, data: { status } },
+      { onError: (e) => alert(e.message) }
+    );
+  };
+
+  const handleUpdateQuarterScore = (quarter: 1 | 2 | 3 | 4, home: number, away: number) => {
+    if (!matchId) return;
+    const data = {
+      [`quarter${quarter}Home`]: home,
+      [`quarter${quarter}Away`]: away,
+    } as { quarter1Home?: number; quarter1Away?: number; quarter2Home?: number; quarter2Away?: number; quarter3Home?: number; quarter3Away?: number; quarter4Home?: number; quarter4Away?: number };
+    updateMatch.mutate(
+      { id: matchId, data },
+      { onError: (e) => alert(e.message) }
+    );
+  };
+
+  const handleDeleteMatch = () => {
+    if (!matchId || !tournamentId || !window.confirm('Delete this match? This cannot be undone.')) return;
+    deleteMatch.mutate(matchId, {
+      onSuccess: () => navigate(`/tournaments/${tournamentId}/fixtures`),
+      onError: (e) => alert(e.message),
+    });
+  };
+
+  if (matchQuery.isPending || !matchId) {
+    return (
+      <div className="min-h-screen bg-white p-6">
+        <div className="max-w-7xl mx-auto text-gray-500">Loading match…</div>
+      </div>
+    );
+  }
+  if (matchQuery.error || !matchQuery.data) {
+    return (
+      <div className="min-h-screen bg-white p-6">
+        <div className="max-w-7xl mx-auto text-red-600">
+          {matchQuery.error instanceof Error ? matchQuery.error.message : 'Match not found'}
+        </div>
+      </div>
+    );
+  }
+
   const handleViewBoxScore = () => {
     setShowBoxScore(true);
   };
 
   const handlePlayerClick = (playerId: number) => {
-    navigate(`/tournaments/${id}/match/${matchId}/player/${playerId}`);
+    navigate(`/tournaments/${tournamentId}/match/${matchId}/player/${playerId}`);
   };
 
   // Team A handlers
@@ -120,62 +183,72 @@ const GameScorePage: React.FC = () => {
   return (
     <div className="min-h-screen bg-white p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-gray-800">Competition Name</h1>
-          <p className="text-sm text-gray-600 mt-3">Tournament Round</p>
+          <h1 className="text-2xl font-semibold text-gray-800">{homeTeamName} vs {awayTeamName}</h1>
+          <p className="text-sm text-gray-600 mt-3">{formatMatchTime(match?.scheduledDate)}</p>
+          {match && (
+            <div className="mt-2 flex items-center gap-3 flex-wrap">
+              <span className="text-xs text-gray-500">Status:</span>
+              <select
+                value={match.status}
+                onChange={(e) => handleUpdateStatus(e.target.value as MatchStatus)}
+                disabled={updateMatch.isPending}
+                className="text-sm border border-gray-300 rounded px-2 py-1 bg-white"
+              >
+                <option value="SCHEDULED">Scheduled</option>
+                <option value="LIVE">Live</option>
+                <option value="COMPLETED">Completed</option>
+                <option value="CANCELLED">Cancelled</option>
+                <option value="POSTPONED">Postponed</option>
+              </select>
+              <button
+                type="button"
+                onClick={handleDeleteMatch}
+                disabled={deleteMatch.isPending}
+                className="text-sm px-3 py-1.5 rounded border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-70"
+              >
+                {deleteMatch.isPending ? 'Deleting…' : 'Delete match'}
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Score Display */}
         <div className="rounded-lg shadow-sm p-20 mb-6 border" style={{ background: '#FCFEFF', border: '1px solid #A9A9A91A' }}>
           <div className="flex items-center justify-evenly gap-12 mb-6">
-            {/* Team A */}
             <div className="flex items-center gap-3">
               <div className="w-14 h-14 bg-[#FFCA69] rounded-xl flex items-center justify-evenly p-2">
-                <img 
-                className="w-32" 
-                src="/ball1.png"
-                alt="Team A"
-                />
+                <img className="w-32" src="/ball1.png" alt="Home" />
               </div>
               <div className="flex items-center gap-3">
-                <div className="text-4xl text-gray-400">TEAM A</div>
+                <div className="text-4xl text-gray-400">{homeTeamName}</div>
                 <div className="text-5xl font-bold text-gray-900">{totalScoreA}</div>
               </div>
             </div>
-            
-            {/* Quarter */}
             <div className="flex flex-col items-center gap-2">
               <div className="px-10 py-2 bg-[#6AE36F] rounded-lg">
                 <div className="text-sm font-medium text-[#126A16]">Q1</div>
               </div>
-              <div className="text-sm font-medium text-gray-500">Live</div>
+              <div className="text-sm font-medium text-gray-500">{match?.status === 'LIVE' ? 'Live' : match?.status ?? '—'}</div>
             </div>
-            
-            {/* Team B */}
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-3">
                 <div className="text-5xl font-bold text-gray-900">{totalScoreB}</div>
-                <div className="text-4xl text-gray-400">TEAM B</div>
+                <div className="text-4xl text-gray-400">{awayTeamName}</div>
               </div>
               <div className="w-14 h-14 bg-[#80B7D5] rounded-xl flex items-center justify-evenly p-2">
-                <img 
-                className="w-32" 
-                src="/ball2.png"
-                alt="Team B"
-                />
+                <img className="w-32" src="/ball2.png" alt="Away" />
               </div>
             </div>
           </div>
-
           <div className="text-center text-xs text-gray-400">
-            Tournament Name | 12:40PM, 11 November 2025
+            {match?.venue ?? '—'} | {formatMatchTime(match?.scheduledDate)}
           </div>
         </div>
 
         {/* Quarter Scores Table - Hidden when Box Score is shown */}
         {!showBoxScore && (
           <div className="max-w-4xl mx-auto rounded-2xl shadow-sm mb-8 border" style={{ background: '#FCFEFF', border: '1px solid #A9A9A91A' }}>
+          <p className="text-xs text-gray-500 px-4 pt-3">Edit quarter scores below and blur to save.</p>
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200">
@@ -196,16 +269,24 @@ const GameScorePage: React.FC = () => {
                      <div className="w-10 h-10 bg-[#FFCA69] rounded-lg flex items-center justify-center">
                        <img src="/ball1.png" alt="Team A" className="w-5 h-5" />
                      </div>
-                     <span className="text-sm font-medium text-gray-700">TEAM A</span>
+                     <span className="text-sm font-medium text-gray-700">{homeTeamName}</span>
                    </div>
                  </td>
-                 <td className="text-center py-4 px-4 text-sm font-semibold">{teamAScore.q1}</td>
+                 <td className="text-center py-2 px-2">
+                   <input type="number" min={0} className="w-12 text-center py-1 border border-gray-300 rounded text-sm font-semibold" value={teamAScore.q1} onBlur={(e) => handleUpdateQuarterScore(1, parseInt(e.target.value, 10) || 0, teamBScore.q1)} />
+                 </td>
                  <td className="text-center py-4 px-2 text-sm font-semibold text-[#A9A9A9]">|</td>
-                 <td className="text-center py-4 px-4 text-sm font-semibold text-gray-900">{teamAScore.q2}</td>
+                 <td className="text-center py-2 px-2">
+                   <input type="number" min={0} className="w-12 text-center py-1 border border-gray-300 rounded text-sm font-semibold" value={teamAScore.q2} onBlur={(e) => handleUpdateQuarterScore(2, parseInt(e.target.value, 10) || 0, teamBScore.q2)} />
+                 </td>
                  <td className="text-center py-4 px-2 text-sm font-semibold text-[#A9A9A9]">|</td>
-                 <td className="text-center py-4 px-4 text-sm font-semibold text-gray-900">{teamAScore.q3}</td>
+                 <td className="text-center py-2 px-2">
+                   <input type="number" min={0} className="w-12 text-center py-1 border border-gray-300 rounded text-sm font-semibold" value={teamAScore.q3} onBlur={(e) => handleUpdateQuarterScore(3, parseInt(e.target.value, 10) || 0, teamBScore.q3)} />
+                 </td>
                  <td className="text-center py-4 px-2 text-sm font-semibold text-[#A9A9A9]">|</td>
-                 <td className="text-center py-4 px-4 text-sm font-semibold text-gray-900">{teamAScore.q4}</td>
+                 <td className="text-center py-2 px-2">
+                   <input type="number" min={0} className="w-12 text-center py-1 border border-gray-300 rounded text-sm font-semibold" value={teamAScore.q4} onBlur={(e) => handleUpdateQuarterScore(4, parseInt(e.target.value, 10) || 0, teamBScore.q4)} />
+                 </td>
                </tr>
                <tr>
                 <td className="py-4 px-4">
@@ -213,16 +294,24 @@ const GameScorePage: React.FC = () => {
                     <div className="w-10 h-10 bg-[#80B7D5] rounded-lg flex items-center justify-center">
                       <img src="/ball2.png" alt="Team B" className="w-5 h-5" />
                     </div>
-                    <span className="text-sm font-medium text-gray-700">TEAM B</span>
+                    <span className="text-sm font-medium text-gray-700">{awayTeamName}</span>
                   </div>
                 </td>
-                 <td className="text-center py-4 px-4 text-sm font-semibold">{teamBScore.q1}</td>
+                 <td className="text-center py-2 px-2">
+                   <input type="number" min={0} className="w-12 text-center py-1 border border-gray-300 rounded text-sm font-semibold" value={teamBScore.q1} onBlur={(e) => handleUpdateQuarterScore(1, teamAScore.q1, parseInt(e.target.value, 10) || 0)} />
+                 </td>
                  <td className="text-center py-4 px-2 text-sm font-semibold text-[#A9A9A9]">|</td>
-                 <td className="text-center py-4 px-4 text-sm font-semibold text-gray-900">{teamBScore.q2}</td>
+                 <td className="text-center py-2 px-2">
+                   <input type="number" min={0} className="w-12 text-center py-1 border border-gray-300 rounded text-sm font-semibold" value={teamBScore.q2} onBlur={(e) => handleUpdateQuarterScore(2, teamAScore.q2, parseInt(e.target.value, 10) || 0)} />
+                 </td>
                  <td className="text-center py-4 px-2 text-sm font-semibold text-[#A9A9A9]">|</td>
-                 <td className="text-center py-4 px-4 text-sm font-semibold text-gray-900">{teamBScore.q3}</td>
+                 <td className="text-center py-2 px-2">
+                   <input type="number" min={0} className="w-12 text-center py-1 border border-gray-300 rounded text-sm font-semibold" value={teamBScore.q3} onBlur={(e) => handleUpdateQuarterScore(3, teamAScore.q3, parseInt(e.target.value, 10) || 0)} />
+                 </td>
                  <td className="text-center py-4 px-2 text-sm font-semibold text-[#A9A9A9]">|</td>
-                 <td className="text-center py-4 px-4 text-sm font-semibold text-gray-900">{teamBScore.q4}</td>
+                 <td className="text-center py-2 px-2">
+                   <input type="number" min={0} className="w-12 text-center py-1 border border-gray-300 rounded text-sm font-semibold" value={teamBScore.q4} onBlur={(e) => handleUpdateQuarterScore(4, teamAScore.q4, parseInt(e.target.value, 10) || 0)} />
+                 </td>
               </tr>
             </tbody>
           </table>
@@ -655,7 +744,7 @@ const GameScorePage: React.FC = () => {
                         : 'bg-transparent text-gray-600 hover:text-gray-800'
                     }`}
                   >
-                    Team A
+                    {homeTeamName}
                   </button>
                   <button
                     onClick={() => setActiveTeam('B')}
@@ -665,7 +754,7 @@ const GameScorePage: React.FC = () => {
                         : 'bg-transparent text-gray-600 hover:text-gray-800'
                     }`}
                   >
-                    Team B
+                    {awayTeamName}
                   </button>
                 </div>
               </div>

@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
-import { Routes, Route, useLocation } from 'react-router-dom'
+import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
+import { useProfile, queryKeys } from '../api/hooks'
 import MatchPage from '../pages/tournaments/Match'
 import PlayerDetails from '../pages/tournaments/PlayerDetails'
 import Navbar from './navbar'
@@ -24,31 +26,34 @@ import TeamDetails from '../pages/Teams/TeamDetails'
 import PlayersManagement from '../pages/Players/Players'
 import Users from '../pages/Users/Users'
 
+const TOKEN_KEY = 'access_token';
+
+function formatRole(role: string): string {
+  if (role === 'ADMIN') return 'Administrator';
+  if (role === 'STATISTICIAN') return 'Statistician';
+  return role;
+}
+
 const Wrapper: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const profile = useProfile();
 
-  // Get current user info from localStorage
-  const getCurrentUser = () => {
-    try {
-      const userStr = localStorage.getItem('currentUser');
-      if (userStr) {
-        const user = JSON.parse(userStr);
-        return {
-          name: user.name || 'Admin User',
-          role: user.role === 'super_admin' ? 'Super Administrator' : 'Administrator'
-        };
-      }
-    } catch (e) {
-      console.error('Error parsing user data:', e);
-    }
-    return {
-      name: 'Admin User',
-      role: 'Administrator'
-    };
+  const profileData = profile.data;
+  const userName = (profileData as { name?: string; email?: string } | undefined)?.name
+    ?? (profileData as { name?: string; email?: string } | undefined)?.email
+    ?? 'User';
+  const userRole = (profileData as { role?: string } | undefined)?.role
+    ? formatRole((profileData as { role?: string }).role!)
+    : 'Administrator';
+
+  const handleLogout = () => {
+    localStorage.removeItem(TOKEN_KEY);
+    queryClient.removeQueries({ queryKey: queryKeys.auth.profile });
+    navigate('/login');
   };
-
-  const currentUser = getCurrentUser();
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
@@ -72,9 +77,10 @@ const Wrapper: React.FC = () => {
     <div className="h-screen bg-gray-50 overflow-hidden flex flex-col">
       {/* Navbar - Full Width at Top */}
       <Navbar 
-        userName={currentUser.name}
-        userRole={currentUser.role}
+        userName={userName}
+        userRole={userRole}
         onMenuClick={toggleSidebar}
+        onLogout={handleLogout}
       />
 
       {/* Main Layout - Sidebar and Content */}

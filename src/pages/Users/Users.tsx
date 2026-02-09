@@ -1,9 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { FiSearch, FiFilter, FiChevronDown, FiEdit2, FiTrash } from 'react-icons/fi';
 import { MdCancel } from 'react-icons/md';
+import { useUsers, useCreateUser, useUpdateUser, useDeleteUser, useProfile } from '../../api/hooks';
+import type { User as ApiUser } from '../../types/api';
 
-interface User {
-  id: number;
+interface UserDisplay {
+  id: string;
   name: string;
   email: string;
   role: 'super_admin' | 'admin';
@@ -11,87 +13,45 @@ interface User {
   createdAt: string;
 }
 
+function normalizeRole(r: string): 'super_admin' | 'admin' {
+  const lower = (r || '').toLowerCase();
+  if (lower === 'super_admin' || lower === 'super admin') return 'super_admin';
+  return 'admin';
+}
+
 const Users: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editingUser, setEditingUser] = useState<UserDisplay | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<'super_admin' | 'admin' | null>(null);
   const itemsPerPage = 10;
 
-  // Get current user role from localStorage
-  useEffect(() => {
-    const role = localStorage.getItem('userRole') as 'super_admin' | 'admin' | null;
-    setCurrentUserRole(role);
-  }, []);
+  const usersQuery = useUsers();
+  const createUser = useCreateUser();
+  const updateUser = useUpdateUser();
+  const deleteUser = useDeleteUser();
+  const profileQuery = useProfile();
 
-  const [users, setUsers] = useState<User[]>([
-    {
-      id: 1,
-      name: 'Super Admin',
-      email: 'superadmin@optiqsports.com',
-      role: 'super_admin',
-      status: 'active',
-      createdAt: '2024-01-15',
-    },
-    {
-      id: 2,
-      name: 'Admin User',
-      email: 'admin@optiqsports.com',
-      role: 'admin',
-      status: 'active',
-      createdAt: '2024-02-20',
-    },
-    {
-      id: 3,
-      name: 'John Smith',
-      email: 'john.smith@optiqsports.com',
-      role: 'admin',
-      status: 'active',
-      createdAt: '2024-03-10',
-    },
-    {
-      id: 4,
-      name: 'Sarah Johnson',
-      email: 'sarah.johnson@optiqsports.com',
-      role: 'admin',
-      status: 'active',
-      createdAt: '2024-03-15',
-    },
-    {
-      id: 5,
-      name: 'Mike Williams',
-      email: 'mike.williams@optiqsports.com',
-      role: 'admin',
-      status: 'inactive',
-      createdAt: '2024-04-01',
-    },
-    {
-      id: 6,
-      name: 'Emily Davis',
-      email: 'emily.davis@optiqsports.com',
-      role: 'admin',
-      status: 'active',
-      createdAt: '2024-04-05',
-    },
-    {
-      id: 7,
-      name: 'David Brown',
-      email: 'david.brown@optiqsports.com',
-      role: 'super_admin',
-      status: 'active',
-      createdAt: '2024-04-10',
-    },
-    {
-      id: 8,
-      name: 'Lisa Anderson',
-      email: 'lisa.anderson@optiqsports.com',
-      role: 'admin',
-      status: 'active',
-      createdAt: '2024-04-12',
-    },
-  ]);
+  const users: UserDisplay[] = useMemo(() => {
+    const list = usersQuery.data ?? [];
+    return list.map((u: ApiUser) => ({
+      id: u.id,
+      name: (u.name as string) ?? (u.email as string) ?? '—',
+      email: u.email ?? '—',
+      role: normalizeRole(u.role as string),
+      status: ((u.status as string) ?? 'active') === 'active' ? 'active' : 'inactive',
+      createdAt: (u.createdAt as string) ?? '—',
+    }));
+  }, [usersQuery.data]);
+
+  const currentUserId: string | null = profileQuery.data?.id ?? null;
+
+  useEffect(() => {
+    const role = (profileQuery.data?.role ?? localStorage.getItem('userRole')) as string | null;
+    if (role) setCurrentUserRole(normalizeRole(role));
+  }, [profileQuery.data?.role]);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -150,7 +110,7 @@ const Users: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleEditUser = (user: User) => {
+  const handleEditUser = (user: UserDisplay) => {
     setEditingUser(user);
     setFormData({
       name: user.name,
@@ -162,204 +122,126 @@ const Users: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleDeleteUser = (user: User) => {
-    // Get current user ID from localStorage
-    const currentUserStr = localStorage.getItem('currentUser');
-    let currentUserId: number | null = null;
-    if (currentUserStr) {
-      try {
-        const currentUser = JSON.parse(currentUserStr);
-        currentUserId = currentUser.id;
-      } catch (e) {
-        console.error('Error parsing current user:', e);
-      }
-    }
-
-    // Prevent deleting current user
+  const handleDeleteUser = (user: UserDisplay) => {
     if (user.id === currentUserId) {
       alert('You cannot delete your own account');
       return;
     }
-
-    // Check permissions
     if (currentUserRole !== 'super_admin' && user.role === 'super_admin') {
       alert('You do not have permission to delete super admins');
       return;
     }
-
     if (window.confirm(`Are you sure you want to delete ${user.name}? This action cannot be undone.`)) {
-      setUsers(users.filter(u => u.id !== user.id));
-      alert('User deleted successfully!');
+      deleteUser.mutate(user.id, {
+        onError: (e) => alert(e.message),
+      });
     }
   };
 
   const handleSaveUser = () => {
-    // Validation
-    if (!formData.name || !formData.email) {
+    if (!formData.name?.trim() || !formData.email?.trim()) {
       alert('Please fill in all required fields');
       return;
     }
-
-    // Email format validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email)) {
       alert('Please enter a valid email address');
       return;
     }
-
     if (!editingUser && !formData.password) {
       alert('Password is required for new users');
       return;
     }
-
     if (!editingUser && formData.password.length < 6) {
       alert('Password must be at least 6 characters long');
       return;
     }
-
-    // Check for duplicate email (excluding current user if editing)
-    const emailExists = users.some(u => 
-      u.email.toLowerCase() === formData.email.toLowerCase() && 
-      (!editingUser || u.id !== editingUser.id)
-    );
-    if (emailExists) {
-      alert('A user with this email already exists');
-      return;
-    }
-
-    // Check permissions for role assignment
     if (currentUserRole === 'admin' && formData.role === 'super_admin') {
       alert('You do not have permission to create or edit super admins');
       return;
     }
-
-    // Get current user ID from localStorage
-    const currentUserStr = localStorage.getItem('currentUser');
-    let currentUserId: number | null = null;
-    if (currentUserStr) {
-      try {
-        const currentUser = JSON.parse(currentUserStr);
-        currentUserId = currentUser.id;
-      } catch (e) {
-        console.error('Error parsing current user:', e);
-      }
-    }
-
-    if (editingUser) {
-      // Prevent editing current user's role to prevent lockout
-      if (editingUser.id === currentUserId && formData.role !== editingUser.role) {
-        alert('You cannot change your own role');
-        return;
-      }
-
-      // Update existing user
-      setUsers(users.map(u => 
-        u.id === editingUser.id 
-          ? { 
-              ...u, 
-              name: formData.name,
-              email: formData.email,
-              role: formData.role,
-              status: formData.status
-            }
-          : u
-      ));
-      
-      // If editing current user, update localStorage
-      if (editingUser.id === currentUserId) {
-        const updatedUser = {
-          id: editingUser.id,
-          name: formData.name,
-          email: formData.email,
-          role: formData.role
-        };
-        localStorage.setItem('currentUser', JSON.stringify(updatedUser));
-        localStorage.setItem('userRole', formData.role);
-      }
-    } else {
-      // Add new user
-      const newUser: User = {
-        id: Math.max(...users.map(u => u.id), 0) + 1,
-        name: formData.name,
-        email: formData.email,
-        role: formData.role,
-        status: formData.status,
-        createdAt: new Date().toISOString().split('T')[0],
-      };
-      setUsers([...users, newUser]);
-    }
-
-    // Show success message
-    alert(editingUser ? 'User updated successfully!' : 'User created successfully!');
-
-    setIsModalOpen(false);
-    setEditingUser(null);
-    setFormData({
-      name: '',
-      email: '',
-      password: '',
-      role: 'admin',
-      status: 'active',
-    });
-  };
-
-  const handleRoleChange = (userId: number, newRole: 'super_admin' | 'admin') => {
-    // Get current user ID from localStorage
-    const currentUserStr = localStorage.getItem('currentUser');
-    let currentUserId: number | null = null;
-    if (currentUserStr) {
-      try {
-        const currentUser = JSON.parse(currentUserStr);
-        currentUserId = currentUser.id;
-      } catch (e) {
-        console.error('Error parsing current user:', e);
-      }
-    }
-
-    // Prevent changing current user's role
-    if (userId === currentUserId) {
+    if (editingUser && editingUser.id === currentUserId && formData.role !== editingUser.role) {
       alert('You cannot change your own role');
-      // Reset the select to original value
-      const user = users.find(u => u.id === userId);
-      if (user) {
-        const selectElement = document.querySelector(`select[value="${user.role}"]`) as HTMLSelectElement;
-        if (selectElement) {
-          selectElement.value = user.role;
-        }
-      }
       return;
     }
 
-    // Check permissions
-    if (currentUserRole === 'admin') {
-      const user = users.find(u => u.id === userId);
-      if (user?.role === 'super_admin' || newRole === 'super_admin') {
-        alert('You do not have permission to change super admin roles');
-        // Reset the select to original value
-        if (user) {
-          const selectElement = document.querySelector(`select[value="${user.role}"]`) as HTMLSelectElement;
-          if (selectElement) {
-            selectElement.value = user.role;
-          }
+    if (editingUser) {
+      updateUser.mutate(
+        {
+          id: editingUser.id,
+          data: {
+            name: formData.name.trim(),
+            email: formData.email.trim(),
+            role: formData.role,
+            status: formData.status,
+            ...(formData.password ? { password: formData.password } : {}),
+          },
+        },
+        {
+          onSuccess: () => {
+            setIsModalOpen(false);
+            setEditingUser(null);
+            setFormData({ name: '', email: '', password: '', role: 'admin', status: 'active' });
+          },
+          onError: (e) => alert(e.message),
         }
-        return;
-      }
+      );
+    } else {
+      createUser.mutate(
+        {
+          email: formData.email.trim(),
+          password: formData.password,
+          name: formData.name.trim(),
+          role: formData.role,
+          status: formData.status,
+        },
+        {
+          onSuccess: () => {
+            setIsModalOpen(false);
+            setEditingUser(null);
+            setFormData({ name: '', email: '', password: '', role: 'admin', status: 'active' });
+          },
+          onError: (e) => alert(e.message),
+        }
+      );
     }
-
-    setUsers(users.map(u => 
-      u.id === userId ? { ...u, role: newRole } : u
-    ));
-    
-    alert('User role updated successfully!');
   };
 
-  const canEditUser = (user: User) => {
+  const handleRoleChange = (userId: string, newRole: 'super_admin' | 'admin') => {
+    if (userId === currentUserId) {
+      alert('You cannot change your own role');
+      return;
+    }
+    const user = users.find((u) => u.id === userId);
+    if (currentUserRole === 'admin' && (user?.role === 'super_admin' || newRole === 'super_admin')) {
+      alert('You do not have permission to change super admin roles');
+      return;
+    }
+    updateUser.mutate(
+      { id: userId, data: { role: newRole } },
+      { onError: (e) => alert(e.message) }
+    );
+  };
+
+  const handleStatusToggle = (user: UserDisplay) => {
+    if (user.id === currentUserId) {
+      alert('You cannot change your own status');
+      return;
+    }
+    const nextStatus = user.status === 'active' ? 'inactive' : 'active';
+    updateUser.mutate(
+      { id: user.id, data: { status: nextStatus } },
+      { onError: (e) => alert(e.message) }
+    );
+  };
+
+  const canEditUser = (user: UserDisplay) => {
     if (currentUserRole === 'super_admin') return true;
     if (currentUserRole === 'admin' && user.role === 'admin') return true;
     return false;
   };
 
-  const canDeleteUser = (user: User) => {
+  const canDeleteUser = (user: UserDisplay) => {
     if (currentUserRole === 'super_admin') return true;
     if (currentUserRole === 'admin' && user.role === 'admin') return true;
     return false;
@@ -415,6 +297,15 @@ const Users: React.FC = () => {
           <FiChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
         </div>
       </div>
+
+      {usersQuery.isPending && (
+        <div className="mb-4 text-gray-500">Loading users…</div>
+      )}
+      {usersQuery.error && (
+        <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+          {usersQuery.error instanceof Error ? usersQuery.error.message : 'Failed to load users'}
+        </div>
+      )}
 
       {/* Users Table */}
       <div className="overflow-x-auto rounded-lg border border-gray-200 mb-8">
@@ -476,33 +367,12 @@ const Users: React.FC = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        // Get current user ID from localStorage
-                        const currentUserStr = localStorage.getItem('currentUser');
-                        let currentUserId: number | null = null;
-                        if (currentUserStr) {
-                          try {
-                            const currentUser = JSON.parse(currentUserStr);
-                            currentUserId = currentUser.id;
-                          } catch (e) {
-                            console.error('Error parsing current user:', e);
-                          }
-                        }
-
-                        // Prevent changing current user's status
-                        if (user.id === currentUserId) {
-                          alert('You cannot change your own status');
-                          return;
-                        }
-
-                        setUsers(users.map(u => 
-                          u.id === user.id 
-                            ? { ...u, status: u.status === 'active' ? 'inactive' : 'active' }
-                            : u
-                        ));
+                        handleStatusToggle(user);
                       }}
-                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer ${
-                        user.status === 'active' 
-                          ? 'bg-green-100 text-green-800 hover:bg-green-200' 
+                      disabled={updateUser.isPending}
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer disabled:opacity-70 ${
+                        user.status === 'active'
+                          ? 'bg-green-100 text-green-800 hover:bg-green-200'
                           : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
                       }`}
                       title="Click to toggle status"
@@ -717,9 +587,10 @@ const Users: React.FC = () => {
               </button>
               <button
                 onClick={handleSaveUser}
-                className="px-6 py-2.5 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors"
+                disabled={createUser.isPending || updateUser.isPending}
+                className="px-6 py-2.5 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors disabled:opacity-70"
               >
-                {editingUser ? 'Update' : 'Create'}
+                {createUser.isPending || updateUser.isPending ? 'Saving…' : editingUser ? 'Update' : 'Create'}
               </button>
             </div>
           </div>

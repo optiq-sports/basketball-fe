@@ -1,7 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { FiArrowLeft, FiMapPin, FiCalendar, FiUsers, FiAward, FiTrendingUp, FiEdit2, FiTrash } from 'react-icons/fi';
 import { GiBasketballBall, GiTrophy } from 'react-icons/gi';
+import { useTeam, usePlayers, useCreatePlayerForTeam, useRemovePlayerFromTeam, useDeleteTeam } from '../../api/hooks';
+import type { Player as ApiPlayer } from '../../types/api';
+
+const POSITION_OPTIONS = [
+  { value: 'POINT_GUARD', label: 'Point Guard' },
+  { value: 'SHOOTING_GUARD', label: 'Shooting Guard' },
+  { value: 'SMALL_FORWARD', label: 'Small Forward' },
+  { value: 'POWER_FORWARD', label: 'Power Forward' },
+  { value: 'CENTER', label: 'Center' },
+] as const;
 
 interface MatchHistory {
   id: number;
@@ -34,15 +44,13 @@ interface SeasonStats {
   tournament: string;
 }
 
-interface Player {
-  id: number;
+interface PlayerDisplay {
+  id: string;
   name: string;
   surname: string;
   number: string;
   position: string;
   image: string;
-  released?: boolean;
-  releaseDate?: string;
 }
 
 interface CoachingStaff {
@@ -52,52 +60,68 @@ interface CoachingStaff {
   country: string;
 }
 
+function mapApiPlayerToDisplay(p: ApiPlayer): PlayerDisplay {
+  return {
+    id: p.id,
+    name: p.firstName,
+    surname: p.lastName,
+    number: String(p.jerseyNumber ?? ''),
+    position: typeof p.position === 'string' && p.position.includes('_') ? p.position.replace(/_/g, ' ') : (p.position as string),
+    image: '/player1.png',
+  };
+}
+
 const TeamDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'players' | 'stats'>('overview');
-  const [teamPlayers, setTeamPlayers] = useState<Player[]>([
-    { id: 1, name: 'John', surname: 'Doe', number: '23', position: 'Point Guard', image: '/player1.png' },
-    { id: 2, name: 'Jane', surname: 'Smith', number: '11', position: 'Shooting Guard', image: '/player1.png' },
-    { id: 3, name: 'Mike', surname: 'Johnson', number: '7', position: 'Small Forward', image: '/player1.png' },
-  ]);
   const [isAddPlayerOpen, setIsAddPlayerOpen] = useState(false);
-  const [newPlayer, setNewPlayer] = useState({ name: '', surname: '', number: '', position: 'Forward', image: '/player1.png' });
-  const [releasingPlayer, setReleasingPlayer] = useState<Player | null>(null);
+  const [newPlayer, setNewPlayer] = useState({ name: '', surname: '', number: '', position: 'POINT_GUARD' as string });
+  const [releasingPlayer, setReleasingPlayer] = useState<PlayerDisplay | null>(null);
   const [releaseDate, setReleaseDate] = useState('');
 
-  // Mock team data - in a real app, this would come from an API
-  const teamData = {
-    id: id || '1',
-    name: 'Lakers',
-    shortName: 'LAL',
-    shortTeamCode: 'LAL',
-    longTeamCode: 'LAKERS',
-    teamColor: '#552583',
-    country: 'United States',
-    state: 'California',
-    city: 'Los Angeles',
-    logo: null,
-    founded: '1947',
-    status: 'active' as 'active' | 'inactive',
-    tournamentId: 1,
-    tournamentName: 'KCBL Club Championship',
-    wins: 45,
-    losses: 12,
-    championships: 3,
-    totalMatches: 57,
-    winPercentage: 78.9,
-    pointsPerGame: 108.5,
-    pointsAllowedPerGame: 102.3,
-    homeRecord: '28-5',
-    awayRecord: '17-7',
-    currentStreak: 'W3',
-    email: 'info@lakers.com',
-    phone: '+1 (310) 426-6000',
-    website: 'www.lakers.com',
-    arena: 'Crypto.com Arena',
-    capacity: '19068',
-  };
+  const teamQuery = useTeam(id ?? null);
+  const playersQuery = usePlayers(id ?? undefined);
+  const createPlayer = useCreatePlayerForTeam();
+  const removePlayer = useRemovePlayerFromTeam();
+  const deleteTeam = useDeleteTeam();
+
+  const team = teamQuery.data;
+  const teamPlayers = useMemo(() => (playersQuery.data ?? []).map(mapApiPlayerToDisplay), [playersQuery.data]);
+
+  const teamData = useMemo(() => {
+    if (!team) return null;
+    return {
+      id: team.id,
+      name: team.name,
+      shortTeamCode: team.code ?? '',
+      longTeamCode: team.code ?? '',
+      teamColor: team.color ?? '#552583',
+      country: team.country ?? '',
+      state: team.state ?? '',
+      city: team.state ?? '',
+      coach: team.coach,
+      assistantCoach: team.assistantCoach,
+      tournamentId: id ?? '1',
+      totalMatches: 0,
+      wins: 0,
+      losses: 0,
+      championships: 0,
+      winPercentage: 0,
+      pointsPerGame: 0,
+      pointsAllowedPerGame: 0,
+      homeRecord: '—',
+      awayRecord: '—',
+      currentStreak: '—',
+      founded: '—',
+      email: '—',
+      phone: '—',
+      website: '—',
+      arena: '—',
+      capacity: '—',
+      logo: null as string | null,
+    };
+  }, [team, id]);
 
   const matchHistory: MatchHistory[] = [
     {
@@ -210,19 +234,29 @@ const TeamDetails: React.FC = () => {
     { season: '2022-23', wins: 48, losses: 24, winPercentage: 66.7, pointsFor: 6912, pointsAgainst: 6720, tournament: 'Premier League' },
   ];
 
-  const players: Player[] = [
-    { id: 1, name: 'John', surname: 'Doe', number: '23', position: 'Point Guard', image: '/player1.png' },
-    { id: 2, name: 'Jane', surname: 'Smith', number: '24', position: 'Shooting Guard', image: '/player1.png' },
-    { id: 3, name: 'Mike', surname: 'Johnson', number: '30', position: 'Small Forward', image: '/player1.png' },
-    { id: 4, name: 'Sarah', surname: 'Williams', number: '11', position: 'Power Forward', image: '/player1.png' },
-    { id: 5, name: 'David', surname: 'Brown', number: '15', position: 'Center', image: '/player1.png' },
-  ];
+  const coachingStaff: CoachingStaff[] = teamData?.coach || teamData?.assistantCoach
+    ? [
+        ...(teamData.coach ? [{ id: 1, name: teamData.coach, role: 'Coach', country: teamData.country }] : []),
+        ...(teamData.assistantCoach ? [{ id: 2, name: teamData.assistantCoach, role: 'Assistant Coach', country: teamData.country }] : []),
+      ]
+    : [];
 
-  const coachingStaff: CoachingStaff[] = [
-    { id: 1, name: 'John Coach', role: 'Head Coach', country: 'United States' },
-    { id: 2, name: 'Jane Assistant', role: 'Assistant Coach', country: 'United States' },
-    { id: 3, name: 'Mike Trainer', role: 'Assistant Coach', country: 'United States' },
-  ];
+  if (teamQuery.isPending && !team) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <p className="text-gray-500">Loading team...</p>
+      </div>
+    );
+  }
+  if (teamQuery.error || (!teamQuery.isPending && !team && id)) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <p className="text-red-600">{teamQuery.error?.message ?? 'Team not found'}</p>
+        <button onClick={() => navigate('/teams-management')} className="ml-4 text-blue-600">Back to Teams</button>
+      </div>
+    );
+  }
+  if (!teamData) return null;
 
   return (
     <div className="min-h-screen bg-white">
@@ -266,8 +300,7 @@ const TeamDetails: React.FC = () => {
               <button
                 onClick={() => {
                   if (window.confirm(`Are you sure you want to delete ${teamData.name}? This action cannot be undone.`)) {
-                    alert('Team deleted successfully!');
-                    navigate('/teams-management');
+                    deleteTeam.mutate(teamData.id, { onSuccess: () => navigate('/teams-management'), onError: (e) => alert(e.message) });
                   }
                 }}
                 className="flex items-center gap-2 px-4 py-2 bg-red-500/80 hover:bg-red-600/90 text-white rounded-lg transition-colors backdrop-blur-sm"
@@ -453,10 +486,10 @@ const TeamDetails: React.FC = () => {
               <div className="mb-8">
                 <h2 className="text-2xl font-bold text-gray-800 mb-6">Current Players</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {players.map((player) => (
+              {teamPlayers.map((player) => (
                 <div
                   key={player.id}
-                  onClick={() => navigate(`/tournaments/${teamData.tournamentId}/match/1/player/${player.id}`)}
+                  onClick={() => navigate(`/players-management`)}
                   className="bg-gray-50 rounded-lg p-4 border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
                 >
                   <div className="flex items-center gap-4">
@@ -624,10 +657,12 @@ const TeamDetails: React.FC = () => {
                 </button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {teamPlayers.map((player) => (
+                {playersQuery.isPending ? (
+                  <p className="text-gray-500 col-span-full">Loading players...</p>
+                ) : (
+                teamPlayers.map((player) => (
                   <div
                     key={player.id}
-                    onClick={() => navigate(`/tournaments/${teamData.tournamentId}/match/1/player/${player.id}`)}
                     className="bg-gray-50 rounded-lg p-4 border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
                   >
                     <div className="flex items-center gap-4">
@@ -646,18 +681,12 @@ const TeamDetails: React.FC = () => {
                           </h3>
                         </div>
                         <p className="text-xs text-gray-600">{player.position}</p>
-                        {player.released && (
-                          <p className="text-xs text-red-600 mt-1 font-medium">
-                            Released{player.releaseDate ? ` • ${player.releaseDate}` : ''}
-                          </p>
-                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            // For now, edit navigates to player profile; can be replaced with a true edit modal later
-                            navigate(`/tournaments/${teamData.tournamentId}/match/1/player/${player.id}`);
+                            navigate(`/players-management`);
                           }}
                           className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                           title="Edit Player"
@@ -671,14 +700,15 @@ const TeamDetails: React.FC = () => {
                             setReleaseDate('');
                           }}
                           className="p-2 text-yellow-700 hover:bg-yellow-50 rounded-lg transition-colors"
-                          title="Release Player"
+                          title="Remove from team"
                         >
                           <span className="text-sm font-bold">R</span>
                         </button>
                       </div>
                     </div>
                   </div>
-                ))}
+                ))
+                )}
               </div>
             </div>
           )}
@@ -710,16 +740,16 @@ const TeamDetails: React.FC = () => {
                   </button>
                   <button
                     onClick={() => {
-                      if (!releaseDate) {
-                        alert('Please select a release date');
-                        return;
-                      }
-                      setTeamPlayers(teamPlayers.map(p => p.id === releasingPlayer.id ? { ...p, released: true, releaseDate } : p));
-                      setReleasingPlayer(null);
+                      if (!id) return;
+                      removePlayer.mutate(
+                        { playerId: releasingPlayer.id, teamId: id },
+                        { onSuccess: () => { setReleasingPlayer(null); setReleaseDate(''); }, onError: (e) => alert(e.message) }
+                      );
                     }}
-                    className="px-5 py-2.5 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors"
+                    disabled={removePlayer.isPending}
+                    className="px-5 py-2.5 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors disabled:opacity-70"
                   >
-                    Release
+                    {removePlayer.isPending ? 'Removing...' : 'Remove from team'}
                   </button>
                 </div>
               </div>
@@ -767,12 +797,9 @@ const TeamDetails: React.FC = () => {
                     onChange={(e) => setNewPlayer({ ...newPlayer, position: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white"
                   >
-                    <option value="Point Guard">Point Guard</option>
-                    <option value="Shooting Guard">Shooting Guard</option>
-                    <option value="Small Forward">Small Forward</option>
-                    <option value="Power Forward">Power Forward</option>
-                    <option value="Center">Center</option>
-                    <option value="Forward">Forward</option>
+                    {POSITION_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
@@ -784,21 +811,36 @@ const TeamDetails: React.FC = () => {
                   </button>
                   <button
                     onClick={() => {
-                      if (!newPlayer.name || !newPlayer.surname || !newPlayer.number) {
-                        alert('Please fill name, surname and jersey number');
+                      if (!newPlayer.name || !newPlayer.surname || !newPlayer.number || !id) {
+                        alert('Please fill first name, last name and jersey number');
                         return;
                       }
-                      const nextId = Math.max(0, ...teamPlayers.map(p => p.id)) + 1;
-                      setTeamPlayers([
-                        ...teamPlayers,
-                        { id: nextId, name: newPlayer.name, surname: newPlayer.surname, number: newPlayer.number, position: newPlayer.position, image: newPlayer.image },
-                      ]);
-                      setNewPlayer({ name: '', surname: '', number: '', position: 'Forward', image: '/player1.png' });
-                      setIsAddPlayerOpen(false);
+                      const jerseyNum = parseInt(newPlayer.number, 10);
+                      if (Number.isNaN(jerseyNum)) {
+                        alert('Jersey number must be a number');
+                        return;
+                      }
+                      createPlayer.mutate(
+                        {
+                          teamId: id,
+                          firstName: newPlayer.name,
+                          lastName: newPlayer.surname,
+                          jerseyNumber: jerseyNum,
+                          position: newPlayer.position as 'POINT_GUARD' | 'SHOOTING_GUARD' | 'SMALL_FORWARD' | 'POWER_FORWARD' | 'CENTER',
+                        },
+                        {
+                          onSuccess: () => {
+                            setNewPlayer({ name: '', surname: '', number: '', position: 'POINT_GUARD' });
+                            setIsAddPlayerOpen(false);
+                          },
+                          onError: (e) => alert(e.message),
+                        }
+                      );
                     }}
-                    className="px-5 py-2.5 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors"
+                    disabled={createPlayer.isPending}
+                    className="px-5 py-2.5 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors disabled:opacity-70"
                   >
-                    Add
+                    {createPlayer.isPending ? 'Adding...' : 'Add'}
                   </button>
                 </div>
               </div>
