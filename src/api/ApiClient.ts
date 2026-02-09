@@ -1,19 +1,8 @@
-/**
- * API client aligned with Basketball Management API (Postman collection).
- * Auth: POST /auth/register, POST /auth/login, GET /auth/profile.
- * Players: POST /players, POST /players/team, POST /players/team/bulk, GET /players, GET /players/:id, PATCH, PUT .../teams/:teamId, DELETE .../teams/:teamId, DELETE /players/:id.
- * Teams: POST/GET/PATCH/DELETE /teams.
- * Tournaments: POST/GET/GET/:id/GET/code/:code/PATCH, POST .../teams, DELETE .../teams/:teamId, DELETE.
- * Matches: POST/GET/PATCH/DELETE /matches (GET with ?tournamentId=&status=).
- */
 import type {
   ApiResponse,
   AuthResponse,
   LoginRequest,
   RegisterRequest,
-  User,
-  UserCreateBody,
-  UserUpdateBody,
   Player,
   PlayerCreateStandalone,
   PlayerCreateForTeam,
@@ -116,35 +105,6 @@ class ApiClient {
 
     getProfile: async (): Promise<ApiResponse<{ id: string; email: string; role: string; [key: string]: unknown }>> => {
       return this.request('/auth/profile');
-    },
-  };
-
-  users = {
-    getAll: async (): Promise<ApiResponse<User[]>> => {
-      return this.request<User[]>('/users');
-    },
-
-    getById: async (id: string): Promise<ApiResponse<User>> => {
-      return this.request<User>(`/users/${id}`);
-    },
-
-    create: async (data: UserCreateBody): Promise<ApiResponse<User>> => {
-      return this.request<User>('/users', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
-    },
-
-    update: async (id: string, data: UserUpdateBody): Promise<ApiResponse<User>> => {
-      return this.request<User>(`/users/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify(data),
-      });
-    },
-
-    delete: async (id: string): Promise<boolean> => {
-      await this.request(`/users/${id}`, { method: 'DELETE' });
-      return true;
     },
   };
 
