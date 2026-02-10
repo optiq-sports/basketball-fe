@@ -7,8 +7,6 @@ import { apiClient } from './ApiClient';
 import type {
   LoginRequest,
   RegisterRequest,
-  UserCreateBody,
-  UserUpdateBody,
   PlayerCreateStandalone,
   PlayerCreateForTeam,
   PlayerBulkCreateRequest,
@@ -30,10 +28,8 @@ export const queryKeys = {
   auth: {
     profile: ['auth', 'profile'] as const,
   },
-  users: () => ['users'] as const,
-  user: (id: string) => ['user', id] as const,
   players: (teamId?: string) =>
-    (teamId ? ['players', teamId] : ['players']) as const,
+    (teamId ? (['players', teamId] as readonly string[]) : ['players']) as readonly string[],
   player: (id: string) => ['player', id] as const,
   teams: () => ['teams'] as const,
   team: (id: string) => ['team', id] as const,
@@ -97,74 +93,8 @@ export function useRegister() {
   });
 }
 
-// User hooks
-export function useUsers() {
-  return useQuery({
-    queryKey: queryKeys.users(),
-    queryFn: async () => {
-      const res = await apiClient.users.getAll();
-      if (!res.ok) throw new Error(res.message ?? 'Failed to load users');
-      return res.data ?? [];
-    },
-  });
-}
-
-export function useUser(id: string | undefined | null, enabled = true) {
-  return useQuery({
-    queryKey: queryKeys.user(id ?? ''),
-    queryFn: async () => {
-      const res = await apiClient.users.getById(id!);
-      if (!res.ok) throw new Error(res.message ?? 'Failed to load user');
-      return res.data!;
-    },
-    enabled: enabled && !!id,
-  });
-}
-
-export function useCreateUser() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (data: UserCreateBody) => {
-      const res = await apiClient.users.create(data);
-      if (!res.ok) throw new Error(res.message ?? 'Failed to create user');
-      return res.data!;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.users() });
-    },
-  });
-}
-
-export function useUpdateUser() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({
-      id,
-      data,
-    }: { id: string; data: UserUpdateBody }) => {
-      const res = await apiClient.users.update(id, data);
-      if (!res.ok) throw new Error(res.message ?? 'Failed to update user');
-      return res.data!;
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.users() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.user(data.id) });
-    },
-  });
-}
-
-export function useDeleteUser() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      await apiClient.users.delete(id);
-    },
-    onSuccess: (_, id) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.users() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.user(id) });
-    },
-  });
-}
+// Note: Users API is not included in the Basketball Management API (Postman collection).
+// User management hooks have been removed. Use auth/profile for current user only.
 
 // Player hooks
 export function usePlayers(teamId?: string) {

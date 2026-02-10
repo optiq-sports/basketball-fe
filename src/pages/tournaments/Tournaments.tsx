@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useTournament, useMatches, useTeams, useUpdateTournament, useDeleteTournament } from '../../api/hooks';
+import { useTournament, useMatches, useTeams, useUpdateTournament, useDeleteTournament, useTournamentAddTeams } from '../../api/hooks';
 import type { Match as ApiMatch } from '../../types/api';
 
 // Copy Icon Component
@@ -57,7 +57,10 @@ const CompetitionDetailPage: React.FC = () => {
   const teamsQuery = useTeams();
   const updateTournament = useUpdateTournament();
   const deleteTournament = useDeleteTournament();
+  const addTeams = useTournamentAddTeams();
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showAddTeamsModal, setShowAddTeamsModal] = useState(false);
+  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
   const [editForm, setEditForm] = useState({
     name: '',
     division: 'PREMIER' as string,
@@ -184,6 +187,23 @@ const CompetitionDetailPage: React.FC = () => {
     });
   };
 
+  const handleAddTeams = () => {
+    if (!tournamentId || selectedTeamIds.length === 0) {
+      alert('Please select at least one team.');
+      return;
+    }
+    addTeams.mutate(
+      { tournamentId, body: { teamIds: selectedTeamIds } },
+      {
+        onSuccess: () => {
+          setShowAddTeamsModal(false);
+          setSelectedTeamIds([]);
+        },
+        onError: (e) => alert(e.message),
+      }
+    );
+  };
+
   if (tournamentQuery.isPending || !tournamentId) {
     return (
       <div className="min-h-screen bg-gray-50 p-6">
@@ -221,6 +241,12 @@ const CompetitionDetailPage: React.FC = () => {
               {deleteTournament.isPending ? 'Deleting…' : 'Delete Tournament'}
             </button>
             <button
+              onClick={() => setShowAddTeamsModal(true)}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 transition-colors"
+            >
+              Add Teams
+            </button>
+            <button
               onClick={() => navigate(`/tournaments/${tournamentId}/fixtures`)}
               className="px-4 py-2 rounded-lg text-sm font-medium bg-[#21409A] text-white hover:bg-blue-800 transition-colors"
             >
@@ -228,6 +254,42 @@ const CompetitionDetailPage: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {showAddTeamsModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b border-gray-200">
+                <h2 className="text-xl font-semibold text-gray-800">Add Teams to Tournament</h2>
+              </div>
+              <div className="p-6 space-y-2 max-h-64 overflow-y-auto">
+                {(teamsQuery.data ?? []).map((team) => (
+                  <label key={team.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedTeamIds.includes(team.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedTeamIds((prev) => [...prev, team.id]);
+                        } else {
+                          setSelectedTeamIds((prev) => prev.filter((id) => id !== team.id));
+                        }
+                      }}
+                      className="w-4 h-4 rounded border-gray-300 text-[#21409A] focus:ring-[#21409A]"
+                    />
+                    <span className="text-sm font-medium text-gray-800">{team.name}</span>
+                  </label>
+                ))}
+                {(teamsQuery.data ?? []).length === 0 && (
+                  <p className="text-sm text-gray-500">No teams available. Create teams first from Teams Management.</p>
+                )}
+              </div>
+              <div className="flex justify-end gap-3 p-6 border-t border-gray-200">
+                <button onClick={() => { setShowAddTeamsModal(false); setSelectedTeamIds([]); }} className="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
+                <button onClick={handleAddTeams} disabled={addTeams.isPending || selectedTeamIds.length === 0} className="px-4 py-2 bg-[#21409A] text-white rounded-lg font-medium hover:bg-blue-800 disabled:opacity-70 disabled:cursor-not-allowed">{addTeams.isPending ? 'Adding…' : 'Add Teams'}</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {showEditModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">

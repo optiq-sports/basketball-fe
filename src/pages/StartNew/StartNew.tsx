@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useCreateTournament } from '../../api/hooks';
 
 interface Official {
   id: number;
@@ -26,6 +27,7 @@ const divisionOptions = [
 
 const StartNew: React.FC = () => {
   const navigate = useNavigate();
+  const createTournament = useCreateTournament();
   const [competitionName, setCompetitionName] = useState('');
   const [competitionShortName, setCompetitionShortName] = useState('');
   const [division, setDivision] = useState('');
@@ -67,13 +69,46 @@ const StartNew: React.FC = () => {
   };
 
   const handleDiscard = () => {
-    console.log('Form discarded');
     navigate('/dashboard');
   };
 
   const handleSaveNext = () => {
-    console.log('Form saved and moving to next step');
-    navigate('/teams');
+    if (!competitionName.trim() || !court.trim() || !date || !time) {
+      alert('Please fill in Competition name, Venue, Date and Time.');
+      return;
+    }
+    const numGames = parseInt(numberOfGames, 10) || 14;
+    const numQuarters = parseInt(numberOfQuarters, 10) || 4;
+    const quarterMins = parseInt(quarterDuration.replace(/\D/g, ''), 10) || 10;
+    const overtimeMins = parseInt(overtimeDuration.replace(/\D/g, ''), 10) || 5;
+
+    const startDateStr = `${date}T${time}:00`;
+    const startDate = new Date(startDateStr);
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + 7); // default 1 week
+
+    const payload = {
+      name: competitionName.trim(),
+      division: division || 'PREMIER',
+      numberOfGames: numGames,
+      numberOfQuarters: numQuarters,
+      quarterDuration: quarterMins,
+      overtimeDuration: overtimeMins,
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+      venue: court.trim(),
+      crewChief: officials[0]?.name || undefined,
+      umpire1: officials[1]?.name || undefined,
+      umpire2: officials[2]?.name || undefined,
+      commissioner: officials[3]?.name || undefined,
+    };
+
+    createTournament.mutate(payload, {
+      onSuccess: (data) => {
+        navigate(`/tournaments/${data.id}`);
+      },
+      onError: (err) => alert(err.message),
+    });
   };
 
   return (

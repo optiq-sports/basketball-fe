@@ -21,8 +21,7 @@ import type {
   MatchUpdate,
 } from '../types/api';
 import { ApiError } from '../types/api';
-
-const API_BASE = 'http://localhost:3000/api';
+import { API_BASE } from '../config';
 
 const TOKEN_KEY = 'access_token';
 

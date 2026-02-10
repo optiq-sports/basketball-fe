@@ -91,7 +91,8 @@ const Fixtures: React.FC = () => {
       alert('Please select home team, away team and date.');
       return;
     }
-    const scheduledDate = `${newDate}T${newTime || '12:00'}`;
+    const t = newTime || '12:00';
+    const scheduledDate = `${newDate}T${t.length === 5 ? `${t}:00` : t}`;
     createMatch.mutate(
       {
         tournamentId,
