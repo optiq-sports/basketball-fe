@@ -336,9 +336,9 @@ const Players: React.FC = () => {
         </div>
       </div>
 
-      {/* Modal - File Upload */}
-      {activeTeamId && (
-        <FileUploadBox onClose={() => setActiveTeamId(null)} />
+      {/* Modal - File Upload (teamId empty: StartNew uses local teams; FileUploadBox shows guidance to use Players Management) */}
+      {activeTeamId !== null && (
+        <FileUploadBox teamId="" onClose={() => setActiveTeamId(null)} />
       )}
       {activeImageTarget && (
         <PlayerImageUploadBox

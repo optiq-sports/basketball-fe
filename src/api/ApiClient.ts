@@ -3,12 +3,20 @@ import type {
   AuthResponse,
   LoginRequest,
   RegisterRequest,
+  Admin,
+  AdminCreateBody,
+  AdminUpdateBody,
+  Statistician,
+  StatisticianCreateBody,
+  StatisticianUpdateBody,
   Player,
   PlayerCreateStandalone,
   PlayerCreateForTeam,
   PlayerBulkCreateRequest,
   PlayerUpdateBody,
   PlayerAssignToTeamBody,
+  PlayerMergeBody,
+  PlayerUploadResult,
   Team,
   TeamCreate,
   TeamUpdate,
@@ -184,6 +192,58 @@ class ApiClient {
       await this.request(`/players/${id}`, { method: 'DELETE' });
       return true;
     },
+
+    uploadExcel: async (
+      teamId: string,
+      file: File
+    ): Promise<ApiResponse<PlayerUploadResult>> => {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const url = `${API_BASE}/players/team/${teamId}/upload`;
+      const token = localStorage.getItem(TOKEN_KEY);
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      // Do not set Content-Type - browser sets multipart/form-data with boundary
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+
+      let data: { data?: PlayerUploadResult; message?: string; code?: string; details?: unknown } = {};
+      try {
+        data = await response.json();
+      } catch {
+        // non-JSON response
+      }
+
+      if (!response.ok) {
+        throw new ApiError(
+          (data as { message?: string }).message || 'Upload failed',
+          response.status,
+          (data as { code?: string }).code,
+          (data as { details?: unknown }).details
+        );
+      }
+
+      return {
+        ok: true,
+        data: (data as { data?: PlayerUploadResult }).data ?? (data as unknown as PlayerUploadResult),
+        message: (data as { message?: string }).message,
+        status: response.status,
+      };
+    },
+
+    merge: async (
+      body: PlayerMergeBody
+    ): Promise<ApiResponse<Player>> => {
+      return this.request<Player>('/players/merge', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    },
   };
 
   teams = {
@@ -312,6 +372,72 @@ class ApiClient {
 
     delete: async (id: string): Promise<boolean> => {
       await this.request(`/matches/${id}`, { method: 'DELETE' });
+      return true;
+    },
+  };
+
+  admin = {
+    create: async (data: AdminCreateBody): Promise<ApiResponse<Admin>> => {
+      return this.request<Admin>('/admin', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    },
+
+    getAll: async (): Promise<ApiResponse<Admin[]>> => {
+      return this.request<Admin[]>('/admin');
+    },
+
+    getById: async (id: string): Promise<ApiResponse<Admin>> => {
+      return this.request<Admin>(`/admin/${id}`);
+    },
+
+    update: async (
+      id: string,
+      data: AdminUpdateBody
+    ): Promise<ApiResponse<Admin>> => {
+      return this.request<Admin>(`/admin/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
+    },
+
+    delete: async (id: string): Promise<boolean> => {
+      await this.request(`/admin/${id}`, { method: 'DELETE' });
+      return true;
+    },
+  };
+
+  statistician = {
+    create: async (
+      data: StatisticianCreateBody
+    ): Promise<ApiResponse<Statistician>> => {
+      return this.request<Statistician>('/statistician', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    },
+
+    getAll: async (): Promise<ApiResponse<Statistician[]>> => {
+      return this.request<Statistician[]>('/statistician');
+    },
+
+    getById: async (id: string): Promise<ApiResponse<Statistician>> => {
+      return this.request<Statistician>(`/statistician/${id}`);
+    },
+
+    update: async (
+      id: string,
+      data: StatisticianUpdateBody
+    ): Promise<ApiResponse<Statistician>> => {
+      return this.request<Statistician>(`/statistician/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
+    },
+
+    delete: async (id: string): Promise<boolean> => {
+      await this.request(`/statistician/${id}`, { method: 'DELETE' });
       return true;
     },
   };

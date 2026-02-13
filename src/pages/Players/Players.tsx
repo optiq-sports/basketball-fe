@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiSearch, FiFilter, FiChevronDown, FiEdit2, FiTrash } from 'react-icons/fi';
+import { FiSearch, FiFilter, FiChevronDown, FiEdit2, FiTrash, FiUpload } from 'react-icons/fi';
 import { MdCancel } from 'react-icons/md';
-import { usePlayers, useTeams, useCreatePlayerForTeam, useUpdatePlayer, useDeletePlayer, useRemovePlayerFromTeam } from '../../api/hooks';
+import { usePlayers, useTeams, useCreatePlayerForTeam, useUpdatePlayer, useDeletePlayer, useRemovePlayerFromTeam, useUploadPlayersExcel } from '../../api/hooks';
 import type { Player as ApiPlayer } from '../../types/api';
 
 const POSITION_OPTIONS = [
@@ -37,6 +37,10 @@ const Players: React.FC = () => {
   const [editingPlayer, setEditingPlayer] = useState<PlayerDisplay | null>(null);
   const [releasePlayer, setReleasePlayer] = useState<PlayerDisplay | null>(null);
   const [releaseDate, setReleaseDate] = useState<string>('');
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [uploadTeamId, setUploadTeamId] = useState('');
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadResult, setUploadResult] = useState<{ createdCount?: number; duplicatesCount?: number; duplicateMatches?: unknown[] } | null>(null);
   const itemsPerPage = 10;
 
   const playersQuery = usePlayers();
@@ -45,6 +49,7 @@ const Players: React.FC = () => {
   const updatePlayer = useUpdatePlayer();
   const deletePlayer = useDeletePlayer();
   const removePlayerFromTeam = useRemovePlayerFromTeam();
+  const uploadPlayersExcel = useUploadPlayersExcel();
 
   const teamMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -159,6 +164,51 @@ const Players: React.FC = () => {
     );
   };
 
+  const handleOpenUploadModal = () => {
+    setUploadTeamId(uniqueTeams[0]?.id ?? '');
+    setUploadFile(null);
+    setUploadResult(null);
+    setIsUploadModalOpen(true);
+  };
+
+  const handleUploadExcel = () => {
+    if (!uploadTeamId) {
+      alert('Please select a team');
+      return;
+    }
+    if (!uploadFile) {
+      alert('Please select an Excel file (.xlsx)');
+      return;
+    }
+    const ext = uploadFile.name.toLowerCase().split('.').pop();
+    if (ext !== 'xlsx') {
+      alert('Only .xlsx files are supported');
+      return;
+    }
+    uploadPlayersExcel.mutate(
+      { teamId: uploadTeamId, file: uploadFile },
+      {
+        onSuccess: (data) => {
+          setUploadResult({
+            createdCount: data?.createdCount,
+            duplicatesCount: data?.duplicatesCount,
+            duplicateMatches: data?.duplicateMatches as unknown[] | undefined,
+          });
+        },
+        onError: () => {
+          setUploadResult(null);
+        },
+      }
+    );
+  };
+
+  const handleCloseUploadModal = () => {
+    setIsUploadModalOpen(false);
+    setUploadTeamId('');
+    setUploadFile(null);
+    setUploadResult(null);
+  };
+
   const handleAddPlayer = () => {
     setEditingPlayer(null);
     setFormData({
@@ -253,6 +303,14 @@ const Players: React.FC = () => {
           className="px-6 py-3 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors whitespace-nowrap"
         >
           Add Player
+        </button>
+        <button
+          onClick={handleOpenUploadModal}
+          disabled={uniqueTeams.length === 0}
+          className="px-6 py-3 bg-white text-blue-900 border border-blue-900 rounded-lg font-medium hover:bg-blue-50 transition-colors whitespace-nowrap flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <FiUpload size={18} />
+          Upload Excel
         </button>
         <div className="relative" style={{ width: '250px', minWidth: '200px' }}>
           <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
@@ -456,6 +514,85 @@ const Players: React.FC = () => {
                 {removePlayerFromTeam.isPending ? 'Removing...' : 'Remove from team'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload Excel Modal */}
+      {isUploadModalOpen && (
+        <div className="fixed inset-0 bg-white/20 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg w-full max-w-md shadow-lg">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">Upload Player List (Excel)</h2>
+              <button onClick={handleCloseUploadModal} className="text-gray-600 hover:text-gray-900 transition-colors">
+                <MdCancel size={20} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              {uploadResult ? (
+                <div className="space-y-2">
+                  <div className="px-4 py-3 rounded-lg bg-green-50 border border-green-200 text-green-800 text-sm">
+                    <p><strong>Upload complete.</strong></p>
+                    <p>Created: {uploadResult.createdCount ?? 0} | Duplicates skipped: {uploadResult.duplicatesCount ?? 0}</p>
+                  </div>
+                  <button
+                    onClick={handleCloseUploadModal}
+                    className="w-full px-4 py-2.5 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800"
+                  >
+                    Done
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Team *</label>
+                    <select
+                      value={uploadTeamId}
+                      onChange={(e) => setUploadTeamId(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      aria-label="Select team for upload"
+                    >
+                      <option value="">Select team</option>
+                      {uniqueTeams.map((team) => (
+                        <option key={team.id} value={team.id}>{team.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Excel file (.xlsx) *</label>
+                    <input
+                      type="file"
+                      accept=".xlsx"
+                      onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:bg-blue-50 file:text-blue-700"
+                    />
+                    {uploadFile && <p className="mt-1 text-sm text-gray-600">{uploadFile.name}</p>}
+                  </div>
+                  {uploadPlayersExcel.error && (
+                    <div className="px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                      {uploadPlayersExcel.error.message}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            {!uploadResult && (
+              <div className="flex justify-end gap-3 p-6 border-t border-gray-200">
+                <button
+                  onClick={handleCloseUploadModal}
+                  className="px-5 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleUploadExcel}
+                  disabled={uploadPlayersExcel.isPending || !uploadTeamId || !uploadFile}
+                  className="px-5 py-2.5 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {uploadPlayersExcel.isPending ? 'Uploading...' : 'Upload'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

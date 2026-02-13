@@ -7,11 +7,16 @@ import { apiClient } from './ApiClient';
 import type {
   LoginRequest,
   RegisterRequest,
+  AdminCreateBody,
+  AdminUpdateBody,
+  StatisticianCreateBody,
+  StatisticianUpdateBody,
   PlayerCreateStandalone,
   PlayerCreateForTeam,
   PlayerBulkCreateRequest,
   PlayerUpdateBody,
   PlayerAssignToTeamBody,
+  PlayerMergeBody,
   TeamCreate,
   TeamUpdate,
   TournamentCreate,
@@ -41,6 +46,10 @@ export const queryKeys = {
       ? (['matches', tournamentId, status].filter(Boolean) as readonly string[])
       : ['matches']) as readonly string[],
   match: (id: string) => ['match', id] as const,
+  admins: () => ['admins'] as const,
+  admin: (id: string) => ['admin', id] as const,
+  statisticians: () => ['statisticians'] as const,
+  statistician: (id: string) => ['statistician', id] as const,
 };
 
 // Auth hooks
@@ -240,6 +249,42 @@ export function useDeletePlayer() {
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['players'] });
       queryClient.invalidateQueries({ queryKey: queryKeys.player(id) });
+    },
+  });
+}
+
+export function useUploadPlayersExcel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      teamId,
+      file,
+    }: { teamId: string; file: File }) => {
+      const res = await apiClient.players.uploadExcel(teamId, file);
+      if (!res.ok) throw new Error(res.message ?? 'Upload failed');
+      return res.data!;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['players'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.players(variables.teamId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.team(variables.teamId) });
+    },
+  });
+}
+
+export function useMergePlayers() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: PlayerMergeBody) => {
+      const res = await apiClient.players.merge(body);
+      if (!res.ok) throw new Error(res.message ?? 'Merge failed');
+      return res.data!;
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['players'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.player(data.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.player(variables.duplicatePlayerId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.player(variables.targetPlayerId) });
     },
   });
 }
@@ -493,6 +538,144 @@ export function useDeleteMatch() {
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['matches'] });
       queryClient.invalidateQueries({ queryKey: queryKeys.match(id) });
+    },
+  });
+}
+
+// Admin hooks
+export function useAdmins() {
+  return useQuery({
+    queryKey: queryKeys.admins(),
+    queryFn: async () => {
+      const res = await apiClient.admin.getAll();
+      if (!res.ok) throw new Error(res.message ?? 'Failed to load admins');
+      return res.data ?? [];
+    },
+  });
+}
+
+export function useAdmin(id: string | undefined | null, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.admin(id ?? ''),
+    queryFn: async () => {
+      const res = await apiClient.admin.getById(id!);
+      if (!res.ok) throw new Error(res.message ?? 'Failed to load admin');
+      return res.data!;
+    },
+    enabled: enabled && !!id,
+  });
+}
+
+export function useCreateAdmin() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: AdminCreateBody) => {
+      const res = await apiClient.admin.create(data);
+      if (!res.ok) throw new Error(res.message ?? 'Failed to create admin');
+      return res.data!;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.admins() });
+    },
+  });
+}
+
+export function useUpdateAdmin() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      data,
+    }: { id: string; data: AdminUpdateBody }) => {
+      const res = await apiClient.admin.update(id, data);
+      if (!res.ok) throw new Error(res.message ?? 'Failed to update admin');
+      return res.data!;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.admins() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin(data.id) });
+    },
+  });
+}
+
+export function useDeleteAdmin() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await apiClient.admin.delete(id);
+    },
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.admins() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin(id) });
+    },
+  });
+}
+
+// Statistician hooks
+export function useStatisticians() {
+  return useQuery({
+    queryKey: queryKeys.statisticians(),
+    queryFn: async () => {
+      const res = await apiClient.statistician.getAll();
+      if (!res.ok) throw new Error(res.message ?? 'Failed to load statisticians');
+      return res.data ?? [];
+    },
+  });
+}
+
+export function useStatistician(id: string | undefined | null, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.statistician(id ?? ''),
+    queryFn: async () => {
+      const res = await apiClient.statistician.getById(id!);
+      if (!res.ok) throw new Error(res.message ?? 'Failed to load statistician');
+      return res.data!;
+    },
+    enabled: enabled && !!id,
+  });
+}
+
+export function useCreateStatistician() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: StatisticianCreateBody) => {
+      const res = await apiClient.statistician.create(data);
+      if (!res.ok) throw new Error(res.message ?? 'Failed to create statistician');
+      return res.data!;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.statisticians() });
+    },
+  });
+}
+
+export function useUpdateStatistician() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      data,
+    }: { id: string; data: StatisticianUpdateBody }) => {
+      const res = await apiClient.statistician.update(id, data);
+      if (!res.ok) throw new Error(res.message ?? 'Failed to update statistician');
+      return res.data!;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.statisticians() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.statistician(data.id) });
+    },
+  });
+}
+
+export function useDeleteStatistician() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await apiClient.statistician.delete(id);
+    },
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.statisticians() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.statistician(id) });
     },
   });
 }

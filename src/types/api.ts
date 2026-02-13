@@ -40,7 +40,7 @@ export interface LoginRequest {
 export interface RegisterRequest {
   email: string;
   password: string;
-  role: 'ADMIN' | 'STATISTICIAN';
+  role?: 'SUPER_ADMIN' | 'ADMIN' | 'STATISTICIAN';
 }
 
 export interface AuthUser {
@@ -82,6 +82,74 @@ export interface UserUpdateBody {
   password?: string;
 }
 
+// Admin (POST/GET/PATCH/DELETE /admin)
+export interface Admin {
+  id: string;
+  email: string;
+  name?: string;
+  role?: string;
+  status?: string;
+  [key: string]: unknown;
+}
+
+export interface AdminCreateBody {
+  email: string;
+  password: string;
+  name?: string;
+  role?: 'SUPER_ADMIN' | 'ADMIN' | 'STATISTICIAN';
+  status?: 'ACTIVE' | 'INACTIVE';
+}
+
+export interface AdminUpdateBody {
+  name?: string;
+  status?: 'ACTIVE' | 'INACTIVE';
+}
+
+// Statistician (POST/GET/PATCH/DELETE /statistician)
+export interface Statistician {
+  id: string;
+  email?: string;
+  name?: string;
+  firstName?: string;
+  lastName?: string;
+  status?: string;
+  phone?: string;
+  country?: string;
+  state?: string;
+  homeAddress?: string;
+  image?: string;
+  [key: string]: unknown;
+}
+
+export interface StatisticianCreateBody {
+  email: string;
+  password?: string;
+  name?: string;
+  firstName?: string;
+  lastName?: string;
+  status?: 'ACTIVE' | 'INACTIVE';
+  phone?: string;
+  country?: string;
+  state?: string;
+  homeAddress?: string;
+  bio?: string;
+  photos?: string[];
+  dobDay?: number;
+  dobMonth?: number;
+  dobYear?: number;
+}
+
+export interface StatisticianUpdateBody {
+  name?: string;
+  status?: 'ACTIVE' | 'INACTIVE';
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  country?: string;
+  state?: string;
+  homeAddress?: string;
+}
+
 // Player
 export type PlayerPosition =
   | 'POINT_GUARD'
@@ -112,6 +180,8 @@ export interface PlayerCreateStandalone {
   height?: string;
   phone?: string;
   dateOfBirth?: string;
+  nationality?: string;
+  confirmDuplicate?: boolean;
 }
 
 export interface PlayerCreateForTeam {
@@ -123,6 +193,8 @@ export interface PlayerCreateForTeam {
   position: PlayerPosition | string;
   height?: string;
   dateOfBirth?: string;
+  nationality?: string;
+  confirmDuplicate?: boolean;
 }
 
 export interface PlayerBulkItem {
@@ -132,6 +204,7 @@ export interface PlayerBulkItem {
   email?: string;
   position: PlayerPosition | string;
   height?: string;
+  nationality?: string;
 }
 
 export interface PlayerBulkCreateRequest {
@@ -151,6 +224,18 @@ export interface PlayerUpdateBody {
 
 export interface PlayerAssignToTeamBody {
   jerseyNumber?: number;
+}
+
+export interface PlayerMergeBody {
+  duplicatePlayerId: string;
+  targetPlayerId: string;
+}
+
+export interface PlayerUploadResult {
+  createdCount?: number;
+  duplicatesCount?: number;
+  duplicateMatches?: Array<{ [key: string]: unknown }>;
+  [key: string]: unknown;
 }
 
 // Team
@@ -212,12 +297,13 @@ export interface TournamentCreate {
   name: string;
   division: TournamentDivision;
   numberOfGames: number;
-  numberOfQuarters: number;
+  numberOfQuarters?: number;
   quarterDuration: number;
-  overtimeDuration: number;
+  overtimeDuration?: number;
   startDate: string;
-  endDate: string;
-  venue: string;
+  endDate?: string;
+  venue?: string;
+  flyer?: string;
   crewChief?: string;
   umpire1?: string;
   umpire2?: string;
@@ -294,4 +380,8 @@ export interface MatchUpdate {
   quarter3Away?: number;
   quarter4Home?: number;
   quarter4Away?: number;
+  overtimeHome?: number;
+  overtimeAway?: number;
+  homeScore?: number;
+  awayScore?: number;
 }

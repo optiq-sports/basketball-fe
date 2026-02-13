@@ -29,6 +29,7 @@ import Users from '../pages/Users/Users'
 const TOKEN_KEY = 'access_token';
 
 function formatRole(role: string): string {
+  if (role === 'SUPER_ADMIN') return 'Super Administrator';
   if (role === 'ADMIN') return 'Administrator';
   if (role === 'STATISTICIAN') return 'Statistician';
   return role;
