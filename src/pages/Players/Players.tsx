@@ -40,7 +40,7 @@ const Players: React.FC = () => {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [uploadTeamId, setUploadTeamId] = useState('');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploadResult, setUploadResult] = useState<{ createdCount?: number; duplicatesCount?: number; duplicateMatches?: unknown[] } | null>(null);
+  const [uploadResult, setUploadResult] = useState<import('../../types/api').PlayerUploadResult | null>(null);
   const itemsPerPage = 10;
 
   const playersQuery = usePlayers();
@@ -189,11 +189,7 @@ const Players: React.FC = () => {
       { teamId: uploadTeamId, file: uploadFile },
       {
         onSuccess: (data) => {
-          setUploadResult({
-            createdCount: data?.createdCount,
-            duplicatesCount: data?.duplicatesCount,
-            duplicateMatches: data?.duplicateMatches as unknown[] | undefined,
-          });
+          setUploadResult(data ?? null);
         },
         onError: () => {
           setUploadResult(null);
@@ -521,7 +517,7 @@ const Players: React.FC = () => {
       {/* Upload Excel Modal */}
       {isUploadModalOpen && (
         <div className="fixed inset-0 bg-white/20 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg w-full max-w-md shadow-lg">
+          <div className="bg-white rounded-lg w-full max-w-lg shadow-lg">
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <h2 className="text-xl font-semibold text-gray-900">Upload Player List (Excel)</h2>
               <button onClick={handleCloseUploadModal} className="text-gray-600 hover:text-gray-900 transition-colors">
@@ -530,11 +526,42 @@ const Players: React.FC = () => {
             </div>
             <div className="p-6 space-y-4">
               {uploadResult ? (
-                <div className="space-y-2">
+                <div className="space-y-4 max-h-[60vh] overflow-y-auto">
                   <div className="px-4 py-3 rounded-lg bg-green-50 border border-green-200 text-green-800 text-sm">
                     <p><strong>Upload complete.</strong></p>
-                    <p>Created: {uploadResult.createdCount ?? 0} | Duplicates skipped: {uploadResult.duplicatesCount ?? 0}</p>
+                    <p>
+                      Processed: {uploadResult.totalProcessed ?? 0} |
+                      Created: {uploadResult.created ?? uploadResult.createdCount ?? 0} |
+                      <span className="text-red-600">  Duplicates: {uploadResult.duplicatesFound ?? uploadResult.duplicatesCount ?? 0}</span>
+                    </p>
                   </div>
+                  {uploadResult.details && uploadResult.details.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-700 mb-2">Duplicate players (skipped)</h3>
+                      <ul className="text-sm text-gray-600 space-y-1.5 max-h-48 overflow-y-auto rounded border border-gray-200 p-3 bg-gray-50">
+                        {uploadResult.details.map((d, i) => (
+                          <li key={i} className="flex flex-wrap gap-x-2 gap-y-0.5">
+                            <span className="font-medium text-gray-800">Row {d.row}:</span>
+                            <span>{d.player}</span>
+                            {d.matchScore != null && <span className="text-gray-500">({d.matchScore}% match)</span>}
+                            {d.action && <span className="text-amber-600">— {d.action}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {/* {uploadResult.errors && uploadResult.errors.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-semibold text-red-700 mb-2">Errors</h3>
+                      <ul className="text-sm text-red-600 space-y-1.5 max-h-32 overflow-y-auto rounded border border-red-200 p-3 bg-red-50">
+                        {uploadResult.errors.map((e, i) => (
+                          <li key={i}>
+                            <span className="font-medium">Row {e.row}:</span> {e.error}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )} */}
                   <button
                     onClick={handleCloseUploadModal}
                     className="w-full px-4 py-2.5 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800"

@@ -1,12 +1,7 @@
 import React, { useState, DragEvent, ChangeEvent } from 'react';
 import { FiX, FiUploadCloud, FiCheckCircle } from 'react-icons/fi';
 import { useUploadPlayersExcel } from '../../api/hooks';
-
-interface PlayerUploadResult {
-  createdCount?: number;
-  duplicatesCount?: number;
-  duplicateMatches?: unknown[];
-}
+import type { PlayerUploadResult } from '../../types/api';
 
 interface FileUploadBoxProps {
   teamId: string;
@@ -63,13 +58,8 @@ const FileUploadBox: React.FC<FileUploadBoxProps> = ({ teamId, onClose, onSucces
       { teamId, file: selectedFile },
       {
         onSuccess: (data) => {
-          const result = {
-            createdCount: data?.createdCount,
-            duplicatesCount: data?.duplicatesCount,
-            duplicateMatches: data?.duplicateMatches as unknown[] | undefined,
-          };
-          setUploadResult(result);
-          onSuccess?.(result);
+          setUploadResult(data ?? null);
+          onSuccess?.(data ?? ({} as PlayerUploadResult));
         },
         onError: (err) => {
           setError(err.message ?? 'Upload failed');
@@ -116,16 +106,44 @@ const FileUploadBox: React.FC<FileUploadBoxProps> = ({ teamId, onClose, onSucces
   if (uploadResult) {
     return (
       <div className="fixed inset-0 flex items-center justify-center z-50 backdrop-blur-md bg-white/20">
-        <div className="bg-[#F8F8F8]/90 backdrop-blur-xl rounded-2xl shadow-xl w-full max-w-md p-8 relative border border-white/30">
-          <div className="flex flex-col items-center justify-center p-6">
-            <FiCheckCircle className="text-green-500 text-7xl mb-4" />
-            <h3 className="text-xl font-semibold text-green-600 mb-2">Upload Complete!</h3>
-            <p className="text-gray-600 text-sm mb-4">
-              Created: {uploadResult.createdCount ?? 0} | Duplicates skipped: {uploadResult.duplicatesCount ?? 0}
-            </p>
+        <div className="bg-[#F8F8F8]/90 backdrop-blur-xl rounded-2xl shadow-xl w-full max-w-lg p-8 relative border border-white/30 max-h-[90vh] overflow-y-auto">
+          <div className="flex flex-col p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <FiCheckCircle className="text-green-500 text-4xl flex-shrink-0" />
+              <div>
+                <h3 className="text-xl font-semibold text-green-600">Upload Complete!</h3>
+                <p className="text-gray-600 text-sm">
+                  Processed: {uploadResult.totalProcessed ?? 0} | Created: {uploadResult.created ?? uploadResult.createdCount ?? 0} | Duplicates: {uploadResult.duplicatesFound ?? uploadResult.duplicatesCount ?? 0}
+                </p>
+              </div>
+            </div>
+            {uploadResult.details && uploadResult.details.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700 mb-2">Duplicate players (skipped)</h4>
+                <ul className="text-sm text-gray-600 space-y-1.5 max-h-40 overflow-y-auto rounded border border-gray-200 p-3 bg-gray-50">
+                  {uploadResult.details.map((d, i) => (
+                    <li key={i} className="flex flex-wrap gap-x-2">
+                      <span className="font-medium text-gray-800">Row {d.row}:</span>
+                      <span>{d.player}</span>
+                      {d.matchScore != null && <span className="text-gray-500">({d.matchScore}% match)</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {uploadResult.errors && uploadResult.errors.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-red-700 mb-2">Errors</h4>
+                <ul className="text-sm text-red-600 space-y-1 max-h-32 overflow-y-auto rounded border border-red-200 p-3 bg-red-50">
+                  {uploadResult.errors.map((e, i) => (
+                    <li key={i}><span className="font-medium">Row {e.row}:</span> {e.error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <button
               onClick={handleClose}
-              className="px-6 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+              className="w-full px-6 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
             >
               Done
             </button>

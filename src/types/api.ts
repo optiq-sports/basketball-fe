@@ -231,9 +231,31 @@ export interface PlayerMergeBody {
   targetPlayerId: string;
 }
 
+export interface PlayerUploadError {
+  row: number;
+  error: string;
+}
+
+export interface PlayerUploadDetail {
+  row: number;
+  status: string;
+  player: string;
+  matchScore?: string;
+  existingPlayerId?: string;
+  action?: string;
+}
+
 export interface PlayerUploadResult {
+  totalProcessed?: number;
+  created?: number;
+  duplicatesFound?: number;
+  errors?: PlayerUploadError[];
+  details?: PlayerUploadDetail[];
+  /** @deprecated Use created */
   createdCount?: number;
+  /** @deprecated Use duplicatesFound */
   duplicatesCount?: number;
+  /** @deprecated Use details */
   duplicateMatches?: Array<{ [key: string]: unknown }>;
   [key: string]: unknown;
 }
