@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiSearch, FiFilter, FiChevronDown, FiEdit2, FiTrash, FiUpload } from 'react-icons/fi';
+import { FiSearch, FiFilter, FiChevronDown, FiEdit2, FiTrash, FiUpload, FiCopy, FiCheck } from 'react-icons/fi';
 import { MdCancel } from 'react-icons/md';
 import { usePlayers, useTeams, useCreatePlayerForTeam, useUpdatePlayer, useDeletePlayer, useRemovePlayerFromTeam, useUploadPlayersExcel } from '../../api/hooks';
 import type { Player as ApiPlayer } from '../../types/api';
@@ -41,6 +41,7 @@ const Players: React.FC = () => {
   const [uploadTeamId, setUploadTeamId] = useState('');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadResult, setUploadResult] = useState<import('../../types/api').PlayerUploadResult | null>(null);
+  const [copiedToClipboard, setCopiedToClipboard] = useState(false);
   const itemsPerPage = 10;
 
   const playersQuery = usePlayers();
@@ -203,6 +204,19 @@ const Players: React.FC = () => {
     setUploadTeamId('');
     setUploadFile(null);
     setUploadResult(null);
+    setCopiedToClipboard(false);
+  };
+
+  const handleCopyUploadResult = () => {
+    if (!uploadResult?.details?.length) return;
+    const lines: string[] = ['Duplicate players (skipped):'];
+    uploadResult.details.forEach((d) => {
+      lines.push(`  Row ${d.row}: ${d.player}`);
+    });
+    navigator.clipboard.writeText(lines.join('\n')).then(() => {
+      setCopiedToClipboard(true);
+      window.setTimeout(() => setCopiedToClipboard(false), 2000);
+    }).catch(() => {});
   };
 
   const handleAddPlayer = () => {
@@ -532,12 +546,22 @@ const Players: React.FC = () => {
                     <p>
                       Processed: {uploadResult.totalProcessed ?? 0} |
                       Created: {uploadResult.created ?? uploadResult.createdCount ?? 0} |
-                      <span className="text-red-600">  Duplicates: {uploadResult.duplicatesFound ?? uploadResult.duplicatesCount ?? 0}</span>
+                      <span className="text-red-600"> Duplicates: {uploadResult.duplicatesFound ?? uploadResult.duplicatesCount ?? 0}</span>
                     </p>
                   </div>
                   {uploadResult.details && uploadResult.details.length > 0 && (
                     <div>
-                      <h3 className="text-sm font-semibold text-gray-700 mb-2">Duplicate players (skipped)</h3>
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-sm font-semibold text-gray-700">Duplicate players (skipped)</h3>
+                        <button
+                          onClick={handleCopyUploadResult}
+                          className={`p-1.5 rounded transition-colors ${copiedToClipboard ? 'text-green-600 bg-green-50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
+                          title={copiedToClipboard ? 'Copied!' : 'Copy to clipboard'}
+                          aria-label={copiedToClipboard ? 'Copied to clipboard' : 'Copy upload result to clipboard'}
+                        >
+                          {copiedToClipboard ? <FiCheck size={16} /> : <FiCopy size={16} />}
+                        </button>
+                      </div>
                       <ul className="text-sm text-gray-600 space-y-1.5 max-h-48 overflow-y-auto rounded border border-gray-200 p-3 bg-gray-50">
                         {uploadResult.details.map((d, i) => (
                           <li key={i} className="flex flex-wrap gap-x-2 gap-y-0.5">
