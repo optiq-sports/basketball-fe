@@ -24,6 +24,7 @@ import ViewStat from '../pages/Statisticians/viewStat'
 import TeamsManagement from '../pages/Teams/Teams'
 import TeamDetails from '../pages/Teams/TeamDetails'
 import PlayersManagement from '../pages/Players/Players'
+import PlayerProfile from '../pages/Players/PlayerProfile'
 import Users from '../pages/Users/Users'
 
 const TOKEN_KEY = 'access_token';
@@ -43,9 +44,9 @@ const Wrapper: React.FC = () => {
   const profile = useProfile();
 
   const profileData = profile.data;
-  const userName = (profileData as { name?: string; email?: string } | undefined)?.name
-    ?? (profileData as { name?: string; email?: string } | undefined)?.email
-    ?? 'User';
+  const userName = (profileData as { name?: string; email?: string } | undefined)?.name?.trim()
+    || (profileData as { name?: string; email?: string } | undefined)?.email
+    || 'User';
   const userRole = (profileData as { role?: string } | undefined)?.role
     ? formatRole((profileData as { role?: string }).role!)
     : 'Administrator';
@@ -126,6 +127,7 @@ const Wrapper: React.FC = () => {
             <Route path="/teams-management" element={<TeamsManagement />} />
             <Route path="/teams-management/:id" element={<TeamDetails />} />
             <Route path="/players-management" element={<PlayersManagement />} />
+            <Route path="/players-management/:playerId" element={<PlayerProfile />} />
             <Route path="/users" element={<Users />} />
             <Route path="/" element={<Dashboard />} />
           </Routes>

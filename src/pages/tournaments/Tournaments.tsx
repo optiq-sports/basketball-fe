@@ -33,6 +33,7 @@ interface DisplayMatch {
   hasStarted: boolean;
   totalHome?: number;
   totalAway?: number;
+  matchCode?: string;
 }
 
 function formatMatchTime(scheduledDate?: string): string {
@@ -96,25 +97,29 @@ const CompetitionDetailPage: React.FC = () => {
         hasStarted: m.status === 'LIVE' || m.status === 'COMPLETED',
         totalHome: m.totalHome,
         totalAway: m.totalAway,
+        matchCode: (m as { code?: string }).code ?? m.id,
       };
     });
   }, [matchesRaw, teamMap]);
 
-  const ongoingMatch = useMemo(() => matches.find((m) => m.hasStarted) ?? matches[0], [matches]);
+  const ongoingMatch = useMemo(() => matches.find((m) => m.hasStarted) ?? null, [matches]);
 
   const teams: DisplayTeam[] = useMemo(() => {
     const list = teamsQuery.data ?? [];
-    return list.slice(0, 5).map((t, i) => ({
+    const tournamentTeamIds = (tournament as { teamIds?: string[] })?.teamIds;
+    const ids = Array.isArray(tournamentTeamIds) && tournamentTeamIds.length > 0 ? tournamentTeamIds : [];
+    const filtered = ids.length > 0 ? list.filter((t) => ids.includes(t.id)) : [];
+    return filtered.map((t, i) => ({
       id: t.id,
       name: t.name,
-      color: i % 2 === 0 ? 'yellow' : 'blue',
+      color: t.color === 'yellow' || t.color === 'blue' ? t.color : (i % 2 === 0 ? 'yellow' : 'blue'),
       gp: 0,
       w: 0,
       l: 0,
       percent: 0,
       points: 0,
     }));
-  }, [teamsQuery.data]);
+  }, [teamsQuery.data, tournament]);
 
   interface TournamentLeader {
     id: number;
@@ -514,10 +519,18 @@ const CompetitionDetailPage: React.FC = () => {
             {matches.map((match) => (
               <div
                 key={match.id}
-                className="rounded-lg shadow-sm p-5 border cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:ring-1 hover:ring-gray-300"
+                className="rounded-lg shadow-sm p-5 border cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:ring-1 hover:ring-gray-300 relative"
                 style={{ background: '#F8F8F8', border: '1px solid #A9A9A91A' }}
-                onClick={() => navigate(`/tournaments/${tournamentId}/match/${match.id}`)}
+                onClick={() => navigate(match.hasStarted ? `/tournaments/${tournamentId}/match/${match.id}` : `/tournaments/${tournamentId}/match/${match.id}/pending`)}
               >
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(match.matchCode ?? match.id); alert('Match code copied!'); }}
+                  className="absolute top-3 right-3 p-2 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
+                  title="Copy match code"
+                >
+                  <CopyIcon className="w-4 h-4" />
+                </button>
                 <div className="flex justify-between items-start">
                   {/* Teams (left) */}
                   <div className="space-y-3">

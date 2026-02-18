@@ -181,9 +181,10 @@ const Schedules: React.FC = () => {
                 : `/tournaments/${id ?? '1'}/match/${match.id}/pending`
               )}
             >
-              {/* Copy Match Code Button - Centered */}
+              {/* Copy Match Code - visible icon on card (before click) */}
               <button
-                onClick={(e) => handleCopyCode(match.matchCode, e)}
+                type="button"
+                onClick={(e) => { e.stopPropagation(); handleCopyCode(match.matchCode, e); }}
                 className="absolute top-4 left-1/2 transform -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-50 transition-all shadow-sm z-10"
                 title={`Copy match code: ${match.matchCode}`}
               >

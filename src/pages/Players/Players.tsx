@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiSearch, FiFilter, FiChevronDown, FiEdit2, FiTrash, FiUpload, FiCopy, FiCheck } from 'react-icons/fi';
+import { FiSearch, FiFilter, FiChevronDown, FiEdit2, FiTrash, FiUserMinus, FiUpload, FiCopy, FiCheck } from 'react-icons/fi';
 import { MdCancel } from 'react-icons/md';
 import { usePlayers, useTeams, useCreatePlayerForTeam, useUpdatePlayer, useDeletePlayer, useRemovePlayerFromTeam, useUploadPlayersExcel } from '../../api/hooks';
 import type { Player as ApiPlayer } from '../../types/api';
@@ -123,7 +123,7 @@ const Players: React.FC = () => {
   }, [teamFilter, positionFilter, searchQuery]);
 
   const handlePlayerClick = (player: PlayerDisplay) => {
-    if (player.teamId) navigate(`/teams-management/${player.teamId}`);
+    navigate(`/players-management/${player.id}`);
   };
 
   const handleEditPlayer = (player: PlayerDisplay, e: React.MouseEvent) => {
@@ -395,7 +395,19 @@ const Players: React.FC = () => {
                       <div className="text-sm font-bold text-blue-900">{player.name} {player.surname}</div>
                     </div>
                   </td>
-                  <td className="py-3 px-4 text-sm text-gray-700">{player.teamName}</td>
+                  <td className="py-3 px-4 text-sm text-gray-700">
+                    {player.teamId ? (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); navigate(`/teams-management/${player.teamId}`); }}
+                        className="text-[#21409A] hover:underline font-medium text-left"
+                      >
+                        {player.teamName}
+                      </button>
+                    ) : (
+                      <span>{player.teamName}</span>
+                    )}
+                  </td>
                   <td className="py-3 px-4 text-sm text-gray-700">{player.position}</td>
                   <td className="py-3 px-4 text-sm text-gray-700">{player.country}</td>
                   <td className="text-center py-3 px-4 text-sm text-gray-700">{player.height || '—'}</td>
@@ -414,7 +426,7 @@ const Players: React.FC = () => {
                           className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
                           title="Remove from team"
                         >
-                          <FiTrash size={18} />
+                          <FiUserMinus size={18} />
                         </button>
                       )}
                       <button

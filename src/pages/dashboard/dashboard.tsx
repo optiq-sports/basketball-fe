@@ -79,7 +79,7 @@ const BasketballDashboard: React.FC = () => {
   }, [teamsQuery.data]);
 
   const profileData = profile.data as { name?: string; email?: string } | undefined;
-  const welcomeName = profileData?.name ?? profileData?.email ?? 'User';
+  const welcomeName = (profileData?.name?.trim() || profileData?.email) ?? 'User';
 
   const liveList = liveMatches.data ?? [];
   const scheduledList = scheduledMatches.data ?? [];
