@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FiArrowLeft, FiMapPin, FiCalendar, FiUsers, FiAward, FiTrendingUp, FiEdit2, FiTrash } from 'react-icons/fi';
+import { FiArrowLeft, FiMapPin, FiCalendar, FiUsers, FiAward, FiTrendingUp, FiEdit2, FiTrash, FiUserMinus } from 'react-icons/fi';
 import { GiBasketballBall, GiTrophy } from 'react-icons/gi';
 import { useTeam, usePlayers, useCreatePlayerForTeam, useRemovePlayerFromTeam, useDeleteTeam } from '../../api/hooks';
 import type { Player as ApiPlayer } from '../../types/api';
@@ -699,10 +699,10 @@ const TeamDetails: React.FC = () => {
                             setReleasingPlayer(player);
                             setReleaseDate('');
                           }}
-                          className="p-2 text-yellow-700 hover:bg-yellow-50 rounded-lg transition-colors"
+                          className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
                           title="Remove from team"
                         >
-                          <span className="text-sm font-bold">R</span>
+                          <FiUserMinus size={18} />
                         </button>
                       </div>
                     </div>

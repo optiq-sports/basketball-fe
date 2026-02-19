@@ -4,6 +4,13 @@ import { FiEdit2, FiTrash } from 'react-icons/fi';
 import { useMatches, useTeams, useCreateMatch, useUpdateMatch, useDeleteMatch } from '../../api/hooks';
 import type { Match as ApiMatch } from '../../types/api';
 
+const CopyIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
+    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
 interface DisplayGame {
   id: string;
   homeTeam: string;
@@ -12,6 +19,7 @@ interface DisplayGame {
   time: string;
   venue: string;
   isExpanded: boolean;
+  matchCode: string;
 }
 
 function formatMatchDateTime(scheduledDate?: string): { date: string; time: string } {
@@ -73,6 +81,7 @@ const Fixtures: React.FC = () => {
         time,
         venue: m.venue ?? '—',
         isExpanded: expandedIds.has(m.id),
+        matchCode: (m as { code?: string }).code ?? m.id,
       };
     });
   }, [matchesQuery.data, teamMap, expandedIds]);
@@ -226,6 +235,14 @@ const Fixtures: React.FC = () => {
                 <div className={`w-2 h-2 rounded-full ${game.isExpanded ? 'bg-green-500' : 'bg-gray-400'}`} />
                 <h3 className="text-base font-semibold text-gray-800">Game {index + 1}</h3>
                 <span className="ml-auto flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(game.matchCode); alert('Match code copied!'); }}
+                    className="p-1.5 rounded border border-gray-200 hover:bg-gray-100 text-gray-600"
+                    title="Copy match code"
+                  >
+                    <CopyIcon className="w-4 h-4" />
+                  </button>
                   <button
                     onClick={(e) => openEditMatch(game.id, e)}
                     className="p-1.5 rounded border border-gray-200 hover:bg-gray-100 text-gray-600"

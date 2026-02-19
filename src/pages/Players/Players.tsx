@@ -85,6 +85,8 @@ const Players: React.FC = () => {
     height: '',
     dob: '',
   });
+  const [portraitFile, setPortraitFile] = useState<File | null>(null);
+  const [portraitPreview, setPortraitPreview] = useState<string | null>(null);
 
   const uniqueTeams = useMemo(() => (teamsQuery.data ?? []).map((t) => ({ id: t.id, name: t.name })), [teamsQuery.data]);
   const uniquePositions = POSITION_OPTIONS.map((o) => o.label);
@@ -221,6 +223,8 @@ const Players: React.FC = () => {
 
   const handleAddPlayer = () => {
     setEditingPlayer(null);
+    setPortraitFile(null);
+    setPortraitPreview(null);
     setFormData({
       name: '',
       surname: '',
@@ -246,50 +250,75 @@ const Players: React.FC = () => {
       return;
     }
     const position = formData.position as 'POINT_GUARD' | 'SHOOTING_GUARD' | 'SMALL_FORWARD' | 'POWER_FORWARD' | 'CENTER';
-    if (editingPlayer) {
+
+    const applyPortrait = (payload: Record<string, unknown>) => {
+      if (!portraitFile) return payload;
+      return new Promise<Record<string, unknown>>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({ ...payload, image: reader.result as string });
+        reader.onerror = () => reject(new Error('Failed to read image'));
+        reader.readAsDataURL(portraitFile);
+      });
+    };
+
+    const doUpdate = (data: Record<string, unknown>) => {
       updatePlayer.mutate(
         {
-          id: editingPlayer.id,
-          data: {
-            firstName: formData.name,
-            lastName: formData.surname,
-            position,
-            height: formData.height || undefined,
-            dateOfBirth: formData.dob || undefined,
-          },
+          id: editingPlayer!.id,
+          data: data as Parameters<typeof updatePlayer.mutate>[0]['data'],
         },
         {
           onSuccess: () => {
             setIsModalOpen(false);
             setEditingPlayer(null);
+            setPortraitFile(null);
+            setPortraitPreview(null);
             setFormData({ name: '', surname: '', number: '', teamId: '', teamName: '', position: 'POINT_GUARD', country: '', height: '', dob: '' });
           },
           onError: (e) => alert(e.message),
         }
       );
+    };
+
+    const doCreate = (payload: Record<string, unknown>) => {
+      createPlayer.mutate(
+        payload as Parameters<typeof createPlayer.mutate>[0],
+        {
+          onSuccess: () => {
+            setIsModalOpen(false);
+            setPortraitFile(null);
+            setPortraitPreview(null);
+            setFormData({ name: '', surname: '', number: '', teamId: '', teamName: '', position: 'POINT_GUARD', country: '', height: '', dob: '' });
+          },
+          onError: (e) => alert(e.message),
+        }
+      );
+    };
+
+    if (editingPlayer) {
+      const baseData = {
+        firstName: formData.name,
+        lastName: formData.surname,
+        position,
+        height: formData.height || undefined,
+        dateOfBirth: formData.dob || undefined,
+      };
+      applyPortrait(baseData).then(doUpdate);
     } else {
       if (!formData.teamId) {
         alert('Please select a team');
         return;
       }
-      createPlayer.mutate(
-        {
-          teamId: formData.teamId,
-          firstName: formData.name,
-          lastName: formData.surname,
-          jerseyNumber: jerseyNum,
-          position,
-          height: formData.height || undefined,
-          dateOfBirth: formData.dob || undefined,
-        },
-        {
-          onSuccess: () => {
-            setIsModalOpen(false);
-            setFormData({ name: '', surname: '', number: '', teamId: '', teamName: '', position: 'POINT_GUARD', country: '', height: '', dob: '' });
-          },
-          onError: (e) => alert(e.message),
-        }
-      );
+      const basePayload = {
+        teamId: formData.teamId,
+        firstName: formData.name,
+        lastName: formData.surname,
+        jerseyNumber: jerseyNum,
+        position,
+        height: formData.height || undefined,
+        dateOfBirth: formData.dob || undefined,
+      };
+      applyPortrait(basePayload).then(doCreate);
     }
   };
 
@@ -673,6 +702,8 @@ const Players: React.FC = () => {
                 onClick={() => {
                   setIsModalOpen(false);
                   setEditingPlayer(null);
+                  setPortraitFile(null);
+                  setPortraitPreview(null);
                   setFormData({ name: '', surname: '', number: '', teamId: '', teamName: '', position: 'POINT_GUARD', country: '', height: '', dob: '' });
                 }}
                 className="text-gray-600 hover:text-gray-900 transition-colors"
@@ -684,6 +715,36 @@ const Players: React.FC = () => {
             {/* Modal Content */}
             <div className="p-6">
               <div className="space-y-6">
+                {/* Player portrait (PNG) */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Player portrait (optional)</label>
+                  <div className="flex items-center gap-4">
+                    <div className="w-24 h-24 rounded-full overflow-hidden bg-gray-100 border border-gray-300 flex-shrink-0">
+                      {portraitPreview ? (
+                        <img src={portraitPreview} alt="Portrait preview" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">No photo</div>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setPortraitFile(file);
+                            const url = URL.createObjectURL(file);
+                            setPortraitPreview(url);
+                          }
+                        }}
+                        className="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded file:border-0 file:bg-blue-50 file:text-blue-700"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">PNG or JPEG recommended</p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Name */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">First Name *</label>
@@ -795,6 +856,8 @@ const Players: React.FC = () => {
                 onClick={() => {
                   setIsModalOpen(false);
                   setEditingPlayer(null);
+                  setPortraitFile(null);
+                  setPortraitPreview(null);
                   setFormData({ name: '', surname: '', number: '', teamId: '', teamName: '', position: 'POINT_GUARD', country: '', height: '', dob: '' });
                 }}
                 className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors"
