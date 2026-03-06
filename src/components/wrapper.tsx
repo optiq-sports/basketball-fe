@@ -1,31 +1,32 @@
-import React, { useState } from 'react'
+import React, { useState, Suspense, lazy } from 'react'
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useProfile, queryKeys } from '../api/hooks'
-import MatchPage from '../pages/tournaments/Match'
-import PlayerDetails from '../pages/tournaments/PlayerDetails'
 import Navbar from './navbar'
 import Sidebar from './sidbar'
-import Dashboard from '../pages/dashboard/dashboard'
-import StartNew from '../pages/StartNew/StartNew'
-import Teams from '../pages/StartNew/Teams'
-import Players from '../pages/StartNew/Players'
-import TeamOverview from '../pages/StartNew/TeamOverview'
-import Complete from '../pages/StartNew/Complete'
-import TournamentsListing from '../pages/tournaments/TournamentsListing'
-import Tournaments from '../pages/tournaments/Tournaments'
-import Fixtures from '../pages/tournaments/Fixtures'
-import Schedules from '../pages/tournaments/Schedules'
-import PendingGames from '../pages/tournaments/PendingGames'
-import Results from '../pages/results/result'
-import ShotChart from '../pages/tournaments/ShotChart'
-import Statisticians from '../pages/Statisticians/Statisticians'
-import ViewStat from '../pages/Statisticians/viewStat'
-import TeamsManagement from '../pages/Teams/Teams'
-import TeamDetails from '../pages/Teams/TeamDetails'
-import PlayersManagement from '../pages/Players/Players'
-import PlayerProfile from '../pages/Players/PlayerProfile'
-import Users from '../pages/Users/Users'
+
+const MatchPage = lazy(() => import('../pages/tournaments/Match'))
+const PlayerDetails = lazy(() => import('../pages/tournaments/PlayerDetails'))
+const Dashboard = lazy(() => import('../pages/dashboard/dashboard'))
+const StartNew = lazy(() => import('../pages/StartNew/StartNew'))
+const Teams = lazy(() => import('../pages/StartNew/Teams'))
+const Players = lazy(() => import('../pages/StartNew/Players'))
+const TeamOverview = lazy(() => import('../pages/StartNew/TeamOverview'))
+const Complete = lazy(() => import('../pages/StartNew/Complete'))
+const TournamentsListing = lazy(() => import('../pages/tournaments/TournamentsListing'))
+const Tournaments = lazy(() => import('../pages/tournaments/Tournaments'))
+const Fixtures = lazy(() => import('../pages/tournaments/Fixtures'))
+const Schedules = lazy(() => import('../pages/tournaments/Schedules'))
+const PendingGames = lazy(() => import('../pages/tournaments/PendingGames'))
+const Results = lazy(() => import('../pages/results/result'))
+const ShotChart = lazy(() => import('../pages/tournaments/ShotChart'))
+const Statisticians = lazy(() => import('../pages/Statisticians/Statisticians'))
+const ViewStat = lazy(() => import('../pages/Statisticians/viewStat'))
+const TeamsManagement = lazy(() => import('../pages/Teams/Teams'))
+const TeamDetails = lazy(() => import('../pages/Teams/TeamDetails'))
+const PlayersManagement = lazy(() => import('../pages/Players/Players'))
+const PlayerProfile = lazy(() => import('../pages/Players/PlayerProfile'))
+const Users = lazy(() => import('../pages/Users/Users'))
 
 const TOKEN_KEY = 'access_token';
 
@@ -106,6 +107,7 @@ const Wrapper: React.FC = () => {
 
         {/* Page Content - Scrollable with Routes */}
         <main className="flex-1 overflow-y-auto bg-gray-50">
+          <Suspense fallback={<div className="p-6 flex items-center justify-center text-gray-500">Loading...</div>}>
           <Routes>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/start-new" element={<StartNew />} />
@@ -131,6 +133,7 @@ const Wrapper: React.FC = () => {
             <Route path="/users" element={<Users />} />
             <Route path="/" element={<Dashboard />} />
           </Routes>
+          </Suspense>
         </main>
       </div>
     </div>
