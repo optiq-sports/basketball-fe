@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { FiSearch, FiEdit2, FiTrash } from 'react-icons/fi';
+import { FiSearch, FiEdit2, FiTrash, FiCopy } from 'react-icons/fi';
 import { MdCancel } from 'react-icons/md';
 import {
   useAdmins,
@@ -33,6 +33,21 @@ function formatRole(role: string): string {
   return ROLE_OPTIONS.find((r) => r.value === role)?.label ?? role;
 }
 
+function generatePassword(length = 12): string {
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower = 'abcdefghjkmnpqrstuvwxyz';
+  const digits = '23456789';
+  const all = upper + lower + digits;
+  let result = '';
+  result += upper[Math.floor(Math.random() * upper.length)];
+  result += lower[Math.floor(Math.random() * lower.length)];
+  result += digits[Math.floor(Math.random() * digits.length)];
+  for (let i = 3; i < length; i++) {
+    result += all[Math.floor(Math.random() * all.length)];
+  }
+  return result.split('').sort(() => Math.random() - 0.5).join('');
+}
+
 const Users: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('All');
@@ -40,6 +55,7 @@ const Users: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserDisplay | null>(null);
+  const [passwordCopied, setPasswordCopied] = useState(false);
   const itemsPerPage = 10;
 
   const adminsQuery = useAdmins();
@@ -176,6 +192,7 @@ const Users: React.FC = () => {
   };
 
   const resetForm = () => {
+    setPasswordCopied(false);
     setFormData({
       email: '',
       password: '',
@@ -366,13 +383,41 @@ const Users: React.FC = () => {
               {!editingUser && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Password *</label>
-                  <input
-                    type="password"
-                    placeholder="••••••••"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="password"
+                      placeholder="••••••••"
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, password: generatePassword() })}
+                      className="px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 hover:bg-gray-100 text-sm font-medium whitespace-nowrap"
+                      title="Generate password"
+                    >
+                      Generate
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (formData.password) {
+                          navigator.clipboard.writeText(formData.password);
+                          setPasswordCopied(true);
+                          window.setTimeout(() => setPasswordCopied(false), 2000);
+                        }
+                      }}
+                      disabled={!formData.password}
+                      className="p-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Copy password"
+                    >
+                      <FiCopy size={18} />
+                    </button>
+                  </div>
+                  {passwordCopied && (
+                    <p className="text-xs text-green-600 mt-1">Password copied to clipboard</p>
+                  )}
                 </div>
               )}
               <div>

@@ -293,6 +293,10 @@ export interface TeamUpdate {
   assistantCoach?: string;
 }
 
+export interface TeamSetCaptainBody {
+  isCaptain: boolean;
+}
+
 // Tournament
 export type TournamentDivision = 'PREMIER' | string;
 

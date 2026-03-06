@@ -20,6 +20,7 @@ import type {
   Team,
   TeamCreate,
   TeamUpdate,
+  TeamSetCaptainBody,
   Tournament,
   TournamentCreate,
   TournamentUpdate,
@@ -276,6 +277,17 @@ class ApiClient {
     delete: async (id: string): Promise<boolean> => {
       await this.request(`/teams/${id}`, { method: 'DELETE' });
       return true;
+    },
+
+    setCaptain: async (
+      teamId: string,
+      playerId: string,
+      data: TeamSetCaptainBody
+    ): Promise<ApiResponse<unknown>> => {
+      return this.request(`/teams/${teamId}/players/${playerId}/captain`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
     },
   };
 

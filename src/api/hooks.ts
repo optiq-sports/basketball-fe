@@ -19,6 +19,7 @@ import type {
   PlayerMergeBody,
   TeamCreate,
   TeamUpdate,
+  TeamSetCaptainBody,
   TournamentCreate,
   TournamentUpdate,
   TournamentAddTeamsBody,
@@ -352,6 +353,26 @@ export function useDeleteTeam() {
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.teams() });
       queryClient.invalidateQueries({ queryKey: queryKeys.team(id) });
+    },
+  });
+}
+
+export function useSetTeamCaptain() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      teamId,
+      playerId,
+      body,
+    }: { teamId: string; playerId: string; body: TeamSetCaptainBody }) => {
+      const res = await apiClient.teams.setCaptain(teamId, playerId, body);
+      if (!res.ok) throw new Error(res.message ?? 'Failed to set team captain');
+      return res.data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.team(variables.teamId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.teams() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.players(variables.teamId) });
     },
   });
 }
