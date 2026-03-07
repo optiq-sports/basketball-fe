@@ -103,6 +103,7 @@ export interface AdminCreateBody {
 export interface AdminUpdateBody {
   name?: string;
   status?: 'ACTIVE' | 'INACTIVE';
+  password?: string;
 }
 
 // Statistician (POST/GET/PATCH/DELETE /statistician)
@@ -142,6 +143,7 @@ export interface StatisticianCreateBody {
 export interface StatisticianUpdateBody {
   name?: string;
   status?: 'ACTIVE' | 'INACTIVE';
+  password?: string;
   firstName?: string;
   lastName?: string;
   phone?: string;
@@ -220,6 +222,9 @@ export interface PlayerUpdateBody {
   height?: string;
   phone?: string;
   dateOfBirth?: string;
+  photo?: string;
+  teamId?: string;
+  jerseyNumber?: number;
 }
 
 export interface PlayerAssignToTeamBody {
@@ -242,6 +247,8 @@ export interface PlayerUploadDetail {
   player: string;
   matchScore?: string;
   existingPlayerId?: string;
+  /** When backend creates a new player for a flagged row, use as duplicatePlayerId for merge. */
+  newPlayerId?: string;
   action?: string;
 }
 
@@ -291,6 +298,7 @@ export interface TeamUpdate {
   state?: string;
   coach?: string;
   assistantCoach?: string;
+  logo?: string;
 }
 
 export interface TeamSetCaptainBody {

@@ -9,12 +9,13 @@ import { BiHome } from 'react-icons/bi'
 interface SidebarProps {
   activeItem?: string;
   onNavigate?: () => void;
+  userRole?: string;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activeItem = '', onNavigate }) => {
+const Sidebar: React.FC<SidebarProps> = ({ activeItem = '', onNavigate, userRole }) => {
   const navigate = useNavigate();
 
-  const menuItems = [
+  const allMenuItems = [
     {
       id: 'dashboard',
       label: 'Dashboard',
@@ -64,6 +65,10 @@ const Sidebar: React.FC<SidebarProps> = ({ activeItem = '', onNavigate }) => {
       path: '/users',
     },
   ];
+
+  const menuItems = userRole === 'SUPER_ADMIN'
+    ? allMenuItems
+    : allMenuItems.filter((item) => item.id !== 'users');
 
   const handleNavigation = (path: string) => {
     navigate(path);

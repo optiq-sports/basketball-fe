@@ -49,7 +49,7 @@ const Fixtures: React.FC = () => {
   const [newVenue, setNewVenue] = useState('');
 
   const matchesQuery = useMatches(tournamentId);
-  const teamsQuery = useTeams();
+  const teamsQuery = useTeams(tournamentId);
   const createMatch = useCreateMatch();
   const updateMatch = useUpdateMatch();
   const deleteMatch = useDeleteMatch();
@@ -101,7 +101,10 @@ const Fixtures: React.FC = () => {
       return;
     }
     const t = newTime || '12:00';
-    const scheduledDate = `${newDate}T${t.length === 5 ? `${t}:00` : t}`;
+    const [year, month, day] = newDate.split('-').map(Number);
+    const [hour, min] = (t.length === 5 ? `${t}:00` : t).split(':').map(Number);
+    const localDate = new Date(year, month - 1, day, hour, min, 0, 0);
+    const scheduledDate = localDate.toISOString();
     createMatch.mutate(
       {
         tournamentId,
@@ -139,7 +142,11 @@ const Fixtures: React.FC = () => {
 
   const handleSaveEditMatch = () => {
     if (!editingMatchId) return;
-    const scheduledDate = `${editDate}T${editTime || '12:00'}`;
+    const [year, month, day] = editDate.split('-').map(Number);
+    const timeStr = editTime || '12:00';
+    const [hour, min] = (timeStr.length === 5 ? `${timeStr}:00` : timeStr).split(':').map(Number);
+    const localDate = new Date(year, month - 1, day, hour, min, 0, 0);
+    const scheduledDate = localDate.toISOString();
     updateMatch.mutate(
       {
         id: editingMatchId,

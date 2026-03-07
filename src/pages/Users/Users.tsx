@@ -114,9 +114,10 @@ const Users: React.FC = () => {
 
   const handleAddUser = () => {
     setEditingUser(null);
+    const generatedPassword = generatePassword();
     setFormData({
       email: '',
-      password: '',
+      password: generatedPassword,
       name: '',
       role: 'ADMIN',
       status: 'ACTIVE',
@@ -153,10 +154,17 @@ const Users: React.FC = () => {
       return;
     }
     if (editingUser) {
+      const updateData: { name?: string; status: 'ACTIVE' | 'INACTIVE'; password?: string } = {
+        name: formData.name || undefined,
+        status: formData.status,
+      };
+      if (formData.password?.trim()) {
+        updateData.password = formData.password.trim();
+      }
       updateAdmin.mutate(
         {
           id: editingUser.id,
-          data: { name: formData.name || undefined, status: formData.status },
+          data: updateData,
         },
         {
           onSuccess: () => {
@@ -380,46 +388,46 @@ const Users: React.FC = () => {
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
                 />
               </div>
-              {!editingUser && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Password *</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="password"
-                      placeholder="••••••••"
-                      value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setFormData({ ...formData, password: generatePassword() })}
-                      className="px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 hover:bg-gray-100 text-sm font-medium whitespace-nowrap"
-                      title="Generate password"
-                    >
-                      Generate
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (formData.password) {
-                          navigator.clipboard.writeText(formData.password);
-                          setPasswordCopied(true);
-                          window.setTimeout(() => setPasswordCopied(false), 2000);
-                        }
-                      }}
-                      disabled={!formData.password}
-                      className="p-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Copy password"
-                    >
-                      <FiCopy size={18} />
-                    </button>
-                  </div>
-                  {passwordCopied && (
-                    <p className="text-xs text-green-600 mt-1">Password copied to clipboard</p>
-                  )}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {editingUser ? 'New password (leave blank to keep current)' : 'Password *'}
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    placeholder={editingUser ? 'Leave blank to keep current' : '••••••••'}
+                    value={formData.password}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, password: generatePassword() })}
+                    className="px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 hover:bg-gray-100 text-sm font-medium whitespace-nowrap"
+                    title="Generate password"
+                  >
+                    Generate
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (formData.password) {
+                        navigator.clipboard.writeText(formData.password);
+                        setPasswordCopied(true);
+                        window.setTimeout(() => setPasswordCopied(false), 2000);
+                      }
+                    }}
+                    disabled={!formData.password}
+                    className="p-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Copy password"
+                  >
+                    <FiCopy size={18} />
+                  </button>
                 </div>
-              )}
+                {passwordCopied && (
+                  <p className="text-xs text-green-600 mt-1">Password copied to clipboard</p>
+                )}
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Name</label>
                 <input

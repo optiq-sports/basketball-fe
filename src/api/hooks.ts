@@ -34,10 +34,11 @@ export const queryKeys = {
   auth: {
     profile: ['auth', 'profile'] as const,
   },
-  players: (teamId?: string) =>
-    (teamId ? (['players', teamId] as readonly string[]) : ['players']) as readonly string[],
+  players: (teamId?: string, unassigned?: boolean) =>
+    (unassigned ? (['players', 'unassigned'] as readonly string[]) : teamId ? (['players', teamId] as readonly string[]) : ['players']) as readonly string[],
   player: (id: string) => ['player', id] as const,
-  teams: () => ['teams'] as const,
+  teams: (tournamentId?: string) =>
+    (tournamentId ? (['teams', tournamentId] as readonly string[]) : ['teams']) as readonly string[],
   team: (id: string) => ['team', id] as const,
   tournaments: () => ['tournaments'] as const,
   tournament: (id: string) => ['tournament', id] as const,
@@ -80,6 +81,10 @@ export function useLogin() {
       if (token) {
         localStorage.setItem(TOKEN_KEY, token);
         queryClient.setQueryData(queryKeys.auth.profile, res.data?.user ?? null);
+        const user = res.data?.user as { name?: string } | undefined;
+        if (user?.name != null && String(user.name).trim()) {
+          localStorage.setItem('user_name', String(user.name).trim());
+        }
       }
     },
   });
@@ -98,7 +103,21 @@ export function useRegister() {
       if (token) {
         localStorage.setItem(TOKEN_KEY, token);
         queryClient.setQueryData(queryKeys.auth.profile, res.data?.user ?? null);
+        const user = res.data?.user as { name?: string } | undefined;
+        if (user?.name != null && String(user.name).trim()) {
+          localStorage.setItem('user_name', String(user.name).trim());
+        }
       }
+    },
+  });
+}
+
+export function useUploadFile() {
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const res = await apiClient.upload.file(file);
+      if (!res.ok) throw new Error(res.message ?? 'Upload failed');
+      return res.data!;
     },
   });
 }
@@ -107,11 +126,14 @@ export function useRegister() {
 // User management hooks have been removed. Use auth/profile for current user only.
 
 // Player hooks
-export function usePlayers(teamId?: string) {
+export function usePlayers(teamId?: string, options?: { unassigned?: boolean }) {
+  const unassigned = options?.unassigned === true;
   return useQuery({
-    queryKey: queryKeys.players(teamId),
+    queryKey: queryKeys.players(teamId, unassigned),
     queryFn: async () => {
-      const res = await apiClient.players.getAll(teamId ? { teamId } : undefined);
+      const res = await apiClient.players.getAll(
+        unassigned ? { unassigned: true } : teamId ? { teamId } : undefined
+      );
       if (!res.ok) throw new Error(res.message ?? 'Failed to load players');
       return res.data ?? [];
     },
@@ -291,11 +313,13 @@ export function useMergePlayers() {
 }
 
 // Team hooks
-export function useTeams() {
+export function useTeams(tournamentId?: string) {
   return useQuery({
-    queryKey: queryKeys.teams(),
+    queryKey: queryKeys.teams(tournamentId),
     queryFn: async () => {
-      const res = await apiClient.teams.getAll();
+      const res = await apiClient.teams.getAll(
+        tournamentId ? { tournamentId } : undefined
+      );
       if (!res.ok) throw new Error(res.message ?? 'Failed to load teams');
       return res.data ?? [];
     },

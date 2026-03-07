@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiSearch, FiFilter, FiChevronDown, FiEdit2, FiTrash, FiUserMinus, FiUpload, FiCopy, FiCheck } from 'react-icons/fi';
 import { MdCancel } from 'react-icons/md';
-import { usePlayers, useTeams, useCreatePlayerForTeam, useUpdatePlayer, useDeletePlayer, useRemovePlayerFromTeam, useUploadPlayersExcel } from '../../api/hooks';
+import { usePlayers, useTeams, useCreatePlayerForTeam, useUpdatePlayer, useDeletePlayer, useRemovePlayerFromTeam, useUploadPlayersExcel, useUploadFile, useMergePlayers } from '../../api/hooks';
 import type { Player as ApiPlayer } from '../../types/api';
 
 const POSITION_OPTIONS = [
@@ -51,6 +51,8 @@ const Players: React.FC = () => {
   const deletePlayer = useDeletePlayer();
   const removePlayerFromTeam = useRemovePlayerFromTeam();
   const uploadPlayersExcel = useUploadPlayersExcel();
+  const uploadImageFile = useUploadFile();
+  const mergePlayers = useMergePlayers();
 
   const teamMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -64,7 +66,7 @@ const Players: React.FC = () => {
       name: p.firstName,
       surname: p.lastName,
       number: String(p.jerseyNumber ?? ''),
-      image: '/player1.png',
+      image: (p as { photo?: string }).photo ?? '/player1.png',
       teamId: (p.teamId as string) ?? '',
       teamName: (p.teamId && teamMap.get(p.teamId as string)) ?? '—',
       position: typeof p.position === 'string' && p.position.includes('_') ? p.position.replace(/_/g, ' ') : (p.position as string),
@@ -251,22 +253,17 @@ const Players: React.FC = () => {
     }
     const position = formData.position as 'POINT_GUARD' | 'SHOOTING_GUARD' | 'SMALL_FORWARD' | 'POWER_FORWARD' | 'CENTER';
 
-    const applyPortrait = (payload: Record<string, unknown>) => {
-      if (!portraitFile) return payload;
-      return new Promise<Record<string, unknown>>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve({ ...payload, image: reader.result as string });
-        reader.onerror = () => reject(new Error('Failed to read image'));
-        reader.readAsDataURL(portraitFile);
-      });
-    };
-
-    const doUpdate = (data: Record<string, unknown>) => {
+    const doUpdate = async (photoUrl?: string) => {
+      const data: Parameters<typeof updatePlayer.mutate>[0]['data'] = {
+        firstName: formData.name,
+        lastName: formData.surname,
+        position,
+        height: formData.height || undefined,
+        dateOfBirth: formData.dob || undefined,
+      };
+      if (photoUrl) data.photo = photoUrl;
       updatePlayer.mutate(
-        {
-          id: editingPlayer!.id,
-          data: data as Parameters<typeof updatePlayer.mutate>[0]['data'],
-        },
+        { id: editingPlayer!.id, data },
         {
           onSuccess: () => {
             setIsModalOpen(false);
@@ -280,36 +277,8 @@ const Players: React.FC = () => {
       );
     };
 
-    const doCreate = (payload: Record<string, unknown>) => {
-      createPlayer.mutate(
-        payload as Parameters<typeof createPlayer.mutate>[0],
-        {
-          onSuccess: () => {
-            setIsModalOpen(false);
-            setPortraitFile(null);
-            setPortraitPreview(null);
-            setFormData({ name: '', surname: '', number: '', teamId: '', teamName: '', position: 'POINT_GUARD', country: '', height: '', dob: '' });
-          },
-          onError: (e) => alert(e.message),
-        }
-      );
-    };
-
-    if (editingPlayer) {
-      const baseData = {
-        firstName: formData.name,
-        lastName: formData.surname,
-        position,
-        height: formData.height || undefined,
-        dateOfBirth: formData.dob || undefined,
-      };
-      applyPortrait(baseData).then(doUpdate);
-    } else {
-      if (!formData.teamId) {
-        alert('Please select a team');
-        return;
-      }
-      const basePayload = {
+    const doCreate = async (photoUrl?: string) => {
+      const payload: Parameters<typeof createPlayer.mutate>[0] = {
         teamId: formData.teamId,
         firstName: formData.name,
         lastName: formData.surname,
@@ -318,8 +287,41 @@ const Players: React.FC = () => {
         height: formData.height || undefined,
         dateOfBirth: formData.dob || undefined,
       };
-      applyPortrait(basePayload).then(doCreate);
-    }
+      if (photoUrl) (payload as Record<string, unknown>).photo = photoUrl;
+      createPlayer.mutate(payload, {
+        onSuccess: () => {
+          setIsModalOpen(false);
+          setPortraitFile(null);
+          setPortraitPreview(null);
+          setFormData({ name: '', surname: '', number: '', teamId: '', teamName: '', position: 'POINT_GUARD', country: '', height: '', dob: '' });
+        },
+        onError: (e) => alert(e.message),
+      });
+    };
+
+    const runSubmit = async () => {
+      let photoUrl: string | undefined;
+      if (portraitFile) {
+        try {
+          const res = await uploadImageFile.mutateAsync(portraitFile);
+          photoUrl = res.url;
+        } catch (err) {
+          alert(err instanceof Error ? err.message : 'Photo upload failed');
+          return;
+        }
+      }
+      if (editingPlayer) {
+        doUpdate(photoUrl);
+      } else {
+        if (!formData.teamId) {
+          alert('Please select a team');
+          return;
+        }
+        doCreate(photoUrl);
+      }
+    };
+
+    runSubmit();
   };
 
 
@@ -591,29 +593,79 @@ const Players: React.FC = () => {
                     </p>
                   </div>
                   {uploadResult.details && uploadResult.details.length > 0 && (
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-sm font-semibold text-gray-700">Duplicate players (skipped)</h3>
-                        <button
-                          onClick={handleCopyUploadResult}
-                          className={`p-1.5 rounded transition-colors ${copiedToClipboard ? 'text-green-600 bg-green-50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
-                          title={copiedToClipboard ? 'Copied!' : 'Copy to clipboard'}
-                          aria-label={copiedToClipboard ? 'Copied to clipboard' : 'Copy upload result to clipboard'}
-                        >
-                          {copiedToClipboard ? <FiCheck size={16} /> : <FiCopy size={16} />}
-                        </button>
+                    <>
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <h3 className="text-sm font-semibold text-gray-700">Upload details</h3>
+                          <button
+                            onClick={handleCopyUploadResult}
+                            className={`p-1.5 rounded transition-colors ${copiedToClipboard ? 'text-green-600 bg-green-50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
+                            title={copiedToClipboard ? 'Copied!' : 'Copy to clipboard'}
+                            aria-label={copiedToClipboard ? 'Copied to clipboard' : 'Copy upload result to clipboard'}
+                          >
+                            {copiedToClipboard ? <FiCheck size={16} /> : <FiCopy size={16} />}
+                          </button>
+                        </div>
+                        <ul className="text-sm text-gray-600 space-y-1.5 max-h-48 overflow-y-auto rounded border border-gray-200 p-3 bg-gray-50">
+                          {uploadResult.details.map((d, i) => (
+                            <li key={i} className="flex flex-wrap gap-x-2 gap-y-0.5">
+                              <span className="font-medium text-gray-800">Row {d.row}:</span>
+                              <span>{d.player}</span>
+                              {d.matchScore != null && <span className="text-gray-500">({d.matchScore}% match)</span>}
+                              {d.action && <span className="text-amber-600">— {d.action}</span>}
+                            </li>
+                          ))}
+                        </ul>
                       </div>
-                      <ul className="text-sm text-gray-600 space-y-1.5 max-h-48 overflow-y-auto rounded border border-gray-200 p-3 bg-gray-50">
-                        {uploadResult.details.map((d, i) => (
-                          <li key={i} className="flex flex-wrap gap-x-2 gap-y-0.5">
-                            <span className="font-medium text-gray-800">Row {d.row}:</span>
-                            <span>{d.player}</span>
-                            {d.matchScore != null && <span className="text-gray-500">({d.matchScore}% match)</span>}
-                            {d.action && <span className="text-amber-600">— {d.action}</span>}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+                      {(() => {
+                        const potentialDuplicates = (uploadResult.details ?? []).filter(
+                          (d) => d.existingPlayerId && (d.matchScore != null || (d.action && /flag|potential|review|low/i.test(d.action)))
+                        );
+                        if (potentialDuplicates.length === 0) return null;
+                        return (
+                          <div>
+                            <h3 className="text-sm font-semibold text-amber-800 mb-2">Potential duplicates (review)</h3>
+                            <p className="text-xs text-gray-600 mb-2">Lower-confidence matches. Merge into existing player or create as new.</p>
+                            <ul className="text-sm space-y-2 max-h-48 overflow-y-auto rounded border border-amber-200 p-3 bg-amber-50">
+                              {potentialDuplicates.map((d, i) => (
+                                <li key={i} className="flex flex-wrap items-center gap-2">
+                                  <span className="font-medium text-gray-800">Row {d.row}:</span>
+                                  <span>{d.player}</span>
+                                  {d.matchScore != null && <span className="text-gray-600">({d.matchScore}% match)</span>}
+                                  <span className="text-gray-500">→ existing ID: {d.existingPlayerId}</span>
+                                  <span className="flex gap-1 ml-auto">
+                                    {d.newPlayerId && d.existingPlayerId && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          mergePlayers.mutate(
+                                            { duplicatePlayerId: d.newPlayerId!, targetPlayerId: d.existingPlayerId! },
+                                            {
+                                              onSuccess: () => {
+                                                setUploadResult((prev) => prev ? {
+                                                  ...prev,
+                                                  details: (prev.details ?? []).filter((x) => !(x.row === d.row && x.existingPlayerId === d.existingPlayerId)),
+                                                } : null);
+                                              },
+                                              onError: (e) => alert(e.message),
+                                            }
+                                          );
+                                        }}
+                                        disabled={mergePlayers.isPending}
+                                        className="px-2 py-1 text-xs font-medium bg-blue-900 text-white rounded hover:bg-blue-800 disabled:opacity-70"
+                                      >
+                                        Merge with existing
+                                      </button>
+                                    )}
+                                    <span className="text-xs text-gray-500 self-center" title="Add manually from Players if needed">Create as new (add from Players)</span>
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        );
+                      })()}
+                    </>
                   )}
                   {/* {uploadResult.errors && uploadResult.errors.length > 0 && (
                     <div>

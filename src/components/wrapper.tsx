@@ -1,5 +1,5 @@
 import React, { useState, Suspense, lazy } from 'react'
-import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
+import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useProfile, queryKeys } from '../api/hooks'
 import Navbar from './navbar'
@@ -30,6 +30,16 @@ const Users = lazy(() => import('../pages/Users/Users'))
 
 const TOKEN_KEY = 'access_token';
 
+const UsersRouteGuard: React.FC<{ rawRole?: string }> = ({ rawRole }) => {
+  if (rawRole === undefined) {
+    return <div className="p-6 flex items-center justify-center text-gray-500">Loading...</div>;
+  }
+  if (rawRole !== 'SUPER_ADMIN') {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <Users />;
+};
+
 function formatRole(role: string): string {
   if (role === 'SUPER_ADMIN') return 'Super Administrator';
   if (role === 'ADMIN') return 'Administrator';
@@ -45,15 +55,17 @@ const Wrapper: React.FC = () => {
   const profile = useProfile();
 
   const profileData = profile.data;
-  const userName = (profileData as { name?: string; email?: string } | undefined)?.name?.trim()
+  const rawRole = (profileData as { role?: string } | undefined)?.role;
+  const storedName = typeof window !== 'undefined' ? localStorage.getItem('user_name') : null;
+  const userName = storedName
+    || (profileData as { name?: string; email?: string } | undefined)?.name?.trim()
     || (profileData as { name?: string; email?: string } | undefined)?.email
     || 'User';
-  const userRole = (profileData as { role?: string } | undefined)?.role
-    ? formatRole((profileData as { role?: string }).role!)
-    : 'Administrator';
+  const userRole = rawRole ? formatRole(rawRole) : 'Administrator';
 
   const handleLogout = () => {
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem('user_name');
     queryClient.removeQueries({ queryKey: queryKeys.auth.profile });
     navigate('/login');
   };
@@ -94,7 +106,7 @@ const Wrapper: React.FC = () => {
           transform transition-transform duration-300 ease-in-out
           ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         `}>
-          <Sidebar activeItem={getActiveItem()} onNavigate={toggleSidebar} />
+          <Sidebar activeItem={getActiveItem()} onNavigate={toggleSidebar} userRole={rawRole} />
         </div>
 
         {/* Mobile overlay */}
@@ -130,7 +142,7 @@ const Wrapper: React.FC = () => {
             <Route path="/teams-management/:id" element={<TeamDetails />} />
             <Route path="/players-management" element={<PlayersManagement />} />
             <Route path="/players-management/:playerId" element={<PlayerProfile />} />
-            <Route path="/users" element={<Users />} />
+            <Route path="/users" element={<UsersRouteGuard rawRole={rawRole} />} />
             <Route path="/" element={<Dashboard />} />
           </Routes>
           </Suspense>

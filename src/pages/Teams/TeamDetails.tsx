@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FiArrowLeft, FiMapPin, FiCalendar, FiUsers, FiAward, FiTrendingUp, FiEdit2, FiTrash, FiUserMinus } from 'react-icons/fi';
+import { FiArrowLeft, FiMapPin, FiCalendar, FiUsers, FiAward, FiTrendingUp, FiEdit2, FiTrash, FiUserMinus, FiStar } from 'react-icons/fi';
 import { GiBasketballBall, GiTrophy } from 'react-icons/gi';
-import { useTeam, usePlayers, useCreatePlayerForTeam, useRemovePlayerFromTeam, useDeleteTeam } from '../../api/hooks';
+import { useTeam, usePlayers, useCreatePlayerForTeam, useRemovePlayerFromTeam, useDeleteTeam, useAssignPlayerToTeam, useSetTeamCaptain, useUpdatePlayer, useUploadFile, useUpdateTeam } from '../../api/hooks';
 import type { Player as ApiPlayer } from '../../types/api';
 
 const POSITION_OPTIONS = [
@@ -67,7 +67,7 @@ function mapApiPlayerToDisplay(p: ApiPlayer): PlayerDisplay {
     surname: p.lastName,
     number: String(p.jerseyNumber ?? ''),
     position: typeof p.position === 'string' && p.position.includes('_') ? p.position.replace(/_/g, ' ') : (p.position as string),
-    image: '/player1.png',
+    image: (p as { photo?: string }).photo ?? '/player1.png',
   };
 }
 
@@ -76,15 +76,27 @@ const TeamDetails: React.FC = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'overview' | 'history' | 'players' | 'stats'>('overview');
   const [isAddPlayerOpen, setIsAddPlayerOpen] = useState(false);
+  const [addPlayerSelectedId, setAddPlayerSelectedId] = useState('');
+  const [addPlayerJersey, setAddPlayerJersey] = useState('');
   const [newPlayer, setNewPlayer] = useState({ name: '', surname: '', number: '', position: 'POINT_GUARD' as string });
   const [releasingPlayer, setReleasingPlayer] = useState<PlayerDisplay | null>(null);
   const [releaseDate, setReleaseDate] = useState('');
+  const [editingPlayer, setEditingPlayer] = useState<PlayerDisplay | null>(null);
+  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', jerseyNumber: '' });
+  const [editPhotoFile, setEditPhotoFile] = useState<File | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
 
   const teamQuery = useTeam(id ?? null);
   const playersQuery = usePlayers(id ?? undefined);
+  const unassignedPlayersQuery = usePlayers(undefined, { unassigned: true });
   const createPlayer = useCreatePlayerForTeam();
+  const assignPlayer = useAssignPlayerToTeam();
   const removePlayer = useRemovePlayerFromTeam();
   const deleteTeam = useDeleteTeam();
+  const setCaptain = useSetTeamCaptain();
+  const updatePlayer = useUpdatePlayer();
+  const uploadFile = useUploadFile();
+  const updateTeam = useUpdateTeam();
 
   const team = teamQuery.data;
   const teamPlayers = useMemo(() => (playersQuery.data ?? []).map(mapApiPlayerToDisplay), [playersQuery.data]);
@@ -119,7 +131,7 @@ const TeamDetails: React.FC = () => {
       website: '—',
       arena: '—',
       capacity: '—',
-      logo: null as string | null,
+      logo: (team as { logo?: string }).logo ?? null,
     };
   }, [team, id]);
 
@@ -350,6 +362,31 @@ const TeamDetails: React.FC = () => {
                     </div>
                   )}
                 </div>
+                <label className="mt-2 inline-block px-3 py-1.5 text-xs font-medium bg-white/20 hover:bg-white/30 text-white rounded-lg cursor-pointer transition-colors">
+                  {logoFile || updateTeam.isPending ? (updateTeam.isPending ? 'Uploading...' : 'Selected') : 'Change logo'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    aria-label="Upload team logo"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file || !id) return;
+                      setLogoFile(file);
+                      try {
+                        const res = await uploadFile.mutateAsync(file);
+                        await updateTeam.mutateAsync({ id, data: { logo: res.url } });
+                        teamQuery.refetch();
+                      } catch (err) {
+                        alert(err instanceof Error ? err.message : 'Upload failed');
+                      } finally {
+                        setLogoFile(null);
+                        e.target.value = '';
+                      }
+                    }}
+                    disabled={updateTeam.isPending}
+                  />
+                </label>
               </div>
             </div>
 
@@ -686,7 +723,24 @@ const TeamDetails: React.FC = () => {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            navigate(`/players-management`);
+                            if (!id) return;
+                            setCaptain.mutate(
+                              { teamId: id, playerId: player.id, body: { isCaptain: true } },
+                              { onError: (err) => alert(err.message) }
+                            );
+                          }}
+                          className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                          title="Set as captain"
+                          disabled={setCaptain.isPending}
+                        >
+                          <FiStar size={18} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingPlayer(player);
+                            setEditForm({ firstName: player.name, lastName: player.surname, jerseyNumber: player.number });
+                            setEditPhotoFile(null);
                           }}
                           className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                           title="Edit Player"
@@ -756,91 +810,181 @@ const TeamDetails: React.FC = () => {
             </div>
           )}
 
-          {/* Add Player Modal */}
+          {/* Add Player Modal - assign unassigned player */}
           {isAddPlayerOpen && (
             <div className="fixed inset-0 bg-white/20 backdrop-blur-md z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-lg w-full max-w-2xl overflow-hidden">
+              <div className="bg-white rounded-lg w-full max-w-lg overflow-hidden">
                 <div className="p-6 border-b border-gray-200 flex items-center justify-between">
                   <h3 className="text-xl font-semibold text-gray-900">Add Player</h3>
                   <button
-                    onClick={() => setIsAddPlayerOpen(false)}
+                    onClick={() => { setIsAddPlayerOpen(false); setAddPlayerSelectedId(''); setAddPlayerJersey(''); }}
                     className="text-gray-500 hover:text-gray-800"
                     title="Close"
                   >
                     ×
                   </button>
                 </div>
-                <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <input
-                    type="text"
-                    placeholder="First Name"
-                    value={newPlayer.name}
-                    onChange={(e) => setNewPlayer({ ...newPlayer, name: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Last Name"
-                    value={newPlayer.surname}
-                    onChange={(e) => setNewPlayer({ ...newPlayer, surname: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Jersey Number"
-                    value={newPlayer.number}
-                    onChange={(e) => setNewPlayer({ ...newPlayer, number: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                  />
-                  <select
-                    value={newPlayer.position}
-                    onChange={(e) => setNewPlayer({ ...newPlayer, position: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white"
-                  >
-                    {POSITION_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
+                <div className="p-6 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Select player (unassigned)</label>
+                    <select
+                      value={addPlayerSelectedId}
+                      onChange={(e) => setAddPlayerSelectedId(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white"
+                      aria-label="Select unassigned player"
+                    >
+                      <option value="">Select a player</option>
+                      {(unassignedPlayersQuery.data ?? []).map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.firstName} {p.lastName}
+                          {(p as { email?: string }).email ? ` (${(p as { email?: string }).email})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {unassignedPlayersQuery.isPending && <p className="text-sm text-gray-500 mt-1">Loading players...</p>}
+                    {!unassignedPlayersQuery.isPending && (unassignedPlayersQuery.data ?? []).length === 0 && (
+                      <p className="text-sm text-gray-500 mt-1">No unassigned players. Create one from Players.</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Jersey number (optional)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 24"
+                      value={addPlayerJersey}
+                      onChange={(e) => setAddPlayerJersey(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    />
+                  </div>
                 </div>
                 <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
                   <button
-                    onClick={() => setIsAddPlayerOpen(false)}
+                    onClick={() => { setIsAddPlayerOpen(false); setAddPlayerSelectedId(''); setAddPlayerJersey(''); }}
                     className="px-5 py-2.5 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={() => {
-                      if (!newPlayer.name || !newPlayer.surname || !newPlayer.number || !id) {
-                        alert('Please fill first name, last name and jersey number');
+                      if (!addPlayerSelectedId || !id) {
+                        alert('Please select a player');
                         return;
                       }
-                      const jerseyNum = parseInt(newPlayer.number, 10);
-                      if (Number.isNaN(jerseyNum)) {
+                      const jerseyNum = addPlayerJersey.trim() ? parseInt(addPlayerJersey, 10) : undefined;
+                      if (addPlayerJersey.trim() && Number.isNaN(jerseyNum!)) {
                         alert('Jersey number must be a number');
                         return;
                       }
-                      createPlayer.mutate(
+                      assignPlayer.mutate(
                         {
+                          playerId: addPlayerSelectedId,
                           teamId: id,
-                          firstName: newPlayer.name,
-                          lastName: newPlayer.surname,
-                          jerseyNumber: jerseyNum,
-                          position: newPlayer.position as 'POINT_GUARD' | 'SHOOTING_GUARD' | 'SMALL_FORWARD' | 'POWER_FORWARD' | 'CENTER',
+                          body: jerseyNum != null ? { jerseyNumber: jerseyNum } : undefined,
                         },
                         {
                           onSuccess: () => {
-                            setNewPlayer({ name: '', surname: '', number: '', position: 'POINT_GUARD' });
+                            setAddPlayerSelectedId('');
+                            setAddPlayerJersey('');
                             setIsAddPlayerOpen(false);
                           },
                           onError: (e) => alert(e.message),
                         }
                       );
                     }}
-                    disabled={createPlayer.isPending}
+                    disabled={assignPlayer.isPending || !addPlayerSelectedId}
                     className="px-5 py-2.5 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors disabled:opacity-70"
                   >
-                    {createPlayer.isPending ? 'Adding...' : 'Add'}
+                    {assignPlayer.isPending ? 'Assigning...' : 'Assign to team'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Edit Player Modal */}
+          {editingPlayer && (
+            <div className="fixed inset-0 bg-white/20 backdrop-blur-md z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-lg w-full max-w-lg overflow-hidden">
+                <div className="p-6 border-b border-gray-200 flex items-center justify-between">
+                  <h3 className="text-xl font-semibold text-gray-900">Edit Player</h3>
+                  <button onClick={() => { setEditingPlayer(null); setEditPhotoFile(null); }} className="text-gray-500 hover:text-gray-800" title="Close">×</button>
+                </div>
+                <div className="p-6 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">First name</label>
+                    <input
+                      type="text"
+                      value={editForm.firstName}
+                      onChange={(e) => setEditForm((f) => ({ ...f, firstName: e.target.value }))}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Last name</label>
+                    <input
+                      type="text"
+                      value={editForm.lastName}
+                      onChange={(e) => setEditForm((f) => ({ ...f, lastName: e.target.value }))}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Jersey number</label>
+                    <input
+                      type="text"
+                      value={editForm.jerseyNumber}
+                      onChange={(e) => setEditForm((f) => ({ ...f, jerseyNumber: e.target.value }))}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Photo (optional)</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="w-full text-sm text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-blue-50 file:text-blue-700"
+                      aria-label="Upload player photo"
+                      onChange={(e) => setEditPhotoFile(e.target.files?.[0] ?? null)}
+                    />
+                  </div>
+                </div>
+                <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+                  <button onClick={() => { setEditingPlayer(null); setEditPhotoFile(null); }} className="px-5 py-2.5 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors">Cancel</button>
+                  <button
+                    onClick={async () => {
+                      if (!editingPlayer) return;
+                      let photoUrl: string | undefined;
+                      if (editPhotoFile) {
+                        try {
+                          const res = await uploadFile.mutateAsync(editPhotoFile);
+                          photoUrl = res.url;
+                        } catch (err) {
+                          alert(err instanceof Error ? err.message : 'Photo upload failed');
+                          return;
+                        }
+                      }
+                      const jerseyNum = editForm.jerseyNumber.trim() ? parseInt(editForm.jerseyNumber, 10) : undefined;
+                      updatePlayer.mutate(
+                        {
+                          id: editingPlayer.id,
+                          data: {
+                            firstName: editForm.firstName,
+                            lastName: editForm.lastName,
+                            ...(jerseyNum != null && !Number.isNaN(jerseyNum) ? { jerseyNumber: jerseyNum } : {}),
+                            ...(id ? { teamId: id } : {}),
+                            ...(photoUrl ? { photo: photoUrl } : {}),
+                          },
+                        },
+                        {
+                          onSuccess: () => { setEditingPlayer(null); setEditPhotoFile(null); },
+                          onError: (e) => alert(e.message),
+                        }
+                      );
+                    }}
+                    disabled={updatePlayer.isPending || uploadFile.isPending}
+                    className="px-5 py-2.5 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors disabled:opacity-70"
+                  >
+                    {updatePlayer.isPending || uploadFile.isPending ? 'Saving...' : 'Save'}
                   </button>
                 </div>
               </div>

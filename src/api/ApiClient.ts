@@ -117,6 +117,46 @@ class ApiClient {
     },
   };
 
+  /** POST /upload - multipart form field "file". Returns { url, public_id }. */
+  upload = {
+    file: async (file: File): Promise<ApiResponse<{ url: string; public_id?: string }>> => {
+      const formData = new FormData();
+      formData.append('file', file);
+      const url = `${API_BASE}/upload`;
+      const token = localStorage.getItem(TOKEN_KEY);
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+      let data: { data?: { url: string; public_id?: string }; url?: string; public_id?: string; message?: string; code?: string; details?: unknown } = {};
+      try {
+        data = await response.json();
+      } catch {
+        // non-JSON
+      }
+      if (!response.ok) {
+        throw new ApiError(
+          (data as { message?: string }).message || 'Upload failed',
+          response.status,
+          (data as { code?: string }).code,
+          (data as { details?: unknown }).details
+        );
+      }
+      const result = (data as { data?: { url: string; public_id?: string } }).data ?? (data as { url?: string; public_id?: string });
+      const urlVal = result?.url ?? (data as { url?: string }).url;
+      if (!urlVal) throw new ApiError('Upload response missing url', response.status, 'INVALID_RESPONSE');
+      return {
+        ok: true,
+        data: { url: urlVal, public_id: result?.public_id ?? (data as { public_id?: string }).public_id },
+        message: (data as { message?: string }).message,
+        status: response.status,
+      };
+    },
+  };
+
   players = {
     createStandalone: async (
       data: PlayerCreateStandalone
@@ -145,10 +185,11 @@ class ApiClient {
       });
     },
 
-    getAll: async (params?: { teamId?: string }): Promise<ApiResponse<Player[]>> => {
-      const search = params?.teamId
-        ? `?teamId=${encodeURIComponent(params.teamId)}`
-        : '';
+    getAll: async (params?: { teamId?: string; unassigned?: boolean }): Promise<ApiResponse<Player[]>> => {
+      const sp = new URLSearchParams();
+      if (params?.teamId) sp.set('teamId', params.teamId);
+      if (params?.unassigned === true) sp.set('unassigned', 'true');
+      const search = sp.toString() ? `?${sp.toString()}` : '';
       return this.request<Player[]>(`/players${search}`);
     },
 
@@ -256,8 +297,11 @@ class ApiClient {
       });
     },
 
-    getAll: async (): Promise<ApiResponse<Team[]>> => {
-      return this.request<Team[]>('/teams');
+    getAll: async (params?: { tournamentId?: string }): Promise<ApiResponse<Team[]>> => {
+      const search = params?.tournamentId
+        ? `?tournamentId=${encodeURIComponent(params.tournamentId)}`
+        : '';
+      return this.request<Team[]>(`/teams${search}`);
     },
 
     getById: async (id: string): Promise<ApiResponse<Team>> => {
