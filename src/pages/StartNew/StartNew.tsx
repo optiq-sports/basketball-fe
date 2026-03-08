@@ -105,6 +105,7 @@ const StartNew: React.FC = () => {
 
     createTournament.mutate(payload, {
       onSuccess: (data) => {
+        setDivision('');
         navigate(`/tournaments/${data.id}`);
       },
       onError: (err) => alert(err.message),
@@ -357,15 +358,17 @@ const StartNew: React.FC = () => {
           <div className="flex justify-end gap-3 pt-6 border-t border-gray-200 mt-6">
             <button
               onClick={handleDiscard}
-              className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+              disabled={createTournament.isPending}
+              className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Discard
             </button>
             <button
               onClick={handleSaveNext}
-              className="px-6 py-2.5 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              disabled={createTournament.isPending}
+              className="px-6 py-2.5 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Save & Next
+              {createTournament.isPending ? 'Saving…' : 'Save & Next'}
             </button>
           </div>
         </div>

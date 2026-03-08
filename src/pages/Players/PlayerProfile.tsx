@@ -66,7 +66,19 @@ const PlayerProfile: React.FC = () => {
     );
   }
 
-  const teamName = team?.name ?? (player.teamId ? '—' : 'No team');
+  const teamName =
+    team?.name ??
+    (player as { teamName?: string }).teamName ??
+    (player.teamId ? '—' : 'No team');
+
+  function formatDateOfBirth(raw: string | undefined): string {
+    if (!raw) return '—';
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+  const dobDisplay = formatDateOfBirth(player.dateOfBirth);
+
   const positionLabel = typeof player.position === 'string' ? player.position.replace(/_/g, ' ') : '—';
 
   return (
@@ -117,9 +129,7 @@ const PlayerProfile: React.FC = () => {
             <div className="grid grid-cols-4 gap-6 text-center">
               <div>
                 <p className="text-sm text-gray-600">Date of birth</p>
-                <p className="text-lg font-semibold text-blue-900">
-                  {player.dateOfBirth ?? '—'}
-                </p>
+                <p className="text-lg font-semibold text-blue-900">{dobDisplay}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">Height</p>

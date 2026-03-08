@@ -7,6 +7,7 @@ import {
   useCreateStatistician,
   useUpdateStatistician,
   useDeleteStatistician,
+  useUploadFile,
 } from '../../api/hooks';
 import type { Statistician as ApiStatistician } from '../../types/api';
 
@@ -33,6 +34,7 @@ const Statisticians: React.FC = () => {
   const createStatistician = useCreateStatistician();
   const updateStatistician = useUpdateStatistician();
   const deleteStatistician = useDeleteStatistician();
+  const uploadFile = useUploadFile();
 
   const statisticians = useMemo(() => {
     return (statisticiansQuery.data ?? []).map((s: ApiStatistician): StatisticianDisplay => {
@@ -64,6 +66,8 @@ const Statisticians: React.FC = () => {
     homeAddress: '',
     status: 'ACTIVE' as 'ACTIVE' | 'INACTIVE',
   });
+  const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
+  const [profilePhotoPreview, setProfilePhotoPreview] = useState<string | null>(null);
 
   const filteredStatisticians = useMemo(() => {
     let filtered = statisticians;
@@ -93,6 +97,8 @@ const Statisticians: React.FC = () => {
 
   const handleAddStatistician = () => {
     setEditingStatistician(null);
+    setProfilePhotoFile(null);
+    setProfilePhotoPreview(null);
     setFormData({
       firstName: '',
       lastName: '',
@@ -110,6 +116,8 @@ const Statisticians: React.FC = () => {
   const handleEditStatistician = (s: StatisticianDisplay, e: React.MouseEvent) => {
     e.stopPropagation();
     setEditingStatistician(s);
+    setProfilePhotoFile(null);
+    setProfilePhotoPreview(s.image && s.image !== '/stat.png' ? s.image : null);
     const apiStat = (statisticiansQuery.data ?? []).find((x) => x.id === s.id) as ApiStatistician | undefined;
     setFormData({
       firstName: apiStat?.firstName ?? s.name,
@@ -132,10 +140,20 @@ const Statisticians: React.FC = () => {
     }
   };
 
-  const handleSaveStatistician = () => {
+  const handleSaveStatistician = async () => {
     if (!formData.email?.trim()) {
       alert('Email is required');
       return;
+    }
+    let imageUrl: string | undefined;
+    if (profilePhotoFile) {
+      try {
+        const res = await uploadFile.mutateAsync(profilePhotoFile);
+        imageUrl = res.url;
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'Profile picture upload failed');
+        return;
+      }
     }
     if (editingStatistician) {
       updateStatistician.mutate(
@@ -149,6 +167,7 @@ const Statisticians: React.FC = () => {
             country: formData.country || undefined,
             state: formData.state || undefined,
             homeAddress: formData.homeAddress || undefined,
+            ...(imageUrl ? { image: imageUrl } : {}),
           },
         },
         {
@@ -176,10 +195,12 @@ const Statisticians: React.FC = () => {
           country: formData.country || undefined,
           state: formData.state || undefined,
           homeAddress: formData.homeAddress || undefined,
+          ...(imageUrl ? { image: imageUrl } : {}),
         },
         {
           onSuccess: () => {
             setIsModalOpen(false);
+            setEditingStatistician(null);
             resetForm();
           },
           onError: (e) => alert(e.message),
@@ -200,6 +221,8 @@ const Statisticians: React.FC = () => {
       homeAddress: '',
       status: 'ACTIVE',
     });
+    setProfilePhotoFile(null);
+    setProfilePhotoPreview(null);
   };
 
   return (
@@ -349,11 +372,39 @@ const Statisticians: React.FC = () => {
               <h2 className="text-2xl font-semibold text-gray-900">
                 {editingStatistician ? 'Edit Statistician' : 'Add Statistician'}
               </h2>
-              <button onClick={() => { setIsModalOpen(false); setEditingStatistician(null); resetForm(); }} className="text-gray-600 hover:text-gray-900">
+              <button onClick={() => { setIsModalOpen(false); setEditingStatistician(null); resetForm(); }} className="text-gray-600 hover:text-gray-900" aria-label="Close">
                 <MdCancel size={20} />
               </button>
             </div>
             <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Profile picture (optional)</label>
+                <div className="flex items-center gap-4">
+                  <div className="w-24 h-24 rounded-full overflow-hidden bg-gray-100 border border-gray-300 flex-shrink-0">
+                    {profilePhotoPreview ? (
+                      <img src={profilePhotoPreview} alt="Profile preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">No photo</div>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/*"
+                      aria-label="Upload profile picture"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setProfilePhotoFile(file);
+                          setProfilePhotoPreview(URL.createObjectURL(file));
+                        }
+                      }}
+                      className="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded file:border-0 file:bg-blue-50 file:text-blue-700"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">PNG or JPEG recommended</p>
+                  </div>
+                </div>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">First Name</label>
                 <input

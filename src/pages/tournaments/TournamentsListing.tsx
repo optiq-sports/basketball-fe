@@ -246,7 +246,7 @@ const TournamentsListing: React.FC = () => {
               </div>
                <div className="relative h-79 overflow-hidden">
                  <img
-                   src="/flyer.png"
+                   src={tournament.flyer ?? '/flyer.png'}
                    alt="Tournament Flyer"
                    style={{ width: '286px', height: '300px', top: '14px', left: '12px', opacity: 1, borderRadius: '6px' }}
                    className="absolute object-cover"

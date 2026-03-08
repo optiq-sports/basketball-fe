@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FiArrowLeft, FiMapPin, FiCalendar, FiUsers, FiAward, FiTrendingUp, FiEdit2, FiTrash, FiUserMinus, FiStar } from 'react-icons/fi';
+import { FiArrowLeft, FiMapPin, FiCalendar, FiUsers, FiAward, FiTrendingUp, FiEdit2, FiTrash, FiUserMinus } from 'react-icons/fi';
 import { GiBasketballBall, GiTrophy } from 'react-icons/gi';
 import { useTeam, usePlayers, useCreatePlayerForTeam, useRemovePlayerFromTeam, useDeleteTeam, useAssignPlayerToTeam, useSetTeamCaptain, useUpdatePlayer, useUploadFile, useUpdateTeam } from '../../api/hooks';
 import type { Player as ApiPlayer } from '../../types/api';
@@ -51,6 +51,10 @@ interface PlayerDisplay {
   number: string;
   position: string;
   image: string;
+  country: string;
+  height: string;
+  dob: string;
+  isCaptain?: boolean;
 }
 
 interface CoachingStaff {
@@ -61,13 +65,19 @@ interface CoachingStaff {
 }
 
 function mapApiPlayerToDisplay(p: ApiPlayer): PlayerDisplay {
+  const rawDob = p.dateOfBirth;
+  const dobInput = rawDob ? (typeof rawDob === 'string' && rawDob.length >= 10 ? rawDob.slice(0, 10) : String(rawDob)) : '';
   return {
     id: p.id,
     name: p.firstName,
     surname: p.lastName,
     number: String(p.jerseyNumber ?? ''),
-    position: typeof p.position === 'string' && p.position.includes('_') ? p.position.replace(/_/g, ' ') : (p.position as string),
+    position: typeof p.position === 'string' ? p.position : (p.position as string),
     image: (p as { photo?: string }).photo ?? '/player1.png',
+    country: (p as { country?: string }).country ?? '',
+    height: p.height ?? '',
+    dob: dobInput,
+    isCaptain: (p as { isCaptain?: boolean }).isCaptain,
   };
 }
 
@@ -82,8 +92,17 @@ const TeamDetails: React.FC = () => {
   const [releasingPlayer, setReleasingPlayer] = useState<PlayerDisplay | null>(null);
   const [releaseDate, setReleaseDate] = useState('');
   const [editingPlayer, setEditingPlayer] = useState<PlayerDisplay | null>(null);
-  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', jerseyNumber: '' });
+  const [editForm, setEditForm] = useState({
+    firstName: '',
+    lastName: '',
+    jerseyNumber: '',
+    position: 'POINT_GUARD',
+    country: '',
+    height: '',
+    dob: '',
+  });
   const [editPhotoFile, setEditPhotoFile] = useState<File | null>(null);
+  const [editPortraitPreview, setEditPortraitPreview] = useState<string | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
 
   const teamQuery = useTeam(id ?? null);
@@ -526,7 +545,7 @@ const TeamDetails: React.FC = () => {
               {teamPlayers.map((player) => (
                 <div
                   key={player.id}
-                  onClick={() => navigate(`/players-management`)}
+                  onClick={() => navigate(`/players-management/${player.id}`)}
                   className="bg-gray-50 rounded-lg p-4 border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
                 >
                   <div className="flex items-center gap-4">
@@ -693,6 +712,30 @@ const TeamDetails: React.FC = () => {
                   Add Player
                 </button>
               </div>
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Team captain</label>
+                <select
+                  aria-label="Team captain"
+                  value={teamPlayers.find((p) => p.isCaptain)?.id ?? ''}
+                  onChange={(e) => {
+                    const playerId = e.target.value;
+                    if (!id || !playerId) return;
+                    setCaptain.mutate(
+                      { teamId: id, playerId, body: { isCaptain: true } },
+                      { onError: (err) => alert(err.message) }
+                    );
+                  }}
+                  disabled={setCaptain.isPending || teamPlayers.length === 0}
+                  className="w-full max-w-xs px-4 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 disabled:opacity-50"
+                >
+                  <option value="">Select captain</option>
+                  {teamPlayers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} {p.surname} {p.number ? `#${p.number}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {playersQuery.isPending ? (
                   <p className="text-gray-500 col-span-full">Loading players...</p>
@@ -700,6 +743,7 @@ const TeamDetails: React.FC = () => {
                 teamPlayers.map((player) => (
                   <div
                     key={player.id}
+                    onClick={() => navigate(`/players-management/${player.id}`)}
                     className="bg-gray-50 rounded-lg p-4 border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
                   >
                     <div className="flex items-center gap-4">
@@ -717,30 +761,29 @@ const TeamDetails: React.FC = () => {
                             {player.name} {player.surname}
                           </h3>
                         </div>
-                        <p className="text-xs text-gray-600">{player.position}</p>
+                        <p className="text-xs text-gray-600">
+                          {POSITION_OPTIONS.find((o) => o.value === player.position)?.label ?? player.position.replace(/_/g, ' ')}
+                        </p>
                       </div>
                       <div className="flex items-center gap-2">
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (!id) return;
-                            setCaptain.mutate(
-                              { teamId: id, playerId: player.id, body: { isCaptain: true } },
-                              { onError: (err) => alert(err.message) }
-                            );
-                          }}
-                          className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                          title="Set as captain"
-                          disabled={setCaptain.isPending}
-                        >
-                          <FiStar size={18} />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
                             setEditingPlayer(player);
-                            setEditForm({ firstName: player.name, lastName: player.surname, jerseyNumber: player.number });
+                            setEditForm({
+                              firstName: player.name,
+                              lastName: player.surname,
+                              jerseyNumber: player.number,
+                              position: (() => {
+                                const pos = player.position.replace(/ /g, '_').toUpperCase();
+                                return POSITION_OPTIONS.some((o) => o.value === pos) ? pos : 'POINT_GUARD';
+                              })(),
+                              country: player.country,
+                              height: player.height,
+                              dob: player.dob,
+                            });
                             setEditPhotoFile(null);
+                            setEditPortraitPreview(null);
                           }}
                           className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                           title="Edit Player"
@@ -901,55 +944,135 @@ const TeamDetails: React.FC = () => {
             </div>
           )}
 
-          {/* Edit Player Modal */}
+          {/* Edit Player Modal - aligned with system Players tab */}
           {editingPlayer && (
             <div className="fixed inset-0 bg-white/20 backdrop-blur-md z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-lg w-full max-w-lg overflow-hidden">
+              <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
                 <div className="p-6 border-b border-gray-200 flex items-center justify-between">
                   <h3 className="text-xl font-semibold text-gray-900">Edit Player</h3>
-                  <button onClick={() => { setEditingPlayer(null); setEditPhotoFile(null); }} className="text-gray-500 hover:text-gray-800" title="Close">×</button>
+                  <button
+                    onClick={() => {
+                      setEditingPlayer(null);
+                      setEditPhotoFile(null);
+                      setEditPortraitPreview(null);
+                    }}
+                    className="text-gray-500 hover:text-gray-800"
+                    title="Close"
+                  >
+                    ×
+                  </button>
                 </div>
                 <div className="p-6 space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">First name</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Player portrait (optional)</label>
+                    <div className="flex items-center gap-4">
+                      <div className="w-24 h-24 rounded-full overflow-hidden bg-gray-100 border border-gray-300 flex-shrink-0">
+                        {editPortraitPreview ? (
+                          <img src={editPortraitPreview} alt="Portrait preview" className="w-full h-full object-cover" />
+                        ) : editingPlayer.image && editingPlayer.image !== '/player1.png' ? (
+                          <img src={editingPlayer.image} alt="Current" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">No photo</div>
+                        )}
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/*"
+                        className="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded file:border-0 file:bg-blue-50 file:text-blue-700"
+                        aria-label="Upload player photo"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setEditPhotoFile(file);
+                            setEditPortraitPreview(URL.createObjectURL(file));
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">First name *</label>
                     <input
                       type="text"
                       value={editForm.firstName}
                       onChange={(e) => setEditForm((f) => ({ ...f, firstName: e.target.value }))}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Last name</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Last name *</label>
                     <input
                       type="text"
                       value={editForm.lastName}
                       onChange={(e) => setEditForm((f) => ({ ...f, lastName: e.target.value }))}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Jersey number</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Jersey number *</label>
                     <input
                       type="text"
                       value={editForm.jerseyNumber}
                       onChange={(e) => setEditForm((f) => ({ ...f, jerseyNumber: e.target.value }))}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Photo (optional)</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Position</label>
+                    <select
+                      aria-label="Position"
+                      value={editForm.position}
+                      onChange={(e) => setEditForm((f) => ({ ...f, position: e.target.value }))}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {POSITION_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
                     <input
-                      type="file"
-                      accept="image/*"
-                      className="w-full text-sm text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-blue-50 file:text-blue-700"
-                      aria-label="Upload player photo"
-                      onChange={(e) => setEditPhotoFile(e.target.files?.[0] ?? null)}
+                      type="text"
+                      placeholder="Enter country"
+                      value={editForm.country}
+                      onChange={(e) => setEditForm((f) => ({ ...f, country: e.target.value }))}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Height</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 6'3&quot;"
+                      value={editForm.height}
+                      onChange={(e) => setEditForm((f) => ({ ...f, height: e.target.value }))}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Date of birth</label>
+                    <input
+                      type="date"
+                      value={editForm.dob}
+                      onChange={(e) => setEditForm((f) => ({ ...f, dob: e.target.value }))}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
                 <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
-                  <button onClick={() => { setEditingPlayer(null); setEditPhotoFile(null); }} className="px-5 py-2.5 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors">Cancel</button>
+                  <button
+                    onClick={() => {
+                      setEditingPlayer(null);
+                      setEditPhotoFile(null);
+                      setEditPortraitPreview(null);
+                    }}
+                    className="px-5 py-2.5 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
                   <button
                     onClick={async () => {
                       if (!editingPlayer) return;
@@ -973,10 +1096,18 @@ const TeamDetails: React.FC = () => {
                             ...(jerseyNum != null && !Number.isNaN(jerseyNum) ? { jerseyNumber: jerseyNum } : {}),
                             ...(id ? { teamId: id } : {}),
                             ...(photoUrl ? { photo: photoUrl } : {}),
+                            position: editForm.position as ApiPlayer['position'],
+                            country: editForm.country || undefined,
+                            height: editForm.height || undefined,
+                            dateOfBirth: editForm.dob || undefined,
                           },
                         },
                         {
-                          onSuccess: () => { setEditingPlayer(null); setEditPhotoFile(null); },
+                          onSuccess: () => {
+                            setEditingPlayer(null);
+                            setEditPhotoFile(null);
+                            setEditPortraitPreview(null);
+                          },
                           onError: (e) => alert(e.message),
                         }
                       );

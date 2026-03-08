@@ -133,6 +133,7 @@ export interface StatisticianCreateBody {
   country?: string;
   state?: string;
   homeAddress?: string;
+  image?: string;
   bio?: string;
   photos?: string[];
   dobDay?: number;
@@ -150,6 +151,7 @@ export interface StatisticianUpdateBody {
   country?: string;
   state?: string;
   homeAddress?: string;
+  image?: string;
 }
 
 // Player
@@ -220,6 +222,7 @@ export interface PlayerUpdateBody {
   email?: string;
   position?: PlayerPosition | string;
   height?: string;
+  country?: string;
   phone?: string;
   dateOfBirth?: string;
   photo?: string;
@@ -320,6 +323,7 @@ export interface Tournament {
   startDate: string;
   endDate: string;
   venue: string;
+  flyer?: string;
   crewChief?: string;
   umpire1?: string;
   umpire2?: string;
