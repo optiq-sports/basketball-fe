@@ -61,19 +61,29 @@ const Players: React.FC = () => {
   }, [teamsQuery.data]);
 
   const players = useMemo(() => {
-    return (playersQuery.data ?? []).map((p: ApiPlayer): PlayerDisplay => ({
-      id: p.id,
-      name: p.firstName,
-      surname: p.lastName,
-      number: String(p.jerseyNumber ?? ''),
-      image: (p as { photo?: string }).photo ?? '/player1.png',
-      teamId: (p.teamId as string) ?? '',
-      teamName: (p.teamId && teamMap.get(p.teamId as string)) ?? '—',
-      position: typeof p.position === 'string' && p.position.includes('_') ? p.position.replace(/_/g, ' ') : (p.position as string),
-      country: (p as { country?: string }).country ?? '',
-      height: p.height ?? '',
-      dob: p.dateOfBirth ?? '',
-    }));
+    return (playersQuery.data ?? []).map((p: ApiPlayer): PlayerDisplay => {
+      const topLevelTeamName = (p as { teamName?: string | null }).teamName ?? undefined;
+      const resolvedTeamName =
+        topLevelTeamName ??
+        (p.teamId && teamMap.get(p.teamId as string)) ??
+        '—';
+      return {
+        id: p.id,
+        name: p.firstName,
+        surname: p.lastName,
+        number: String(p.jerseyNumber ?? ''),
+        image: (p as { photo?: string }).photo ?? '/player1.png',
+        teamId: (p.teamId as string) ?? '',
+        teamName: resolvedTeamName,
+        position:
+          typeof p.position === 'string' && p.position.includes('_')
+            ? p.position.replace(/_/g, ' ')
+            : (p.position as string),
+        country: (p as { country?: string }).country ?? '',
+        height: p.height ?? '',
+        dob: p.dateOfBirth ?? '',
+      };
+    });
   }, [playersQuery.data, teamMap]);
 
   const [formData, setFormData] = useState({

@@ -43,12 +43,17 @@ const Statisticians: React.FC = () => {
       const name = firstName && lastName ? firstName : (s.name ?? s.email ?? '');
       const surname = lastName || (name ? '' : (s.email ?? ''));
       const loc = [s.state, s.country].filter(Boolean).join(', ') || '—';
+      const profile = (s as { profile?: { photos?: string[] } }).profile;
+      const primaryPhoto =
+        profile?.photos?.[0] ??
+        (s as { photo?: string }).photo ??
+        (s.image as string | undefined);
       return {
         id: s.id,
         name: name || '—',
         surname: surname || '',
         location: loc,
-        image: (s.image as string) ?? '/stat.png',
+        image: primaryPhoto ?? '/stat.png',
         email: s.email ?? '',
         status: (s.status as string) ?? 'ACTIVE',
       };
@@ -167,7 +172,7 @@ const Statisticians: React.FC = () => {
             country: formData.country || undefined,
             state: formData.state || undefined,
             homeAddress: formData.homeAddress || undefined,
-            ...(imageUrl ? { image: imageUrl } : {}),
+            ...(imageUrl ? { photo: imageUrl } : {}),
           },
         },
         {
@@ -195,7 +200,7 @@ const Statisticians: React.FC = () => {
           country: formData.country || undefined,
           state: formData.state || undefined,
           homeAddress: formData.homeAddress || undefined,
-          ...(imageUrl ? { image: imageUrl } : {}),
+          ...(imageUrl ? { photo: imageUrl } : {}),
         },
         {
           onSuccess: () => {

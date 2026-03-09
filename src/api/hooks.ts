@@ -470,6 +470,21 @@ export function useUpdateTournament() {
   });
 }
 
+export function useUploadTournamentFlyer() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, file }: { id: string; file: File }) => {
+      const res = await apiClient.tournaments.uploadFlyer(id, file);
+      if (!res.ok) throw new Error(res.message ?? 'Failed to upload tournament flyer');
+      return res.data!;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.tournaments() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tournament(data.id) });
+    },
+  });
+}
+
 export function useTournamentAddTeams() {
   const queryClient = useQueryClient();
   return useMutation({

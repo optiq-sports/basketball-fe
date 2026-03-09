@@ -392,6 +392,49 @@ class ApiClient {
       await this.request(`/tournaments/${id}`, { method: 'DELETE' });
       return true;
     },
+
+    /** PATCH /tournaments/:id/flyer - multipart form field "flyer". Returns updated Tournament with flyer URL. */
+    uploadFlyer: async (
+      id: string,
+      file: File
+    ): Promise<ApiResponse<Tournament>> => {
+      const formData = new FormData();
+      formData.append('flyer', file);
+
+      const url = `${API_BASE}/tournaments/${id}/flyer`;
+      const token = localStorage.getItem(TOKEN_KEY);
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const response = await fetch(url, {
+        method: 'PATCH',
+        headers,
+        body: formData,
+      });
+
+      let data: { data?: Tournament; message?: string; code?: string; details?: unknown } = {};
+      try {
+        data = await response.json();
+      } catch {
+        // non-JSON response
+      }
+
+      if (!response.ok) {
+        throw new ApiError(
+          (data as { message?: string }).message || 'Failed to upload flyer',
+          response.status,
+          (data as { code?: string }).code,
+          (data as { details?: unknown }).details
+        );
+      }
+
+      return {
+        ok: true,
+        data: (data as { data?: Tournament }).data ?? (data as unknown as Tournament),
+        message: (data as { message?: string }).message,
+        status: response.status,
+      };
+    },
   };
 
   matches = {

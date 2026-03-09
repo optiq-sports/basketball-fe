@@ -119,6 +119,11 @@ export interface Statistician {
   state?: string;
   homeAddress?: string;
   image?: string;
+  photo?: string;
+  profile?: {
+    photos?: string[];
+    [key: string]: unknown;
+  };
   [key: string]: unknown;
 }
 
@@ -133,6 +138,7 @@ export interface StatisticianCreateBody {
   country?: string;
   state?: string;
   homeAddress?: string;
+  photo?: string;
   image?: string;
   bio?: string;
   photos?: string[];
@@ -151,6 +157,7 @@ export interface StatisticianUpdateBody {
   country?: string;
   state?: string;
   homeAddress?: string;
+  photo?: string;
   image?: string;
 }
 
@@ -173,6 +180,10 @@ export interface Player {
   dateOfBirth?: string;
   jerseyNumber?: number;
   teamId?: string;
+   /** Primary active team name (from API) */
+  teamName?: string | null;
+  /** Captain status in primary team (from API) */
+  isCaptain?: boolean | null;
   [key: string]: unknown;
 }
 
