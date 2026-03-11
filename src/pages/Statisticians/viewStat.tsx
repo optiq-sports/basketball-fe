@@ -1,6 +1,8 @@
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { FiArrowLeft } from 'react-icons/fi';
+import { useStatistician } from '../../api/hooks';
+import type { Statistician } from '../../types/api';
 
 interface Game {
   id: number;
@@ -16,21 +18,127 @@ interface Game {
   datetime: string;
 }
 
+function buildDisplayStatistician(stat: Statistician | undefined): {
+  fullName: string;
+  email: string;
+  phone: string;
+  location: string;
+  image: string;
+  gamesRecorded: string;
+  dob: string;
+  status: string;
+} {
+  if (!stat) {
+    return {
+      fullName: '—',
+      email: '—',
+      phone: '—',
+      location: '—',
+      image: '/stat.png',
+      gamesRecorded: '—',
+      dob: '—',
+      status: '—',
+    };
+  }
+
+  const firstName = stat.firstName ?? stat.name ?? '';
+  const lastName = stat.lastName ?? '';
+  const nameBase = firstName && lastName ? `${firstName} ${lastName}` : (stat.name as string | undefined) ?? (stat.email as string | undefined) ?? '';
+  const fullName = nameBase || '—';
+
+  const loc =
+    [stat.state as string | undefined, stat.country as string | undefined]
+      .filter(Boolean)
+      .join(', ') || '—';
+
+  const profile = stat.profile as { photos?: string[] } | undefined;
+  const primaryPhoto =
+    profile?.photos?.[0] ??
+    (stat as { photo?: string }).photo ??
+    (stat.image as string | undefined);
+
+  const gamesRecorded =
+    (stat as { gamesRecorded?: number }).gamesRecorded != null
+      ? String((stat as { gamesRecorded?: number }).gamesRecorded)
+      : (stat as { matchesCount?: number }).matchesCount != null
+      ? String((stat as { matchesCount?: number }).matchesCount)
+      : '—';
+
+  const dobDay = (stat as { dobDay?: number }).dobDay;
+  const dobMonth = (stat as { dobMonth?: number }).dobMonth;
+  const dobYear = (stat as { dobYear?: number }).dobYear;
+  let dob = '—';
+  if (dobDay && dobMonth && dobYear) {
+    const d = new Date(dobYear, dobMonth - 1, dobDay);
+    if (!Number.isNaN(d.getTime())) {
+      dob = d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+  }
+
+  const status = (stat.status as string | undefined) ?? '—';
+
+  return {
+    fullName,
+    email: stat.email ?? '—',
+    phone: (stat.phone as string | undefined) ?? '—',
+    location: loc,
+    image: primaryPhoto ?? '/stat.png',
+    gamesRecorded,
+    dob,
+    status,
+  };
+}
+
 const ViewStat: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const statQuery = useStatistician(id ?? null);
 
-  // Mock data - in a real app, this would come from an API
-  const statisticianData = {
-    id: id || '1',
-    name: 'Name',
-    surname: 'Surname',
-    location: 'State, Country',
-    email: 'stats@mail.com',
-    phone: '+234 0045 2345',
-    gamesRecorded: 300,
-    image: '/stat.png',
-  };
+  if (!id) {
+    return (
+      <div className="min-h-screen bg-white p-6">
+        <div className="max-w-7xl mx-auto">
+          <p className="text-red-600">Statistician not found</p>
+          <button
+            onClick={() => navigate('/statisticians')}
+            className="mt-4 text-[#21409A] hover:underline"
+          >
+            Back to Statisticians
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (statQuery.isPending) {
+    return (
+      <div className="min-h-screen bg-white p-6">
+        <div className="max-w-7xl mx-auto">
+          <p className="text-gray-500">Loading statistician...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (statQuery.error || !statQuery.data) {
+    return (
+      <div className="min-h-screen bg-white p-6">
+        <div className="max-w-7xl mx-auto">
+          <p className="text-red-600">
+            {statQuery.error instanceof Error ? statQuery.error.message : 'Statistician not found'}
+          </p>
+          <button
+            onClick={() => navigate('/statisticians')}
+            className="mt-4 text-[#21409A] hover:underline"
+          >
+            Back to Statisticians
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const display = buildDisplayStatistician(statQuery.data as Statistician);
 
   const games: Game[] = [
     {
@@ -124,16 +232,15 @@ const ViewStat: React.FC = () => {
               {/* Statistician Info */}
               <div className="flex-1">
                 <span className="text-sm text-gray-500">Statistician</span>
-                <h2 className="text-4xl font-bold text-blue-900 mt-2">{statisticianData.name}</h2>
-                <h2 className="text-4xl font-bold text-blue-900">{statisticianData.surname}</h2>
+                <h2 className="text-4xl font-bold text-blue-900 mt-2">{display.fullName}</h2>
               </div>
 
               {/* Statistician Image */}
               <div className="relative">
                 <div className="w-90 h-80 relative mr-20 top-[2.1rem]">
                   <img
-                    src={statisticianData.image}
-                    alt={`${statisticianData.name} ${statisticianData.surname}`}
+                    src={display.image}
+                    alt={display.fullName}
                     className="relative z-10 w-full h-full object-cover rounded-2xl"
                   />
                   <div className="absolute top-4 right-4 w-8 h-6 rounded-sm flex items-center justify-center z-20">
@@ -149,20 +256,28 @@ const ViewStat: React.FC = () => {
                 <div>
                   <p className="text-sm text-gray-600">Email</p>
                   <p className="text-lg font-semibold text-blue-900">
-                    {statisticianData.email}
+                    {display.email}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Phone</p>
-                  <p className="text-lg font-semibold text-blue-900">{statisticianData.phone}</p>
+                  <p className="text-lg font-semibold text-blue-900">{display.phone}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Location</p>
-                  <p className="text-lg font-semibold text-blue-900">{statisticianData.location}</p>
+                  <p className="text-lg font-semibold text-blue-900">{display.location}</p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Games recorded</p>
-                  <p className="text-lg font-semibold text-blue-900">{statisticianData.gamesRecorded}</p>
+                  <p className="text-lg font-semibold text-blue-900">{display.gamesRecorded}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Date of birth</p>
+                  <p className="text-lg font-semibold text-blue-900">{display.dob}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Status</p>
+                  <p className="text-lg font-semibold text-blue-900">{display.status}</p>
                 </div>
               </div>
             </div>
@@ -170,7 +285,7 @@ const ViewStat: React.FC = () => {
         </div>
       </div>
 
-      {/* Games Officiated Section */}
+      {/* Games Officiated Section (placeholder until backend provides real data) */}
       <div className="px-8 py-8">
         <div className="max-w-7xl mx-auto">
           <h2 className="text-2xl font-bold text-gray-800 mb-6">Games Officiated</h2>

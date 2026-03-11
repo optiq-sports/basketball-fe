@@ -18,11 +18,11 @@ const countriesData: Record<string, string[]> = {
 };
 
 const divisionOptions = [
-  'Premier Division',
-  'Division 1',
-  'Division 2',
-  'Division 3',
-  'Junior Division',
+  { value: 'PREMIER', label: 'Premier Division' },
+  { value: 'DIVISION_1', label: 'Division 1' },
+  { value: 'DIVISION_2', label: 'Division 2' },
+  { value: 'DIVISION_3', label: 'Division 3' },
+  { value: 'JUNIOR', label: 'Junior Division' },
 ];
 
 const StartNew: React.FC = () => {
@@ -182,7 +182,9 @@ const StartNew: React.FC = () => {
                   >
                     <option value="">Select Division</option>
                     {divisionOptions.map((div) => (
-                      <option key={div} value={div}>{div}</option>
+                      <option key={div.value} value={div.value}>
+                        {div.label}
+                      </option>
                     ))}
                   </select>
                 </div>
