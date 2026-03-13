@@ -244,14 +244,23 @@ const TournamentsListing: React.FC = () => {
                   <FiTrash size={18} className="text-red-600" />
                 </button>
               </div>
-               <div className="relative h-79 overflow-hidden">
-                 <img
-                   src={tournament.flyer ?? '/flyer.png'}
-                   alt="Tournament Flyer"
-                   style={{ width: '286px', height: '300px', top: '14px', left: '12px', opacity: 1, borderRadius: '6px' }}
-                   className="absolute object-cover"
-                 />
-               </div>
+              <div className="relative h-79 overflow-hidden">
+                {tournament.flyer ? (
+                  <img
+                    src={tournament.flyer}
+                    alt="Tournament Flyer"
+                    style={{ width: '286px', height: '300px', top: '14px', left: '12px', opacity: 1, borderRadius: '6px' }}
+                    className="absolute object-cover"
+                  />
+                ) : (
+                  <div
+                    style={{ width: '286px', height: '300px', top: '14px', left: '12px', borderRadius: '6px' }}
+                    className="absolute bg-gray-100 flex items-center justify-center text-xs text-gray-400"
+                  >
+                    No flyer
+                  </div>
+                )}
+              </div>
                <div className="p-4">
                  <h3 className="text-lg font-semibold text-gray-800 mb-3">{tournament.name}</h3>
                 <div className="flex items-center justify-start gap-4">
@@ -295,7 +304,10 @@ const TournamentsListing: React.FC = () => {
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white"
                   >
                     <option value="PREMIER">Premier</option>
-                    <option value="OTHER">Other</option>
+                    <option value="DIVISION_1">Division 1</option>
+                    <option value="DIVISION_2">Division 2</option>
+                    <option value="DIVISION_3">Division 3</option>
+                    <option value="JUNIOR">Junior</option>
                   </select>
                 </div>
                 <div className="grid grid-cols-2 gap-4">

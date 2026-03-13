@@ -327,8 +327,8 @@ class ApiClient {
       teamId: string,
       playerId: string,
       data: TeamSetCaptainBody
-    ): Promise<ApiResponse<unknown>> => {
-      return this.request(`/teams/${teamId}/players/${playerId}/captain`, {
+    ): Promise<ApiResponse<Team>> => {
+      return this.request<Team>(`/teams/${teamId}/players/${playerId}/captain`, {
         method: 'PATCH',
         body: JSON.stringify(data),
       });
@@ -539,6 +539,49 @@ class ApiClient {
     delete: async (id: string): Promise<boolean> => {
       await this.request(`/statistician/${id}`, { method: 'DELETE' });
       return true;
+    },
+
+    /** PATCH /statistician/:id/photo - multipart form field "photo". Returns updated Statistician with photo URL. */
+    uploadPhoto: async (
+      id: string,
+      file: File
+    ): Promise<ApiResponse<Statistician>> => {
+      const formData = new FormData();
+      formData.append('photo', file);
+
+      const url = `${API_BASE}/statistician/${id}/photo`;
+      const token = localStorage.getItem(TOKEN_KEY);
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const response = await fetch(url, {
+        method: 'PATCH',
+        headers,
+        body: formData,
+      });
+
+      let data: { data?: Statistician; message?: string; code?: string; details?: unknown } = {};
+      try {
+        data = await response.json();
+      } catch {
+        // non-JSON response
+      }
+
+      if (!response.ok) {
+        throw new ApiError(
+          (data as { message?: string }).message || 'Failed to upload statistician photo',
+          response.status,
+          (data as { code?: string }).code,
+          (data as { details?: unknown }).details
+        );
+      }
+
+      return {
+        ok: true,
+        data: (data as { data?: Statistician }).data ?? (data as unknown as Statistician),
+        message: (data as { message?: string }).message,
+        status: response.status,
+      };
     },
   };
 }

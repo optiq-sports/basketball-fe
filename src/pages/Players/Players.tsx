@@ -310,24 +310,90 @@ const Players: React.FC = () => {
     };
 
     const runSubmit = async () => {
-      let photoUrl: string | undefined;
-      if (portraitFile) {
-        try {
-          const res = await uploadImageFile.mutateAsync(portraitFile);
-          photoUrl = res.url;
-        } catch (err) {
-          alert(err instanceof Error ? err.message : 'Photo upload failed');
-          return;
-        }
-      }
       if (editingPlayer) {
-        doUpdate(photoUrl);
-      } else {
-        if (!formData.teamId) {
-          alert('Please select a team');
-          return;
+        // For edits, keep current behavior: upload (if any) then update.
+        let photoUrl: string | undefined;
+        if (portraitFile) {
+          try {
+            const res = await uploadImageFile.mutateAsync(portraitFile);
+            photoUrl = res.url;
+          } catch (err) {
+            alert(err instanceof Error ? err.message : 'Photo upload failed');
+            return;
+          }
         }
-        doCreate(photoUrl);
+        doUpdate(photoUrl);
+        return;
+      }
+
+      // For creates, avoid uploading images before we know the user can create players.
+      if (!formData.teamId) {
+        alert('Please select a team');
+        return;
+      }
+
+      // 1) Create player without photo first.
+      let created: ApiPlayer | undefined;
+      try {
+        const payload: Parameters<typeof createPlayer.mutateAsync>[0] = {
+          teamId: formData.teamId,
+          firstName: formData.name,
+          lastName: formData.surname,
+          jerseyNumber: jerseyNum,
+          position,
+          height: formData.height || undefined,
+          dateOfBirth: formData.dob || undefined,
+        };
+        created = await createPlayer.mutateAsync(payload);
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'Failed to create player');
+        return;
+      }
+
+      // 2) If no portrait selected, we're done.
+      if (!portraitFile || !created) {
+        setIsModalOpen(false);
+        setPortraitFile(null);
+        setPortraitPreview(null);
+        setFormData({
+          name: '',
+          surname: '',
+          number: '',
+          teamId: '',
+          teamName: '',
+          position: 'POINT_GUARD',
+          country: '',
+          height: '',
+          dob: '',
+        });
+        return;
+      }
+
+      // 3) If portrait exists, upload and then patch the player with the photo URL.
+      try {
+        const res = await uploadImageFile.mutateAsync(portraitFile);
+        await updatePlayer.mutateAsync({
+          id: created.id,
+          data: { photo: res.url },
+        });
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'Photo upload failed');
+        // Even if photo upload fails, the player was created successfully.
+      } finally {
+        setIsModalOpen(false);
+        setPortraitFile(null);
+        setPortraitPreview(null);
+        setFormData({
+          name: '',
+          surname: '',
+          number: '',
+          teamId: '',
+          teamName: '',
+          position: 'POINT_GUARD',
+          country: '',
+          height: '',
+          dob: '',
+        });
       }
     };
 

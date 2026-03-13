@@ -41,17 +41,38 @@ function buildDisplayStatistician(stat: Statistician | undefined): {
     };
   }
 
+  const profile = stat.profile as
+    | {
+        photos?: string[];
+        phone?: string;
+        email?: string;
+        country?: string;
+        state?: string;
+        dobDay?: number;
+        dobMonth?: number;
+        dobYear?: number;
+      }
+    | undefined;
+
   const firstName = stat.firstName ?? stat.name ?? '';
   const lastName = stat.lastName ?? '';
-  const nameBase = firstName && lastName ? `${firstName} ${lastName}` : (stat.name as string | undefined) ?? (stat.email as string | undefined) ?? '';
+  const nameBase =
+    firstName && lastName
+      ? `${firstName} ${lastName}`
+      : (stat.name as string | undefined) ??
+        (profile?.email as string | undefined) ??
+        (stat.email as string | undefined) ??
+        '';
   const fullName = nameBase || '—';
 
   const loc =
-    [stat.state as string | undefined, stat.country as string | undefined]
+    [
+      (profile?.state as string | undefined) ?? (stat.state as string | undefined),
+      (profile?.country as string | undefined) ?? (stat.country as string | undefined),
+    ]
       .filter(Boolean)
       .join(', ') || '—';
 
-  const profile = stat.profile as { photos?: string[] } | undefined;
   const primaryPhoto =
     profile?.photos?.[0] ??
     (stat as { photo?: string }).photo ??
@@ -64,9 +85,9 @@ function buildDisplayStatistician(stat: Statistician | undefined): {
       ? String((stat as { matchesCount?: number }).matchesCount)
       : '—';
 
-  const dobDay = (stat as { dobDay?: number }).dobDay;
-  const dobMonth = (stat as { dobMonth?: number }).dobMonth;
-  const dobYear = (stat as { dobYear?: number }).dobYear;
+  const dobDay = (profile?.dobDay as number | undefined) ?? (stat as { dobDay?: number }).dobDay;
+  const dobMonth = (profile?.dobMonth as number | undefined) ?? (stat as { dobMonth?: number }).dobMonth;
+  const dobYear = (profile?.dobYear as number | undefined) ?? (stat as { dobYear?: number }).dobYear;
   let dob = '—';
   if (dobDay && dobMonth && dobYear) {
     const d = new Date(dobYear, dobMonth - 1, dobDay);
@@ -79,8 +100,8 @@ function buildDisplayStatistician(stat: Statistician | undefined): {
 
   return {
     fullName,
-    email: stat.email ?? '—',
-    phone: (stat.phone as string | undefined) ?? '—',
+    email: (profile?.email as string | undefined) ?? stat.email ?? '—',
+    phone: (profile?.phone as string | undefined) ?? (stat.phone as string | undefined) ?? '—',
     location: loc,
     image: primaryPhoto ?? '/stat.png',
     gamesRecorded,

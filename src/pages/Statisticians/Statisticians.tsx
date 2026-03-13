@@ -7,7 +7,7 @@ import {
   useCreateStatistician,
   useUpdateStatistician,
   useDeleteStatistician,
-  useUploadFile,
+  useUploadStatisticianPhoto,
 } from '../../api/hooks';
 import type { Statistician as ApiStatistician } from '../../types/api';
 
@@ -19,6 +19,21 @@ interface StatisticianDisplay {
   image: string;
   email: string;
   status: string;
+}
+
+function generatePassword(length = 12): string {
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower = 'abcdefghjkmnpqrstuvwxyz';
+  const digits = '23456789';
+  const all = upper + lower + digits;
+  let result = '';
+  result += upper[Math.floor(Math.random() * upper.length)];
+  result += lower[Math.floor(Math.random() * lower.length)];
+  result += digits[Math.floor(Math.random() * digits.length)];
+  for (let i = 3; i < length; i++) {
+    result += all[Math.floor(Math.random() * all.length)];
+  }
+  return result.split('').sort(() => Math.random() - 0.5).join('');
 }
 
 const Statisticians: React.FC = () => {
@@ -34,27 +49,41 @@ const Statisticians: React.FC = () => {
   const createStatistician = useCreateStatistician();
   const updateStatistician = useUpdateStatistician();
   const deleteStatistician = useDeleteStatistician();
-  const uploadFile = useUploadFile();
+  const uploadStatisticianPhoto = useUploadStatisticianPhoto();
 
   const statisticians = useMemo(() => {
     return (statisticiansQuery.data ?? []).map((s: ApiStatistician): StatisticianDisplay => {
+      const profile = s.profile as
+        | {
+            photos?: string[];
+            phone?: string;
+            email?: string;
+            country?: string;
+            state?: string;
+          }
+        | undefined;
+
       const firstName = s.firstName ?? s.name ?? '';
       const lastName = s.lastName ?? '';
-      const name = firstName && lastName ? firstName : (s.name ?? s.email ?? '');
-      const surname = lastName || (name ? '' : (s.email ?? ''));
-      const loc = [s.state, s.country].filter(Boolean).join(', ') || '—';
-      const profile = (s as { profile?: { photos?: string[] } }).profile;
+      const name = firstName && lastName ? firstName : (s.name ?? (profile?.email as string | undefined) ?? s.email ?? '');
+      const surname = lastName || (name ? '' : (profile?.email as string | undefined) ?? (s.email ?? ''));
+
+      const country = (profile?.country as string | undefined) ?? (s.country as string | undefined);
+      const state = (profile?.state as string | undefined) ?? (s.state as string | undefined);
+      const loc = [state, country].filter(Boolean).join(', ') || '—';
+
       const primaryPhoto =
         profile?.photos?.[0] ??
         (s as { photo?: string }).photo ??
         (s.image as string | undefined);
+
       return {
         id: s.id,
         name: name || '—',
         surname: surname || '',
         location: loc,
         image: primaryPhoto ?? '/stat.png',
-        email: s.email ?? '',
+        email: (profile?.email as string | undefined) ?? s.email ?? '',
         status: (s.status as string) ?? 'ACTIVE',
       };
     });
@@ -73,6 +102,7 @@ const Statisticians: React.FC = () => {
   });
   const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
   const [profilePhotoPreview, setProfilePhotoPreview] = useState<string | null>(null);
+  const [passwordCopied, setPasswordCopied] = useState(false);
 
   const filteredStatisticians = useMemo(() => {
     let filtered = statisticians;
@@ -104,6 +134,7 @@ const Statisticians: React.FC = () => {
     setEditingStatistician(null);
     setProfilePhotoFile(null);
     setProfilePhotoPreview(null);
+    setPasswordCopied(false);
     setFormData({
       firstName: '',
       lastName: '',
@@ -124,15 +155,23 @@ const Statisticians: React.FC = () => {
     setProfilePhotoFile(null);
     setProfilePhotoPreview(s.image && s.image !== '/stat.png' ? s.image : null);
     const apiStat = (statisticiansQuery.data ?? []).find((x) => x.id === s.id) as ApiStatistician | undefined;
+    const prof = apiStat?.profile as
+      | {
+          phone?: string;
+          country?: string;
+          state?: string;
+          homeAddress?: string;
+        }
+      | undefined;
     setFormData({
       firstName: apiStat?.firstName ?? s.name,
       lastName: apiStat?.lastName ?? s.surname,
       email: s.email,
       password: '',
-      phone: (apiStat?.phone as string) ?? '',
-      country: (apiStat?.country as string) ?? '',
-      state: (apiStat?.state as string) ?? '',
-      homeAddress: (apiStat?.homeAddress as string) ?? '',
+      phone: (prof?.phone as string | undefined) ?? (apiStat?.phone as string | undefined) ?? '',
+      country: (prof?.country as string | undefined) ?? (apiStat?.country as string | undefined) ?? '',
+      state: (prof?.state as string | undefined) ?? (apiStat?.state as string | undefined) ?? '',
+      homeAddress: (prof?.homeAddress as string | undefined) ?? (apiStat?.homeAddress as string | undefined) ?? '',
       status: (apiStat?.status as 'ACTIVE' | 'INACTIVE') ?? 'ACTIVE',
     });
     setIsModalOpen(true);
@@ -150,19 +189,10 @@ const Statisticians: React.FC = () => {
       alert('Email is required');
       return;
     }
-    let imageUrl: string | undefined;
-    if (profilePhotoFile) {
-      try {
-        const res = await uploadFile.mutateAsync(profilePhotoFile);
-        imageUrl = res.url;
-      } catch (err) {
-        alert(err instanceof Error ? err.message : 'Profile picture upload failed');
-        return;
-      }
-    }
     if (editingStatistician) {
-      updateStatistician.mutate(
-        {
+      // For edits, first update core fields; only if that succeeds do we upload a new photo.
+      try {
+        await updateStatistician.mutateAsync({
           id: editingStatistician.id,
           data: {
             firstName: formData.firstName || undefined,
@@ -172,25 +202,34 @@ const Statisticians: React.FC = () => {
             country: formData.country || undefined,
             state: formData.state || undefined,
             homeAddress: formData.homeAddress || undefined,
-            ...(imageUrl ? { photo: imageUrl } : {}),
           },
-        },
-        {
-          onSuccess: () => {
-            setIsModalOpen(false);
-            setEditingStatistician(null);
-            resetForm();
-          },
-          onError: (e) => alert(e.message),
+        });
+      } catch (e) {
+        alert(e instanceof Error ? e.message : 'Failed to update statistician');
+        return;
+      }
+
+      if (profilePhotoFile) {
+        try {
+          await uploadStatisticianPhoto.mutateAsync({ id: editingStatistician.id, file: profilePhotoFile });
+        } catch (err) {
+          alert(err instanceof Error ? err.message : 'Profile picture upload failed');
+          // keep going; core update already succeeded
         }
-      );
+      }
+
+      setIsModalOpen(false);
+      setEditingStatistician(null);
+      resetForm();
     } else {
       if (!formData.password?.trim()) {
         alert('Password is required for new statistician');
         return;
       }
-      createStatistician.mutate(
-        {
+      // For creates, avoid uploading photos until we know the user can create statisticians.
+      let created: ApiStatistician | undefined;
+      try {
+        created = await createStatistician.mutateAsync({
           email: formData.email.trim(),
           password: formData.password,
           firstName: formData.firstName || undefined,
@@ -200,17 +239,24 @@ const Statisticians: React.FC = () => {
           country: formData.country || undefined,
           state: formData.state || undefined,
           homeAddress: formData.homeAddress || undefined,
-          ...(imageUrl ? { photo: imageUrl } : {}),
-        },
-        {
-          onSuccess: () => {
-            setIsModalOpen(false);
-            setEditingStatistician(null);
-            resetForm();
-          },
-          onError: (e) => alert(e.message),
+        });
+      } catch (e) {
+        alert(e instanceof Error ? e.message : 'Failed to create statistician');
+        return;
+      }
+
+      if (profilePhotoFile && created) {
+        try {
+          await uploadStatisticianPhoto.mutateAsync({ id: created.id, file: profilePhotoFile });
+        } catch (err) {
+          alert(err instanceof Error ? err.message : 'Profile picture upload failed');
+          // keep the created statistician even if photo upload fails
         }
-      );
+      }
+
+      setIsModalOpen(false);
+      setEditingStatistician(null);
+      resetForm();
     }
   };
 
@@ -228,6 +274,7 @@ const Statisticians: React.FC = () => {
     });
     setProfilePhotoFile(null);
     setProfilePhotoPreview(null);
+    setPasswordCopied(false);
   };
 
   return (
@@ -442,16 +489,44 @@ const Statisticians: React.FC = () => {
                 />
               </div>
               {!editingStatistician && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Password *</label>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Password *</label>
+                <div className="flex gap-2">
                   <input
                     type="password"
                     placeholder="••••••••"
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setFormData((prev) => ({ ...prev, password: generatePassword() }))}
+                    className="px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 hover:bg-gray-100 text-sm font-medium whitespace-nowrap"
+                    title="Generate password"
+                  >
+                    Generate
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (formData.password) {
+                        navigator.clipboard.writeText(formData.password);
+                        setPasswordCopied(true);
+                        window.setTimeout(() => setPasswordCopied(false), 2000);
+                      }
+                    }}
+                    disabled={!formData.password}
+                    className="px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium whitespace-nowrap"
+                    title="Copy password"
+                  >
+                    Copy
+                  </button>
                 </div>
+                {passwordCopied && (
+                  <p className="text-xs text-green-600 mt-1">Password copied to clipboard</p>
+                )}
+              </div>
               )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>

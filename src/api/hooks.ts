@@ -391,7 +391,7 @@ export function useSetTeamCaptain() {
     }: { teamId: string; playerId: string; body: TeamSetCaptainBody }) => {
       const res = await apiClient.teams.setCaptain(teamId, playerId, body);
       if (!res.ok) throw new Error(res.message ?? 'Failed to set team captain');
-      return res.data;
+      return res.data!;
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.team(variables.teamId) });
@@ -718,6 +718,21 @@ export function useUpdateStatistician() {
     }: { id: string; data: StatisticianUpdateBody }) => {
       const res = await apiClient.statistician.update(id, data);
       if (!res.ok) throw new Error(res.message ?? 'Failed to update statistician');
+      return res.data!;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.statisticians() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.statistician(data.id) });
+    },
+  });
+}
+
+export function useUploadStatisticianPhoto() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, file }: { id: string; file: File }) => {
+      const res = await apiClient.statistician.uploadPhoto(id, file);
+      if (!res.ok) throw new Error(res.message ?? 'Failed to upload statistician photo');
       return res.data!;
     },
     onSuccess: (data) => {

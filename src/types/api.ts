@@ -104,6 +104,7 @@ export interface AdminUpdateBody {
   name?: string;
   status?: 'ACTIVE' | 'INACTIVE';
   password?: string;
+  role?: 'SUPER_ADMIN' | 'ADMIN' | 'STATISTICIAN';
 }
 
 // Statistician (POST/GET/PATCH/DELETE /statistician)
@@ -139,7 +140,6 @@ export interface StatisticianCreateBody {
   state?: string;
   homeAddress?: string;
   photo?: string;
-  image?: string;
   bio?: string;
   photos?: string[];
   dobDay?: number;
@@ -158,7 +158,6 @@ export interface StatisticianUpdateBody {
   state?: string;
   homeAddress?: string;
   photo?: string;
-  image?: string;
 }
 
 // Player
@@ -320,7 +319,12 @@ export interface TeamSetCaptainBody {
 }
 
 // Tournament
-export type TournamentDivision = 'PREMIER' | string;
+export type TournamentDivision =
+  | 'PREMIER'
+  | 'DIVISION_1'
+  | 'DIVISION_2'
+  | 'DIVISION_3'
+  | 'JUNIOR';
 
 export interface Tournament {
   id: string;

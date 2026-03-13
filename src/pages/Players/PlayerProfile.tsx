@@ -117,7 +117,11 @@ const PlayerProfile: React.FC = () => {
             <div className="relative">
               <div className="w-90 h-80 relative mr-20 top-[2.1rem]">
                 <img
-                  src={(player as { image?: string }).image ?? '/player1.png'}
+                  src={
+                    (player as { photo?: string }).photo ??
+                    (player as { image?: string }).image ??
+                    '/player1.png'
+                  }
                   alt={`${player.firstName} ${player.lastName}`}
                   className="relative z-10 w-full h-full object-cover rounded-2xl"
                 />
