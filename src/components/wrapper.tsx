@@ -1,4 +1,4 @@
-import React, { useState, Suspense, lazy } from 'react'
+import React, { useState, Suspense, lazy, useEffect } from 'react'
 import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useProfile, queryKeys } from '../api/hooks'
@@ -56,6 +56,14 @@ const Wrapper: React.FC = () => {
 
   const profileData = profile.data;
   const rawRole = (profileData as { role?: string } | undefined)?.role;
+
+  // Statisticians have no access to the main layout — redirect them to their only page
+  useEffect(() => {
+    if (rawRole === 'STATISTICIAN') {
+      navigate('/match-key', { replace: true });
+    }
+  }, [rawRole, navigate]);
+
   const storedName = typeof window !== 'undefined' ? localStorage.getItem('user_name') : null;
   const userName = storedName
     || (profileData as { name?: string; email?: string } | undefined)?.name?.trim()

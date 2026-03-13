@@ -16,7 +16,14 @@ const AdminLoginPage: React.FC = () => {
     login.mutate(
       { email, password },
       {
-        onSuccess: () => navigate('/dashboard'),
+        onSuccess: (res) => {
+          const user = res.data?.user as { role?: string } | undefined;
+          if (user?.role === 'STATISTICIAN') {
+            navigate('/match-key');
+          } else {
+            navigate('/dashboard');
+          }
+        },
       }
     );
   };
