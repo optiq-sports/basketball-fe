@@ -94,11 +94,7 @@ const StatDash: React.FC = () => {
 
   // ── Player actions ───────────────────────────────────────────────────────────
   const handleFoul = (teamNum: 1 | 2) => {
-    const teamName = teamNum === 1 ? 'Team 1' : 'Team 2';
-    const playerNum = teamNum === 1 ? selectedTeam1Player : selectedTeam2Player;
-    addEvent(teamName, playerNum ? `#${playerNum}` : teamName, 'foul', 'personal foul');
-    if (teamNum === 1) setTeam2Score((s) => s + 1);
-    else setTeam1Score((s) => s + 1);
+    // Score updates are handled inside the Foul Wizard (per free throw made)
   };
 
   const handleTurnover = (teamNum: 1 | 2) => {
@@ -194,6 +190,10 @@ const StatDash: React.FC = () => {
             onFoul2={() => handleFoul(2)}
             onTurnover2={() => handleTurnover(2)}
             onAddEvent={addEvent}
+            onAddScore={(team, pts) => {
+              if (team === 1) setTeam1Score((s) => s + pts);
+              else setTeam2Score((s) => s + pts);
+            }}
           />
         </div>
         {/* ── Game log — compact 112 px strip, scrolls internally ────────────── */}

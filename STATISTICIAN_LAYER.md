@@ -502,6 +502,7 @@ interface CourtSectionProps {
   onFoul2: () => void;
   onTurnover2: () => void;
   onAddEvent?: (team: string, player: string, action: string, result: string) => void;
+  onAddScore?: (team: 1 | 2, points: number) => void;  // called on every scored point
 }
 ```
 
@@ -541,9 +542,11 @@ playerStats: Record<string, { pts: number; pf: number }>
 ```
 
 Updated automatically as wizards complete:
-- **Made shot** → `addPts(team, num, shotOption.points)`
-- **Made free throw** → `addPts(receiverTeam, receiverNum, 1)`
+- **Made shot** → `addPts(team, num, shotOption.points)` + `onAddScore(team, points)` → updates Scoreboard
+- **Made free throw** → `addPts(receiverTeam, receiverNum, 1)` + `onAddScore(receiverTeam, 1)` → updates Scoreboard
 - **Foul committed** → `addPf(foulerTeam, foulerNum)`
+
+> **Score flow:** `CourtSection.onAddScore` → `StatDash` increments `team1Score` / `team2Score` → passed to `Scoreboard` as props. The scoreboard reflects every point in real time.
 
 ---
 
@@ -585,8 +588,9 @@ Step 2 — SELECT ASSIST PLAYER (or No Assist)
 ```
 
 **On complete:**
-- `addPts(player.team, player.num, shotOption.points)` — updates live stats table.
-- Adds a `'shot'` marker at click coordinates.
+- `addPts(player.team, player.num, shotOption.points)` — updates live stats table PTS column.
+- `onAddScore(player.team, shotOption.points)` — updates Scoreboard totals in real time.
+- Adds a `'shot'` marker at click coordinates (stamped with `playerNum` + `playerTeam`).
 - Calls `onAddEvent(team, player, shotType, result)`.
 
 **Shot options data:**
@@ -679,8 +683,9 @@ Panel 5 — FREE THROW RESULTS
 ```
 
 **On complete:**
-- `addPf(foulerTeam, foulerNum)` — PF++ for the fouler.
-- `addPts(receiverTeam, receiverNum, 1)` per **made** free throw.
+- `addPf(foulerTeam, foulerNum)` — PF++ for the fouler (stats table turns red).
+- Per **made** free throw: `addPts(receiverTeam, receiverNum, 1)` + `onAddScore(receiverTeam, 1)` → both the stats table PTS and the Scoreboard total update.
+- Missed free throws score nothing.
 - Logs the foul event + one event per free throw attempt.
 
 ---
@@ -1006,8 +1011,8 @@ The following items are **not yet wired to the backend** and must be replaced du
 | Player rosters | `CourtSection.tsx` `TEAM1_PLAYERS` / `TEAM2_PLAYERS` | Loaded from match roster API |
 | Starters roster | `Starts.tsx` `INITIAL_TEAMS` | Loaded from `GET /matches/:id/roster` |
 | Jump ball players | `JumpBall.tsx` numbers 1–5 | Loaded from confirmed starters |
-| Score update on made shot | `StatDash.tsx` `team1Score` / `team2Score` local state | Synced from `POST /events` response |
-| Score update on free throw made | Inside `CourtSection foulComplete` | Synced from `POST /events/batch` response |
+| Score update on made shot | ~~`StatDash.tsx` local state~~ **✅ Wired** — `CourtSection.onAddScore` updates `team1Score`/`team2Score` in real time | On backend integration, override with score returned from `POST /events` |
+| Score update on free throw made | ~~Inside `CourtSection foulComplete`~~ **✅ Wired** — same `onAddScore` callback per made FT | On backend integration, override with score from `POST /events/batch` |
 | Game events storage | `StatDash.tsx useState<GameEvent[]>` | `POST /events` + optionally `GET /events` on reconnect |
 | Per-player stats (PTS/PF) | `CourtSection playerStats` state | `POST /events` response or separate `GET /matches/:id/stats` |
 | SubstitutionModal initial rosters | `SubstitutionModal.tsx` `INIT_COURT` / `INIT_BENCH` | Loaded from confirmed starters |
@@ -1029,9 +1034,9 @@ In order of the game flow:
 
 5. **`JumpBall.tsx`**: Replace `PLAYERS [1–5]` with actual starter names from context. On Continue call `POST /matches/:matchId/jump-ball`. Set initial `possession` in StatDash from the response `initialPossession`.
 
-6. **`StatDash.tsx`**: Load `team1Name`, `team2Name`, `team1Color`, `team2Color` from match context instead of constants. After every wizard completion, call the relevant event endpoint and sync scores from the response.
+6. **`StatDash.tsx`**: Load `team1Name`, `team2Name`, `team1Color`, `team2Color` from match context instead of constants. After every wizard completion, call the relevant event endpoint and **replace the locally-incremented score with the value returned by the backend** (`homeScore` / `awayScore` in the response) to keep the two in sync. The `onAddScore` callback already increments the score locally — on backend integration, swap it to set the score from the API response instead of adding locally.
 
-7. **`CourtSection.tsx`**: Replace `TEAM1_PLAYERS` / `TEAM2_PLAYERS` with props passed down from StatDash (loaded from the API roster). Pass `playerStats` updates back to StatDash via a callback so the parent can sync with the backend.
+7. **`CourtSection.tsx`**: Replace `TEAM1_PLAYERS` / `TEAM2_PLAYERS` with props passed down from StatDash (loaded from the API roster). `onAddScore` is already wired — no changes needed there.
 
 8. **`SubstitutionModal.tsx`**: Replace `INIT_COURT` / `INIT_BENCH` with the live roster passed as props from StatDash.
 
@@ -1041,4 +1046,4 @@ In order of the game flow:
 
 ---
 
-*Last updated: generated from source — `src/pages/matchKey/MatchKey.tsx`, `src/pages/staters/Starts.tsx`, `src/pages/choose/ChooseSides.tsx`, `src/pages/Jump/JumpBall.tsx`, `src/pages/stat/StatDash.tsx`, `src/pages/stat/components/CourtSection.tsx`, `src/pages/stat/components/Scoreboard.tsx`, `src/pages/stat/components/MenuBar.tsx`, `src/pages/stat/components/GameLog.tsx`, `src/pages/stat/components/SubstitutionModal.tsx`, `src/pages/stat/components/TimeoutModal.tsx`, `src/routes.tsx`.*
+*Last updated: v2 — reflects the following post-initial changes: `onAddScore` prop added to `CourtSection` (real-time scoreboard updates from made shots and free throws); `handleFoul` in `StatDash` no longer auto-increments score (foul wizard handles all FT scoring precisely); `GameLog` restored as a compact `h-28` strip inside the `flex-1` layout column; per-player PTS/PF live display confirmed wired in `PlayerStatsTable`.*

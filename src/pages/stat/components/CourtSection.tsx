@@ -31,6 +31,7 @@ export interface CourtSectionProps {
   onFoul2: () => void;
   onTurnover2: () => void;
   onAddEvent?: (team: string, player: string, action: string, result: string) => void;
+  onAddScore?: (team: 1 | 2, points: number) => void;
 }
 
 // ─── Mock players for each team ───────────────────────────────────────────────
@@ -1015,6 +1016,7 @@ const CourtSection: React.FC<CourtSectionProps> = ({
   onSelectTeam1Player, onSelectTeam2Player,
   onFoul1, onTurnover1, onFoul2, onTurnover2,
   onAddEvent,
+  onAddScore,
 }) => {
   const [markers,         setMarkers]         = useState<CourtMarker[]>([]);
   const [wizard,          setWizard]          = useState<WizardData | null>(null);
@@ -1076,8 +1078,9 @@ const CourtSection: React.FC<CourtSectionProps> = ({
     const resultStr = `${shotOption.name}${fastBreak ? ' (fast break)' : ''} — ${shotOption.points}pt`;
     const assistStr = assist ? `Assist: #${assist.num} ${assist.name}` : '';
 
-    // Credit points to player
+    // Credit points to player and update scoreboard
     addPts(player.team, player.num, shotOption.points);
+    onAddScore?.(player.team, shotOption.points);
 
     // Add shot marker on court
     setMarkers((prev) => [...prev, {
@@ -1200,7 +1203,10 @@ const CourtSection: React.FC<CourtSectionProps> = ({
       if (made !== null) {
         const assistNote = i === 0 && assist !== 'none' && assist ? ` | Assist: ${assist.label}` : '';
         onAddEvent?.(receiverTeam ?? '', receiver?.label ?? '', `FT ${i + 1}/${freeThrowCount}`, (made ? 'Made' : 'Missed') + assistNote);
-        if (made && receiver?.num) addPts(receiver.team, receiver.num, 1);
+        if (made && receiver?.num) {
+          addPts(receiver.team, receiver.num, 1);
+          onAddScore?.(receiver.team, 1);
+        }
       }
     });
     setFoulWizard(null);
