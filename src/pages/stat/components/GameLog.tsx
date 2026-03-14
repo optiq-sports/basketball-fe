@@ -9,7 +9,7 @@ const HEADERS = ['Period', 'Clock', 'Team', 'Player', 'Action', 'Result'];
 
 const GameLog: React.FC<GameLogProps> = ({ events }) => (
   <div className="h-28 shrink-0 overflow-y-auto border-t border-gray-200 bg-white">
-    <table className="w-full border-collapse">
+    <table className="w-full border-collapse text-sm">
       <thead className="sticky top-0 z-10">
         <tr style={{ backgroundColor: '#1E4DB7' }}>
           {HEADERS.map((h) => (

@@ -2,6 +2,10 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiArrowLeft, FiArrowRight } from 'react-icons/fi';
 
+const HEADER_BG = '#E0F2FE';  // light blue
+const FOOTER_BG = '#F3F4F6';  // light gray
+const TITLE_COLOR = '#1E3A8A'; // dark blue
+
 const TEAM_1_COLOR = '#E63946';
 const TEAM_2_COLOR = '#D4A017';
 
@@ -176,106 +180,104 @@ const ChooseSides: React.FC = () => {
   const rightDir: 'left' | 'right' = courtType === 1 ? 'right' : 'left';
 
   return (
-    <div className="h-screen bg-[#F0F2F5] flex flex-col overflow-hidden">
-      {/* Back — fixed top left */}
-      <div className="fixed top-4 left-6 z-10">
+    <div className="h-screen flex flex-col overflow-hidden bg-white">
+      {/* Light blue header strip */}
+      <div className="shrink-0 h-3" style={{ backgroundColor: HEADER_BG }} />
+
+      {/* White main content */}
+      <div className="flex-1 flex flex-col min-h-0 bg-white">
+        {/* Title — dark blue, bold, centered */}
+        <h1 className="text-xl font-bold text-center pt-6 pb-4 shrink-0" style={{ color: TITLE_COLOR }}>
+          Choose Shooting Sides
+        </h1>
+
+        {/* Main: Type selector left + court center */}
+        <div className="flex flex-1 items-center justify-center px-6 gap-8 overflow-hidden min-h-0">
+          {/* Left — Type 1 / Type 2 radio */}
+          <div className="flex flex-col gap-4 shrink-0">
+            {([1, 2] as const).map((t) => (
+              <label
+                key={t}
+                className="flex items-center gap-3 cursor-pointer select-none text-sm text-black"
+              >
+                <span className="w-4 h-4 rounded-full border-2 border-gray-300 flex items-center justify-center bg-white shrink-0">
+                  {courtType === t && (
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-600 block" />
+                  )}
+                </span>
+                <span>Type {t}</span>
+                <input
+                  type="radio"
+                  name="courtType"
+                  checked={courtType === t}
+                  onChange={() => setCourtType(t)}
+                  className="sr-only"
+                />
+              </label>
+            ))}
+          </div>
+
+          {/* Court + labels */}
+          <div className="flex flex-col items-center gap-3 flex-1 min-w-0 max-w-4xl">
+            <div className="w-full rounded-lg overflow-hidden border border-gray-200 bg-white shadow-sm">
+              <svg
+                viewBox={`0 0 ${CW} ${CH}`}
+                width="100%"
+                style={{ display: 'block' }}
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <BasketballCourt />
+                <Arrow direction={leftDir} color={leftColor} />
+                <Arrow direction={rightDir} color={rightColor} />
+                <g onClick={() => setSwapped((s) => !s)} style={{ cursor: 'pointer' }}>
+                  <circle cx={CX} cy={CY} r={26} fill="#000" />
+                  <g transform={`translate(${CX}, ${CY})`}>
+                    <path d="M -6 -4 L -10 0 L -6 4" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M 6 -4 L 10 0 L 6 4" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </g>
+                </g>
+              </svg>
+            </div>
+
+            {/* Team labels — rounded rectangles, white text */}
+            <div className="flex justify-between w-full px-0 gap-4">
+              <span
+                className="text-white text-sm font-bold px-5 py-2 rounded-lg shrink-0"
+                style={{ backgroundColor: leftColor }}
+              >
+                {leftLabel}
+              </span>
+              <span
+                className="text-white text-sm font-bold px-5 py-2 rounded-lg shrink-0"
+                style={{ backgroundColor: rightColor }}
+              >
+                {rightLabel}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer — light gray strip, Back left, Continue right */}
+      <div
+        className="shrink-0 flex items-center justify-between px-6 py-4"
+        style={{ backgroundColor: FOOTER_BG }}
+      >
         <button
           onClick={() => navigate('/starters')}
-          className="flex items-center gap-1.5 text-sm text-gray-700 hover:text-gray-900 font-medium transition-colors"
+          className="flex items-center gap-2 text-sm text-black font-medium hover:opacity-80 transition-opacity"
         >
-          <FiArrowLeft size={16} />
+          <FiArrowLeft size={18} />
           <span>Back</span>
         </button>
-      </div>
-
-      {/* Continue — fixed top right */}
-      <div className="fixed top-4 right-6 z-10">
         <button
           onClick={() => navigate('/jump-ball')}
-          className="flex items-center gap-1.5 text-sm text-gray-700 hover:text-gray-900 font-medium transition-colors"
+          className="flex items-center gap-2 text-sm text-black font-medium hover:opacity-80 transition-opacity"
         >
-          <FiArrowRight size={16} />
           <span>Continue</span>
+          <FiArrowRight size={18} />
         </button>
       </div>
-
-      {/* Title */}
-      <div className="pt-5 pb-3 text-center shrink-0">
-        <h1 className="text-xl font-bold text-blue-700">Choose Shooting Sides</h1>
-      </div>
-
-      {/* Main content — fills remaining height between title and bottom bar */}
-      <div className="flex flex-1 items-center justify-center px-6 gap-6 overflow-hidden">
-        {/* Type selector */}
-        <div className="flex flex-col gap-3 shrink-0">
-          {([1, 2] as const).map((t) => (
-            <label
-              key={t}
-              className="flex items-center gap-2 cursor-pointer select-none text-sm text-gray-700"
-            >
-              <span>Type {t}</span>
-              <button
-                type="button"
-                onClick={() => setCourtType(t)}
-                className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors ${
-                  courtType === t ? 'border-blue-600' : 'border-gray-400'
-                }`}
-              >
-                {courtType === t && (
-                  <span className="w-2 h-2 rounded-full bg-blue-600 block" />
-                )}
-              </button>
-            </label>
-          ))}
-        </div>
-
-        {/* Court + labels — scales to fill available space */}
-        <div className="flex flex-col items-center gap-2 flex-1 min-w-0">
-          <div className="w-full rounded-xl overflow-hidden shadow border border-gray-300 bg-white">
-            <svg
-              viewBox={`0 0 ${CW} ${CH}`}
-              width="100%"
-              style={{ display: 'block' }}
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <BasketballCourt />
-              <Arrow direction={leftDir} color={leftColor} />
-              <Arrow direction={rightDir} color={rightColor} />
-              <g onClick={() => setSwapped((s) => !s)} style={{ cursor: 'pointer' }}>
-                <circle cx={CX} cy={CY} r={26} fill="#1a1a2e" />
-                <text
-                  x={CX}
-                  y={CY + 6}
-                  textAnchor="middle"
-                  fontSize="18"
-                  fill="white"
-                  fontWeight="bold"
-                  fontFamily="sans-serif"
-                >
-                  ⇄
-                </text>
-              </g>
-            </svg>
-          </div>
-
-          {/* Team labels */}
-          <div className="flex justify-between w-full px-1">
-            <span
-              className="text-white text-xs font-bold px-4 py-1 rounded"
-              style={{ backgroundColor: leftColor }}
-            >
-              {leftLabel}
-            </span>
-            <span
-              className="text-white text-xs font-bold px-4 py-1 rounded"
-              style={{ backgroundColor: rightColor }}
-            >
-              {rightLabel}
-            </span>
-          </div>
-        </div>
-      </div>
-
     </div>
   );
 };

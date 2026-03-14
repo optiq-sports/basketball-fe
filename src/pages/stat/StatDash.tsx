@@ -94,7 +94,10 @@ const StatDash: React.FC = () => {
 
   // ── Player actions ───────────────────────────────────────────────────────────
   const handleFoul = (teamNum: 1 | 2) => {
-    // Score updates are handled inside the Foul Wizard (per free throw made)
+    const teamName = teamNum === 1 ? 'Team 1' : 'Team 2';
+    const playerNum = teamNum === 1 ? selectedTeam1Player : selectedTeam2Player;
+    addEvent(teamName, playerNum ? `#${playerNum}` : teamName, 'foul', 'personal foul');
+    // Score updates come from CourtSection via onAddScore (made shots + made FTs only)
   };
 
   const handleTurnover = (teamNum: 1 | 2) => {
@@ -171,7 +174,7 @@ const StatDash: React.FC = () => {
         onSub={handleSub}
       />
 
-      {/* ── Court + game log — share the remaining height ────────────────────── */}
+      {/* ── Court + game log — share remaining height; log fixed below court ──── */}
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
         <div className="flex-1 min-h-0">
           <CourtSection
@@ -190,13 +193,12 @@ const StatDash: React.FC = () => {
             onFoul2={() => handleFoul(2)}
             onTurnover2={() => handleTurnover(2)}
             onAddEvent={addEvent}
-            onAddScore={(team, pts) => {
-              if (team === 1) setTeam1Score((s) => s + pts);
-              else setTeam2Score((s) => s + pts);
+            onAddScore={(team, points) => {
+              if (team === 1) setTeam1Score((s) => s + points);
+              else setTeam2Score((s) => s + points);
             }}
           />
         </div>
-        {/* ── Game log — compact 112 px strip, scrolls internally ────────────── */}
         <GameLog events={events} />
       </div>
 

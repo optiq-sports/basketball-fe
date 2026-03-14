@@ -86,6 +86,34 @@ const Scoreboard: React.FC<ScoreboardProps> = ({
   return (
     <div className="bg-white border-b border-gray-200 px-4 py-2 shrink-0">
       <div className="flex items-center gap-3">
+        {/* Device status — left side, vertical */}
+        <div className="flex flex-col gap-1 shrink-0">
+          <div className="flex items-center gap-1">
+            {battery?.charging
+              ? <FiBatteryCharging size={13} className="text-green-500" />
+              : <FiBattery size={13} className={battery ? batteryColor(battery.level, false) : 'text-gray-400'} />
+            }
+            <span className={`text-[10px] font-semibold tracking-wide ${
+              battery ? batteryColor(battery.level, battery.charging) : 'text-gray-400'
+            }`}>
+              {battery
+                ? `${battery.charging ? 'CHARGING' : 'BATTERY'} ${Math.round(battery.level * 100)}%`
+                : 'BATTERY N/A'}
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            {online
+              ? <FiWifi    size={13} className="text-green-500" />
+              : <FiWifiOff size={13} className="text-red-500"   />
+            }
+            <span className={`text-[10px] font-semibold tracking-wide ${
+              online ? 'text-green-600' : 'text-red-500'
+            }`}>
+              {online ? 'CONNECTED' : 'OFFLINE'}
+            </span>
+          </div>
+        </div>
+
         {/* Team 1 card */}
         <div
           className="flex-1 bg-white rounded-lg border border-gray-100 shadow-sm px-4 py-2 flex flex-col items-center"
@@ -95,77 +123,43 @@ const Scoreboard: React.FC<ScoreboardProps> = ({
           <span className="text-4xl font-bold text-gray-900 leading-none mt-0.5">{team1Score}</span>
         </div>
 
-        {/* Clock section */}
+        {/* Clock section — quarter on top; clock + green STOP in one row; then T/O, JUMP-BALL, SUB */}
         <div className="flex flex-col items-center gap-2 shrink-0">
-          {/* Quarter label + device status — horizontal row */}
-          <div className="flex items-center gap-3">
-            <div className="bg-blue-600 text-white text-[11px] font-bold px-5 py-1 rounded-sm tracking-widest whitespace-nowrap">
-              {quarterLabel}
-            </div>
-
-            {/* Battery */}
-            <div className="flex items-center gap-1">
-              {battery?.charging
-                ? <FiBatteryCharging size={13} className="text-green-500" />
-                : <FiBattery size={13} className={battery ? batteryColor(battery.level, false) : 'text-gray-400'} />
-              }
-              <span className={`text-[10px] font-semibold tracking-wide ${
-                battery ? batteryColor(battery.level, battery.charging) : 'text-gray-400'
-              }`}>
-                {battery
-                  ? `${battery.charging ? 'CHARGING' : 'BATTERY'} ${Math.round(battery.level * 100)}%`
-                  : 'BATTERY N/A'}
-              </span>
-            </div>
-
-            {/* Network */}
-            <div className="flex items-center gap-1">
-              {online
-                ? <FiWifi    size={13} className="text-green-500" />
-                : <FiWifiOff size={13} className="text-red-500"   />
-              }
-              <span className={`text-[10px] font-semibold tracking-wide ${
-                online ? 'text-green-600' : 'text-red-500'
-              }`}>
-                {online ? 'CONNECTED' : 'OFFLINE'}
-              </span>
-            </div>
+          {/* Quarter label — blue header strip */}
+          <div className="bg-blue-600 text-white text-[11px] font-bold px-5 py-1 rounded-t tracking-widest whitespace-nowrap">
+            {quarterLabel}
           </div>
 
-          {/* Clock */}
-          <div className="bg-gray-900 rounded flex items-center gap-3 px-4 py-2">
+          {/* Clock + green START/STOP in one row (per design image) */}
+          <div className="flex items-center gap-2 bg-gray-100 rounded-b-lg px-2 py-2">
+            <div className="bg-gray-900 rounded flex items-center gap-2 px-3 py-2">
+              <button
+                title="Add 30 seconds"
+                onClick={() => onAdjustTime(30)}
+                className="text-white hover:text-gray-300 transition-colors flex flex-col items-center"
+              >
+                <FiChevronUp size={16} />
+              </button>
+              <span className="text-white font-mono text-2xl font-bold tracking-widest w-24 text-center">
+                {formatTime(timeLeft)}
+              </span>
+              <button
+                title="Remove 30 seconds"
+                onClick={() => onAdjustTime(-30)}
+                className="text-white hover:text-gray-300 transition-colors flex flex-col items-center"
+              >
+                <FiChevronDown size={16} />
+              </button>
+            </div>
             <button
-              title="Add 30 seconds"
-              onClick={() => onAdjustTime(30)}
-              className="text-white hover:text-gray-300 transition-colors"
+              onClick={onToggleClock}
+              className="py-2 px-4 rounded font-bold text-white text-sm transition-all shadow bg-green-500 hover:bg-green-600 whitespace-nowrap"
             >
-              <FiChevronUp size={16} />
-            </button>
-            <span className="text-white font-mono text-3xl font-bold tracking-widest w-28 text-center">
-              {formatTime(timeLeft)}
-            </span>
-            <button
-              title="Remove 30 seconds"
-              onClick={() => onAdjustTime(-30)}
-              className="text-white hover:text-gray-300 transition-colors"
-            >
-              <FiChevronDown size={16} />
+              {isRunning ? 'STOP' : 'START'}
             </button>
           </div>
 
-          {/* START / STOP below the clock */}
-          <button
-            onClick={onToggleClock}
-            className={`w-full py-1.5 rounded font-bold text-white text-sm transition-all shadow ${
-              isRunning
-                ? 'bg-red-500 hover:bg-red-600'
-                : 'bg-green-500 hover:bg-green-600'
-            }`}
-          >
-            {isRunning ? 'STOP' : 'START'}
-          </button>
-
-          {/* Action buttons */}
+          {/* Action buttons — T/O, JUMP-BALL, SUB */}
           <div className="flex items-center gap-2">
             {[
               { label: 'T/O', action: onTimeout },
@@ -175,7 +169,7 @@ const Scoreboard: React.FC<ScoreboardProps> = ({
               <button
                 key={label}
                 onClick={action}
-                className="px-5 py-1.5 bg-white border border-gray-300 rounded text-xs font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-colors shadow-sm"
+                className="px-5 py-1.5 bg-gray-100 border border-gray-300 rounded text-xs font-medium text-gray-700 hover:bg-gray-200 transition-colors shadow-sm"
               >
                 {label}
               </button>
@@ -191,6 +185,7 @@ const Scoreboard: React.FC<ScoreboardProps> = ({
           <span className="text-sm font-bold text-gray-800 tracking-widest">{team2Name}</span>
           <span className="text-4xl font-bold text-gray-900 leading-none mt-0.5">{team2Score}</span>
         </div>
+
       </div>
     </div>
   );
