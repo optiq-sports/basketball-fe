@@ -145,37 +145,39 @@ const StatDash: React.FC = () => {
       {/* ── Top menu bar ─────────────────────────────────────────────────────── */}
       <MenuBar />
 
-      {/* ── Centered content: scoreboard, court, game log ────────────────────── */}
-      <div className="flex-1 min-h-0 flex flex-col overflow-hidden w-full items-center">
-        <div className="w-full max-w-6xl flex-1 min-h-0 flex flex-col overflow-hidden mx-auto">
-          <Scoreboard
-            team1Name="TEAM 1"
-            team1Score={team1Score}
-            team1Color={TEAM_1_COLOR}
-            team2Name="TEAM 2"
-            team2Score={team2Score}
-            team2Color={TEAM_2_COLOR}
-            quarter={quarter}
-            timeLeft={timeLeft}
-            isRunning={isRunning}
-            onToggleClock={() => setIsRunning((r) => !r)}
-            onAdjustTime={(delta) =>
-              setTimeLeft((t) => {
-                const next = Math.max(0, Math.min(PERIOD_SECONDS, t + delta));
-                if (isRunning) {
-                  startEpochRef.current = Date.now();
-                  startValueRef.current = next;
-                }
-                return next;
-              })
+      {/* ── Scoreboard ───────────────────────────────────────────────────────── */}
+      <Scoreboard
+        team1Name="TEAM 1"
+        team1Score={team1Score}
+        team1Color={TEAM_1_COLOR}
+        team2Name="TEAM 2"
+        team2Score={team2Score}
+        team2Color={TEAM_2_COLOR}
+        quarter={quarter}
+        timeLeft={timeLeft}
+        isRunning={isRunning}
+        onToggleClock={() => setIsRunning((r) => !r)}
+        onAdjustTime={(delta) =>
+          setTimeLeft((t) => {
+            const next = Math.max(0, Math.min(PERIOD_SECONDS, t + delta));
+            // If the clock is ticking, reset the reference so the interval
+            // continues counting from the adjusted value without jumping
+            if (isRunning) {
+              startEpochRef.current = Date.now();
+              startValueRef.current = next;
             }
-            onTimeout={handleTimeout}
-            onJumpBall={handleJumpBall}
-            onSub={handleSub}
-          />
+            return next;
+          })
+        }
+        onTimeout={handleTimeout}
+        onJumpBall={handleJumpBall}
+        onSub={handleSub}
+      />
 
-          <div className="flex-1 min-h-0 min-w-0">
-            <CourtSection
+      {/* ── Court + game log — share remaining height; log fixed below court ──── */}
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        <div className="flex-1 min-h-0">
+          <CourtSection
             team1Color={TEAM_1_COLOR}
             team2Color={TEAM_2_COLOR}
             team1Name="TEAM 1"

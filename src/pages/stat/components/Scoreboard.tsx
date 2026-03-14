@@ -84,10 +84,10 @@ const Scoreboard: React.FC<ScoreboardProps> = ({
   const { battery, online } = useDeviceStatus();
 
   return (
-    <div className="bg-white border-b border-gray-200 px-4 py-2.5 shrink-0">
-      <div className="flex items-center gap-4">
-        {/* Device status — far left, vertical, aligned with menu */}
-        <div className="flex flex-col gap-1.5 shrink-0">
+    <div className="bg-white border-b border-gray-200 px-4 py-2 shrink-0">
+      <div className="flex items-center gap-3">
+        {/* Device status — left side, vertical */}
+        <div className="flex flex-col gap-1 shrink-0">
           <div className="flex items-center gap-1">
             {battery?.charging
               ? <FiBatteryCharging size={13} className="text-green-500" />
@@ -114,57 +114,76 @@ const Scoreboard: React.FC<ScoreboardProps> = ({
           </div>
         </div>
 
-        {/* Team 1 — white box, thin red left edge */}
+        {/* Team 1 card */}
         <div
-          className="flex-1 max-w-[140px] bg-white rounded-lg border border-gray-200 shadow-sm px-4 py-3 flex flex-col items-center shrink-0"
-          style={{ borderLeftWidth: 4, borderLeftColor: team1Color }}
+          className="flex-1 bg-white rounded-lg border border-gray-100 shadow-sm px-4 py-2 flex flex-col items-center"
+          style={{ borderLeft: `5px solid ${team1Color}` }}
         >
-          <span className="text-xs font-bold text-gray-800 tracking-widest">{team1Name}</span>
-          <span className="text-3xl font-bold text-gray-900 leading-none mt-1">{team1Score}</span>
+          <span className="text-sm font-bold text-gray-800 tracking-widest">{team1Name}</span>
+          <span className="text-4xl font-bold text-gray-900 leading-none mt-0.5">{team1Score}</span>
         </div>
 
-        {/* Central box — white, thin blue top border; quarter then clock+STOP then T/O row */}
-        <div className="flex flex-col items-center shrink-0 border border-gray-200 rounded-lg overflow-hidden shadow-sm bg-white" style={{ borderTopWidth: 4, borderTopColor: '#2563eb' }}>
-          <div className="bg-blue-600 text-white text-[11px] font-bold px-5 py-1.5 tracking-widest whitespace-nowrap w-full text-center">
+        {/* Clock section — quarter on top; clock + green STOP in one row; then T/O, JUMP-BALL, SUB */}
+        <div className="flex flex-col items-center gap-2 shrink-0">
+          {/* Quarter label — blue header strip */}
+          <div className="bg-blue-600 text-white text-[11px] font-bold px-5 py-1 rounded-t tracking-widest whitespace-nowrap">
             {quarterLabel}
           </div>
-          <div className="flex items-center gap-3 px-3 py-2">
-            <div className="bg-gray-900 rounded flex items-center gap-2 px-2 py-2">
-              <button title="Add 30 seconds" onClick={() => onAdjustTime(30)} className="text-white hover:text-gray-300 transition-colors p-0.5">
-                <FiChevronUp size={14} />
+
+          {/* Clock + green START/STOP in one row (per design image) */}
+          <div className="flex items-center gap-2 bg-gray-100 rounded-b-lg px-2 py-2">
+            <div className="bg-gray-900 rounded flex items-center gap-2 px-3 py-2">
+              <button
+                title="Add 30 seconds"
+                onClick={() => onAdjustTime(30)}
+                className="text-white hover:text-gray-300 transition-colors flex flex-col items-center"
+              >
+                <FiChevronUp size={16} />
               </button>
-              <span className="text-white font-mono text-xl font-bold tracking-widest w-20 text-center">{formatTime(timeLeft)}</span>
-              <button title="Remove 30 seconds" onClick={() => onAdjustTime(-30)} className="text-white hover:text-gray-300 transition-colors p-0.5">
-                <FiChevronDown size={14} />
+              <span className="text-white font-mono text-2xl font-bold tracking-widest w-24 text-center">
+                {formatTime(timeLeft)}
+              </span>
+              <button
+                title="Remove 30 seconds"
+                onClick={() => onAdjustTime(-30)}
+                className="text-white hover:text-gray-300 transition-colors flex flex-col items-center"
+              >
+                <FiChevronDown size={16} />
               </button>
             </div>
             <button
               onClick={onToggleClock}
-              className="py-2 px-4 rounded font-bold text-white text-sm shadow bg-green-500 hover:bg-green-600 whitespace-nowrap"
+              className="py-2 px-4 rounded font-bold text-white text-sm transition-all shadow bg-green-500 hover:bg-green-600 whitespace-nowrap"
             >
               {isRunning ? 'STOP' : 'START'}
             </button>
           </div>
-          <div className="flex items-center justify-center gap-2 pb-2">
+
+          {/* Action buttons — T/O, JUMP-BALL, SUB */}
+          <div className="flex items-center gap-2">
             {[
               { label: 'T/O', action: onTimeout },
               { label: 'JUMP-BALL', action: onJumpBall },
               { label: 'SUB', action: onSub },
             ].map(({ label, action }) => (
-              <button key={label} onClick={action} className="px-4 py-1.5 bg-gray-200 border border-gray-300 rounded text-xs font-medium text-gray-700 hover:bg-gray-300 transition-colors">
+              <button
+                key={label}
+                onClick={action}
+                className="px-5 py-1.5 bg-gray-100 border border-gray-300 rounded text-xs font-medium text-gray-700 hover:bg-gray-200 transition-colors shadow-sm"
+              >
                 {label}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Team 2 — white box, thin yellow right edge */}
+        {/* Team 2 card */}
         <div
-          className="flex-1 max-w-[140px] bg-white rounded-lg border border-gray-200 shadow-sm px-4 py-3 flex flex-col items-center shrink-0"
-          style={{ borderRightWidth: 4, borderRightColor: team2Color }}
+          className="flex-1 bg-white rounded-lg border border-gray-100 shadow-sm px-4 py-2 flex flex-col items-center"
+          style={{ borderRight: `5px solid ${team2Color}` }}
         >
-          <span className="text-xs font-bold text-gray-800 tracking-widest">{team2Name}</span>
-          <span className="text-3xl font-bold text-gray-900 leading-none mt-1">{team2Score}</span>
+          <span className="text-sm font-bold text-gray-800 tracking-widest">{team2Name}</span>
+          <span className="text-4xl font-bold text-gray-900 leading-none mt-0.5">{team2Score}</span>
         </div>
 
       </div>

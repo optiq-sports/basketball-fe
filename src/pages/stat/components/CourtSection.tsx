@@ -1288,28 +1288,20 @@ const CourtSection: React.FC<CourtSectionProps> = ({
     return true;
   });
 
-  const navArrowColor = '#1E4DB7';
-
   return (
     <>
-      <div className="h-full flex items-stretch bg-[#F0F2F5] py-1">
-        {/* Far left — dark blue triangular arrow, vertically centered with court */}
-        <div className="w-8 shrink-0 flex items-center justify-center self-stretch py-4">
-          <div className="flex items-center justify-center h-full min-h-[200px]">
-            <button
-              type="button"
-              onClick={() => setDrawersExpanded((e) => !e)}
-              className="p-1 rounded hover:opacity-80 transition-opacity"
-              title={drawersExpanded ? 'Show player buttons' : 'Show stats table'}
-              style={{ color: navArrowColor }}
-            >
-              <FiChevronRight size={24} strokeWidth={2.5} />
-            </button>
-          </div>
-        </div>
+      <div className="h-full flex items-stretch bg-[#F0F2F5] px-1 py-1">
 
-        {/* Team 1 column — aligned to left edge of court */}
-        <div className={`flex flex-col gap-1 shrink-0 ${drawersExpanded ? 'w-52' : 'w-[72px]'}`}>
+        {/* Team 1 column — collapsed: player tiles; expanded: stats table; blue chevron toward court */}
+        <div className={`flex flex-col gap-1 shrink-0 pr-1 ${drawersExpanded ? 'w-52' : 'w-[72px]'}`}>
+          <button
+            type="button"
+            onClick={() => setDrawersExpanded((e) => !e)}
+            className="self-center p-1 text-blue-600 hover:text-blue-800 rounded flex items-center justify-center"
+            title={drawersExpanded ? 'Show player buttons' : 'Show stats table'}
+          >
+            {drawersExpanded ? <FiChevronLeft size={20} className="text-blue-600" /> : <FiChevronRight size={20} className="text-blue-600" />}
+          </button>
           {drawersExpanded ? (
             <PlayerStatsTable
               players={TEAM1_PLAYERS}
@@ -1338,13 +1330,16 @@ const CourtSection: React.FC<CourtSectionProps> = ({
           </div>
         </div>
 
-        {/* Court — centered, light gray diagram */}
-        <div className="flex-1 min-w-0 overflow-hidden flex flex-col gap-1">
-          <div className="flex items-center justify-center gap-2 py-0.5 shrink-0">
+        {/* Interactive court + possession toggle */}
+        <div className="flex-1 mx-2 min-w-0 overflow-hidden flex flex-col">
+          {/* Possession bar */}
+          <div className="flex items-center justify-center gap-2 py-1 shrink-0">
             <button
               onClick={onTogglePossession}
               className={`px-3 py-0.5 rounded-full text-[11px] font-bold tracking-wide transition-all ${
-                possession === 1 ? 'text-white shadow' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
+                possession === 1
+                  ? 'text-white shadow'
+                  : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
               }`}
               style={possession === 1 ? { backgroundColor: team1Color } : {}}
             >
@@ -1354,7 +1349,9 @@ const CourtSection: React.FC<CourtSectionProps> = ({
             <button
               onClick={onTogglePossession}
               className={`px-3 py-0.5 rounded-full text-[11px] font-bold tracking-wide transition-all ${
-                possession === 2 ? 'text-white shadow' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
+                possession === 2
+                  ? 'text-white shadow'
+                  : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
               }`}
               style={possession === 2 ? { backgroundColor: team2Color } : {}}
             >
@@ -1370,8 +1367,16 @@ const CourtSection: React.FC<CourtSectionProps> = ({
           </div>
         </div>
 
-        {/* Team 2 column — aligned to right edge of court */}
-        <div className={`flex flex-col gap-1 shrink-0 ${drawersExpanded ? 'w-52' : 'w-[72px]'}`}>
+        {/* Team 2 column — collapsed: player tiles; expanded: stats table; blue chevron toward court */}
+        <div className={`flex flex-col gap-1 shrink-0 pl-1 ${drawersExpanded ? 'w-52' : 'w-[72px]'}`}>
+          <button
+            type="button"
+            onClick={() => setDrawersExpanded((e) => !e)}
+            className="self-center p-1 text-blue-600 hover:text-blue-800 rounded flex items-center justify-center"
+            title={drawersExpanded ? 'Show player buttons' : 'Show stats table'}
+          >
+            {drawersExpanded ? <FiChevronRight size={20} className="text-blue-600" /> : <FiChevronLeft size={20} className="text-blue-600" />}
+          </button>
           {drawersExpanded ? (
             <PlayerStatsTable
               players={TEAM2_PLAYERS}
@@ -1397,21 +1402,6 @@ const CourtSection: React.FC<CourtSectionProps> = ({
           <div className="flex flex-col gap-1">
             <ActionBtn label="FOUL"     onClick={() => openFoulWizard(2)} />
             <ActionBtn label="TURNOVER" onClick={() => openTurnoverWizard(2)} />
-          </div>
-        </div>
-
-        {/* Far right — dark blue triangular arrow, vertically centered with court */}
-        <div className="w-8 shrink-0 flex items-center justify-center self-stretch py-4">
-          <div className="flex items-center justify-center h-full min-h-[200px]">
-            <button
-              type="button"
-              onClick={() => setDrawersExpanded((e) => !e)}
-              className="p-1 rounded hover:opacity-80 transition-opacity"
-              title={drawersExpanded ? 'Show player buttons' : 'Show stats table'}
-              style={{ color: navArrowColor }}
-            >
-              <FiChevronLeft size={24} strokeWidth={2.5} />
-            </button>
           </div>
         </div>
       </div>
