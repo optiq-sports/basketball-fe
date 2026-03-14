@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { FiX, FiArrowLeft } from 'react-icons/fi';
+import { FiX, FiArrowLeft, FiChevronRight, FiChevronLeft } from 'react-icons/fi';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 interface CourtMarker {
@@ -31,6 +31,7 @@ export interface CourtSectionProps {
   onFoul2: () => void;
   onTurnover2: () => void;
   onAddEvent?: (team: string, player: string, action: string, result: string) => void;
+  onAddScore?: (team: 1 | 2, points: number) => void;
 }
 
 // ─── Mock players for each team ───────────────────────────────────────────────
@@ -62,6 +63,7 @@ const SHOT_OPTIONS = [
   { name: 'Jump Shot', color: '#3b82f6', points: 2 },
   { name: 'Layup',     color: '#10b981', points: 2 },
   { name: 'Dunk',      color: '#ef4444', points: 2 },
+  { name: 'Post shot', color: '#64748b', points: 2 },
   { name: 'Fast Shot', color: '#f59e0b', points: 2 },
   { name: '3-Pointer', color: '#8b5cf6', points: 3 },
   { name: 'Free Throw',color: '#0891b2', points: 1 },
@@ -112,16 +114,16 @@ const FOUL_TYPES_WIZARD = [
   'Unsportsmanlike', 'Double Foul', 'Offensive',
 ];
 
-// ─── Rebound outcomes ────────────────────────────────────────────────────────
-const REBOUND_OPTIONS = [
-  'Tip-In Layup Made',
-  'Tip-In Layup Miss',
+// ─── Rebound outcomes (first 6 in grid; Blocked rendered separately below) ──────
+const REBOUND_OPTIONS_GRID = [
+  'Tip-In layup Made',
+  'Tip-In layup Miss',
   'Tip-In Dunk Made',
   'Tip-In Dunk Miss',
   'Out of Bounce',
   '24 Secs Violation',
-  'Blocked',
 ];
+const REBOUND_BLOCKED = 'Blocked';
 
 // ─── Missed-shot wizard state (steps 0-4) ────────────────────────────────────
 // 0 = select player who missed
@@ -320,7 +322,7 @@ const FastBreakToggle = ({ value, onToggle }: { value: boolean; onToggle: () => 
 );
 
 const WizardNav = ({ onBack, onCancel, showBack = true }: { onBack?: () => void; onCancel: () => void; showBack?: boolean }) => (
-  <div className="border-t border-gray-100 px-4 py-2 flex justify-between">
+  <div className="border-t border-gray-100 px-4 py-2 flex justify-between bg-gray-50 rounded-b-lg">
     {showBack && onBack
       ? <button onClick={onBack} className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 transition-colors"><FiArrowLeft size={13} /> Back</button>
       : <span />}
@@ -375,7 +377,7 @@ const ShotWizard: React.FC<ShotWizardProps> = ({
           {/* Panel 1 — MADE SHOT PLAYER */}
           <div className={`bg-white rounded-lg flex flex-col ${step === 0 ? '' : 'opacity-50 pointer-events-none'}`} style={{ minHeight: 300 }}>
             <div className="px-4 py-2 border-b border-gray-100">
-              <p className="text-blue-700 text-sm font-semibold text-center tracking-wide">
+              <p className="text-blue-700 text-sm font-bold text-center tracking-wide">
                 {step === 0 ? 'SELECT PLAYER FOR MADE SHOT' : player ? `#${player.num} ${player.name}` : '—'}
               </p>
             </div>
@@ -389,7 +391,7 @@ const ShotWizard: React.FC<ShotWizardProps> = ({
           {/* Panel 2 — SHOT TYPE */}
           <div className={`bg-white rounded-lg flex flex-col ${step === 1 ? '' : 'opacity-50 pointer-events-none'}`} style={{ minHeight: 300 }}>
             <div className="px-4 py-2 border-b border-gray-100">
-              <p className="text-blue-700 text-sm font-semibold text-center tracking-wide">
+              <p className="text-blue-700 text-sm font-bold text-center tracking-wide">
                 {step <= 1 ? 'SHOT TYPE' : shotOption?.name ?? '—'}
               </p>
             </div>
@@ -410,7 +412,7 @@ const ShotWizard: React.FC<ShotWizardProps> = ({
           {/* Panel 3 — ASSIST */}
           <div className={`bg-white rounded-lg flex flex-col ${step === 2 ? '' : 'opacity-50 pointer-events-none'}`} style={{ minHeight: 300 }}>
             <div className="px-4 py-2 border-b border-gray-100">
-              <p className="text-blue-700 text-sm font-semibold text-center tracking-wide">SELECT PLAYER FOR ASSIST</p>
+              <p className="text-blue-700 text-sm font-bold text-center tracking-wide">SELECT PLAYER FOR ASSIST</p>
             </div>
             <div className="flex-1 overflow-y-auto px-2 py-1">
               <button onClick={() => onSelectAssist(null)}
@@ -478,7 +480,7 @@ const MissedShotWizard: React.FC<MissedWizardProps> = ({
             {/* Panel 1 — player */}
             <div className={`bg-white rounded-lg flex flex-col ${step === 0 ? '' : 'opacity-50 pointer-events-none'}`} style={{ minHeight: 300 }}>
               <div className="px-4 py-2 border-b border-gray-100">
-                <p className="text-blue-700 text-sm font-semibold text-center tracking-wide">
+                <p className="text-blue-700 text-sm font-bold text-center tracking-wide">
                   {step === 0 ? 'SELECT PLAYER FOR MISSED SHOT' : player ? `#${player.num} ${player.name}` : '—'}
                 </p>
               </div>
@@ -492,7 +494,7 @@ const MissedShotWizard: React.FC<MissedWizardProps> = ({
             {/* Panel 2 — shot type */}
             <div className={`bg-white rounded-lg flex flex-col ${step === 1 ? '' : 'opacity-50 pointer-events-none'}`} style={{ minHeight: 300 }}>
               <div className="px-4 py-2 border-b border-gray-100">
-                <p className="text-blue-700 text-sm font-semibold text-center tracking-wide">SHOT TYPE</p>
+                <p className="text-blue-700 text-sm font-bold text-center tracking-wide">SHOT TYPE</p>
               </div>
               <div className="flex-1 px-4 py-3 flex flex-col gap-3">
                 <div className="grid grid-cols-2 gap-2">
@@ -521,21 +523,23 @@ const MissedShotWizard: React.FC<MissedWizardProps> = ({
           <p className="text-xs font-bold tracking-widest uppercase text-white mb-2">REBOUND / MISSED SHOT</p>
           <div className="bg-white rounded-lg flex flex-col" style={{ minHeight: 300 }}>
             <div className="px-4 py-2 border-b border-gray-100">
-              <p className="text-blue-700 text-sm font-semibold text-center tracking-wide">SELECT PLAYER FOR REBOUND</p>
+              <p className="text-blue-700 text-sm font-bold text-center tracking-wide">SELECT PLAYER FOR REBOUND</p>
             </div>
-            <div className="flex-1 px-4 py-4">
-              <div className="grid grid-cols-2 gap-2">
-                {REBOUND_OPTIONS.map((opt) => (
+            <div className="flex-1 px-4 py-4 flex flex-col items-center gap-3">
+              <div className="grid grid-cols-2 gap-2 w-full max-w-sm">
+                {REBOUND_OPTIONS_GRID.map((opt) => (
                   <button key={opt} onClick={() => onSelectRebound(opt)}
-                    className={`py-2.5 text-sm font-medium rounded border transition-colors shadow-sm ${
-                      opt === 'Blocked'
-                        ? 'bg-red-50 border-red-300 text-red-700 hover:bg-red-100'
-                        : 'bg-white border-gray-300 text-gray-700 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700'
-                    }`}>
+                    className="py-2.5 text-sm font-medium rounded border border-gray-300 bg-white text-gray-700 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 transition-colors shadow-sm">
                     {opt}
                   </button>
                 ))}
               </div>
+              <button
+                onClick={() => onSelectRebound(REBOUND_BLOCKED)}
+                className="py-2.5 px-6 text-sm font-medium rounded border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 transition-colors shadow-sm"
+              >
+                {REBOUND_BLOCKED}
+              </button>
             </div>
             <WizardNav onBack={onBack} onCancel={onCancel} />
           </div>
@@ -558,7 +562,7 @@ const MissedShotWizard: React.FC<MissedWizardProps> = ({
           {/* Panel — block player (defense team first) */}
           <div className={`bg-white rounded-lg flex flex-col ${step === 3 ? '' : 'opacity-50 pointer-events-none'}`} style={{ minHeight: 300 }}>
             <div className="px-4 py-2 border-b border-gray-100">
-              <p className="text-blue-700 text-sm font-semibold text-center tracking-wide">
+              <p className="text-blue-700 text-sm font-bold text-center tracking-wide">
                 {step === 3 ? 'SELECT PLAYER FOR BLOCK' : wizard.blockPlayer ? `#${wizard.blockPlayer.num} ${wizard.blockPlayer.name}` : '—'}
               </p>
             </div>
@@ -572,7 +576,7 @@ const MissedShotWizard: React.FC<MissedWizardProps> = ({
           {/* Panel — missed player */}
           <div className={`bg-white rounded-lg flex flex-col ${step === 4 ? '' : 'opacity-50 pointer-events-none'}`} style={{ minHeight: 300 }}>
             <div className="px-4 py-2 border-b border-gray-100">
-              <p className="text-blue-700 text-sm font-semibold text-center tracking-wide">SELECT PLAYER FOR MISSED SHOT</p>
+              <p className="text-blue-700 text-sm font-bold text-center tracking-wide">SELECT PLAYER FOR MISSED SHOT</p>
             </div>
             <div className="flex-1 overflow-y-auto px-2">
               <PlayerGroupList players={offense} heading={`⬤ ${offenseName} (offense)`} onSelect={onSelectMissedPlayer} />
@@ -647,7 +651,7 @@ const TurnoverWizard: React.FC<TurnoverWizardProps> = ({
           {/* Panel 0 — Turnover player */}
           <div className={`bg-white rounded-lg flex flex-col ${step === 0 ? '' : 'opacity-50 pointer-events-none'}`} style={{ minHeight: 300 }}>
             <div className="px-4 py-2 border-b border-gray-100">
-              <p className="text-blue-700 text-sm font-semibold text-center tracking-wide">
+              <p className="text-blue-700 text-sm font-bold text-center tracking-wide">
                 {step === 0 ? 'SELECT PLAYER FOR TURNOVER' : player?.label ?? '—'}
               </p>
             </div>
@@ -661,7 +665,7 @@ const TurnoverWizard: React.FC<TurnoverWizardProps> = ({
           {/* Panel 1 — Turnover type */}
           <div className={`bg-white rounded-lg flex flex-col ${step === 1 ? '' : 'opacity-50 pointer-events-none'}`} style={{ minHeight: 300 }}>
             <div className="px-4 py-2 border-b border-gray-100">
-              <p className="text-blue-700 text-sm font-semibold text-center tracking-wide">SELECT TURNOVER TYPE</p>
+              <p className="text-blue-700 text-sm font-bold text-center tracking-wide">SELECT TURNOVER TYPE</p>
             </div>
             <div className="flex-1 px-4 py-4">
               <div className="grid grid-cols-3 gap-2">
@@ -679,7 +683,7 @@ const TurnoverWizard: React.FC<TurnoverWizardProps> = ({
           {/* Panel 2 — Steal */}
           <div className={`bg-white rounded-lg flex flex-col ${step === 2 ? '' : 'opacity-50 pointer-events-none'}`} style={{ minHeight: 300 }}>
             <div className="px-4 py-2 border-b border-gray-100">
-              <p className="text-blue-700 text-sm font-semibold text-center tracking-wide">SELECT PLAYER FOR STEAL</p>
+              <p className="text-blue-700 text-sm font-bold text-center tracking-wide">SELECT PLAYER FOR STEAL</p>
             </div>
             <div className="flex-1 overflow-y-auto px-2 py-1">
               <button onClick={() => onSelectSteal('none')}
@@ -744,7 +748,7 @@ const FoulWizard: React.FC<FoulWizardProps> = ({
 
   const PanelHeader = ({ text }: { text: string }) => (
     <div className="px-4 py-2 border-b border-gray-100">
-      <p className="text-blue-700 text-sm font-semibold text-center tracking-wide">{text}</p>
+      <p className="text-blue-700 text-sm font-bold text-center tracking-wide">{text}</p>
     </div>
   );
 
@@ -767,47 +771,76 @@ const FoulWizard: React.FC<FoulWizardProps> = ({
     </div>
   );
 
-  // ── Group 1: steps 0-2 ────────────────────────────────────────────────────
+  // ── Step 0: Foul with Bench pop-up (side columns + center panel) ─────────────
+  if (step === 0) {
+    return (
+      <div className="fixed inset-0 z-[900] flex items-center justify-center bg-black/60">
+        <p className="absolute top-4 left-6 text-[10px] font-bold text-gray-300 uppercase tracking-widest">FOUL WITH BENCH POP-UP</p>
+        <div className="flex items-stretch gap-4 max-w-4xl w-full px-6">
+          {/* Left column — fouling team players + BENCH + COACH */}
+          <div className="flex flex-col gap-1.5 w-24 shrink-0">
+            {foulingTeamPlayers.map((p) => (
+              <button
+                key={p.num}
+                onClick={() => onSelectFouler({ label: `#${p.num} ${p.name}`, team: p.team, num: p.num })}
+                className="w-full py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold rounded text-center transition-colors"
+              >
+                {p.num}
+              </button>
+            ))}
+            <button
+              onClick={() => onSelectFouler({ label: 'BENCH', team: wizard.foulTeam })}
+              className="w-full py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 text-xs font-bold rounded transition-colors"
+            >
+              BENCH
+            </button>
+            <button
+              onClick={() => onSelectFouler({ label: 'COACH', team: wizard.foulTeam })}
+              className="w-full py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 text-xs font-bold rounded transition-colors"
+            >
+              COACH
+            </button>
+          </div>
+
+          {/* Center panel — instruction + Cancel */}
+          <div className="flex-1 bg-white rounded-lg flex flex-col min-h-[320px] shadow-xl">
+            <div className="flex-1 flex flex-col items-center justify-center px-6 py-8">
+              <p className="text-blue-700 text-base font-bold text-center tracking-wide">
+                {fouler ? fouler.label : 'SELECT PLAYER/BENCH/COACH FOR FOUL'}
+              </p>
+            </div>
+            <div className="border-t border-gray-100 px-4 py-3 flex flex-col items-center bg-gray-50 rounded-b-lg">
+              <button onClick={onCancel} className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-red-600 transition-colors">
+                <FiX size={14} /> Cancel
+              </button>
+            </div>
+          </div>
+
+          {/* Right column — empty for symmetry */}
+          <div className="w-24 shrink-0" />
+        </div>
+      </div>
+    );
+  }
+
+  // ── Steps 1-2: Foul type + Receiver (3-panel grid) ───────────────────────────
   if (step <= 2) {
     return (
       <div className="fixed inset-0 z-[900] flex items-center justify-center bg-black/60">
         <div className="w-full max-w-5xl px-6">
-          {/* Label bar */}
           <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest mb-1">FOUL FLOW MODALS</p>
           <div className="grid grid-cols-3 gap-4 mb-2">
-            <PLabel label="SELECT PLAYER FOR FOUL"  active={step === 0} />
+            <PLabel label="SELECT PLAYER FOR FOUL"  active={false} />
             <PLabel label="FOUL TYPE"                active={step === 1} />
             <PLabel label="FREE THROWS AWARDED"      active={step === 2} />
           </div>
           <div className="grid grid-cols-3 gap-4">
 
-            {/* Panel 0 — Fouler */}
-            <Panel active={step === 0}>
-              <PanelHeader text={step === 0 ? 'SELECT PLAYER FOR FOUL' : fouler?.label ?? '—'} />
-              <div className="flex-1 overflow-y-auto px-2 py-1">
-                <p className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">{foulingTeamName}</p>
-                {foulingTeamPlayers.map((p) => (
-                  <button key={p.num}
-                    onClick={() => onSelectFouler({ label: `#${p.num} ${p.name}`, team: p.team, num: p.num })}
-                    className="w-full flex items-center gap-3 px-3 py-2 hover:bg-blue-50 rounded transition-colors text-left"
-                  >
-                    <span className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
-                      style={{ backgroundColor: p.color }}>{p.num}</span>
-                    <span className="text-sm text-gray-800">{p.name}</span>
-                  </button>
-                ))}
-                {/* Bench / Coach */}
-                <div className="mt-2 flex gap-2 px-3">
-                  {(['BENCH', 'COACH'] as const).map((type) => (
-                    <button key={type}
-                      onClick={() => onSelectFouler({ label: type, team: wizard.foulTeam })}
-                      className="flex-1 py-1.5 bg-gray-700 text-white text-xs font-bold rounded hover:bg-gray-600 transition-colors">
-                      {type}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <WizardNav onCancel={onCancel} showBack={false} />
+            {/* Panel 0 — Fouler (summary, Back returns to step 0) */}
+            <Panel active={false}>
+              <PanelHeader text={fouler?.label ?? '—'} />
+              <div className="flex-1" />
+              <WizardNav onBack={onBack} onCancel={onCancel} showBack={true} />
             </Panel>
 
             {/* Panel 1 — Foul type */}
@@ -916,7 +949,7 @@ const FoulWizard: React.FC<FoulWizardProps> = ({
                 </div>
               ))}
             </div>
-            <div className="border-t border-gray-100 px-4 py-2 flex justify-between items-center">
+            <div className="border-t border-gray-100 px-4 py-2 flex justify-between items-center bg-gray-50 rounded-b-lg">
               <button onClick={onBack} className="flex items-center gap-1 text-xs text-gray-500 hover:text-blue-600 transition-colors">
                 <FiArrowLeft size={13} /> Back
               </button>
@@ -943,8 +976,8 @@ const PlayerTile: React.FC<{
   num: number; color: string; selected: boolean; onClick: () => void;
 }> = ({ num, color, selected, onClick }) => (
   <button onClick={onClick}
-    className={`w-14 h-14 rounded flex items-center justify-center text-white font-bold text-2xl transition-all select-none ${
-      selected ? 'ring-4 ring-white ring-offset-1 brightness-75 scale-105' : 'hover:opacity-90'
+    className={`w-14 h-12 rounded-md flex items-center justify-center text-white font-bold text-xl transition-all select-none ${
+      selected ? 'ring-2 ring-white ring-offset-1 shadow-md' : 'hover:opacity-90'
     }`}
     style={{ backgroundColor: color }}
   >
@@ -954,7 +987,7 @@ const PlayerTile: React.FC<{
 
 const ActionBtn: React.FC<{ label: string; onClick: () => void }> = ({ label, onClick }) => (
   <button onClick={onClick}
-    className="w-full py-1.5 bg-white border border-gray-300 rounded text-xs font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-colors shadow-sm tracking-wide"
+    className="w-full py-2 bg-gray-400 rounded-md text-xs font-semibold text-white hover:bg-gray-500 transition-colors shadow-sm tracking-wide"
   >
     {label}
   </button>
@@ -969,15 +1002,15 @@ const PlayerStatsTable: React.FC<{
   onSelect: (n: number) => void;
   stats: Record<string, { pts: number; pf: number }>;
 }> = ({ players, team, color, selectedNum, onSelect, stats }) => (
-  <div className="w-full overflow-hidden rounded-sm border border-blue-100 text-[11px] shrink-0">
-    {/* Header */}
+  <div className="w-full overflow-hidden rounded-sm border border-blue-100 text-[11px] shrink-0 shadow-sm">
+    {/* Header — light blue per design */}
     <div className="flex bg-[#EEF2FF] border-b border-blue-100">
       <div className="w-7 px-1.5 py-2 text-blue-700 font-bold">#</div>
       <div className="flex-1 px-1.5 py-2 text-blue-700 font-bold">PLAYER NAME</div>
       <div className="w-8 px-1 py-2 text-blue-700 font-bold text-center">PF</div>
       <div className="w-9 px-1 py-2 text-blue-700 font-bold text-center">PTS</div>
     </div>
-    {/* Rows */}
+    {/* Rows — alternating white / gray-50; PF/PTS black when > 0, gray when 0 */}
     {players.map((p, i) => {
       const isSelected = selectedNum === p.num;
       const s = stats[`${team}-${p.num}`] ?? { pts: 0, pf: 0 };
@@ -992,8 +1025,8 @@ const PlayerStatsTable: React.FC<{
         >
           <div className="w-7 px-1.5 py-2 text-blue-600 font-semibold">{p.num}</div>
           <div className="flex-1 px-1.5 py-2 text-blue-600 truncate">{p.name}</div>
-          <div className={`w-8 px-1 py-2 text-center font-semibold ${s.pf > 0 ? 'text-red-500' : 'text-gray-400'}`}>{s.pf}</div>
-          <div className={`w-9 px-1 py-2 text-center font-semibold ${s.pts > 0 ? 'text-blue-700' : 'text-gray-400'}`}>{s.pts}</div>
+          <div className={`w-8 px-1 py-2 text-center font-semibold ${s.pf > 0 ? 'text-gray-900' : 'text-gray-400'}`}>{s.pf}</div>
+          <div className={`w-9 px-1 py-2 text-center font-semibold ${s.pts > 0 ? 'text-gray-900' : 'text-gray-400'}`}>{s.pts}</div>
         </div>
       );
     })}
@@ -1014,13 +1047,14 @@ const CourtSection: React.FC<CourtSectionProps> = ({
   selectedTeam1Player, selectedTeam2Player,
   onSelectTeam1Player, onSelectTeam2Player,
   onFoul1, onTurnover1, onFoul2, onTurnover2,
-  onAddEvent,
+  onAddEvent, onAddScore,
 }) => {
   const [markers,         setMarkers]         = useState<CourtMarker[]>([]);
   const [wizard,          setWizard]          = useState<WizardData | null>(null);
   const [missedWizard,    setMissedWizard]    = useState<MissedWizardData | null>(null);
   const [foulWizard,      setFoulWizard]      = useState<FoulWizardData | null>(null);
   const [turnoverWizard,  setTurnoverWizard]  = useState<TurnoverWizardData | null>(null);
+  const [drawersExpanded, setDrawersExpanded]  = useState(false);
 
   // ── Per-player live stats ─────────────────────────────────────────────────
   // key = `${team}-${num}`  e.g. "1-5"
@@ -1078,6 +1112,7 @@ const CourtSection: React.FC<CourtSectionProps> = ({
 
     // Credit points to player
     addPts(player.team, player.num, shotOption.points);
+    onAddScore?.(player.team, shotOption.points);
 
     // Add shot marker on court
     setMarkers((prev) => [...prev, {
@@ -1200,7 +1235,10 @@ const CourtSection: React.FC<CourtSectionProps> = ({
       if (made !== null) {
         const assistNote = i === 0 && assist !== 'none' && assist ? ` | Assist: ${assist.label}` : '';
         onAddEvent?.(receiverTeam ?? '', receiver?.label ?? '', `FT ${i + 1}/${freeThrowCount}`, (made ? 'Made' : 'Missed') + assistNote);
-        if (made && receiver?.num) addPts(receiver.team, receiver.num, 1);
+        if (made && receiver?.num) {
+          addPts(receiver.team, receiver.num, 1);
+          onAddScore?.(receiver.team, 1);
+        }
       }
     });
     setFoulWizard(null);
@@ -1250,36 +1288,63 @@ const CourtSection: React.FC<CourtSectionProps> = ({
     return true;
   });
 
+  const navArrowColor = '#1E4DB7';
+
   return (
     <>
-      <div className="h-full flex items-stretch bg-[#F0F2F5] px-1 py-1">
+      <div className="h-full flex items-stretch bg-[#F0F2F5] py-1">
+        {/* Far left — dark blue triangular arrow, vertically centered with court */}
+        <div className="w-8 shrink-0 flex items-center justify-center self-stretch py-4">
+          <div className="flex items-center justify-center h-full min-h-[200px]">
+            <button
+              type="button"
+              onClick={() => setDrawersExpanded((e) => !e)}
+              className="p-1 rounded hover:opacity-80 transition-opacity"
+              title={drawersExpanded ? 'Show player buttons' : 'Show stats table'}
+              style={{ color: navArrowColor }}
+            >
+              <FiChevronRight size={24} strokeWidth={2.5} />
+            </button>
+          </div>
+        </div>
 
-        {/* Team 1 stats column */}
-        <div className="flex flex-col gap-1 shrink-0 w-52 pr-1">
-          <PlayerStatsTable
-            players={TEAM1_PLAYERS}
-            team={1}
-            color={team1Color}
-            selectedNum={selectedTeam1Player}
-            onSelect={onSelectTeam1Player}
-            stats={playerStats}
-          />
+        {/* Team 1 column — aligned to left edge of court */}
+        <div className={`flex flex-col gap-1 shrink-0 ${drawersExpanded ? 'w-52' : 'w-[72px]'}`}>
+          {drawersExpanded ? (
+            <PlayerStatsTable
+              players={TEAM1_PLAYERS}
+              team={1}
+              color={team1Color}
+              selectedNum={selectedTeam1Player}
+              onSelect={onSelectTeam1Player}
+              stats={playerStats}
+            />
+          ) : (
+            <div className="flex flex-col gap-1">
+              {TEAM1_PLAYERS.map((p) => (
+                <PlayerTile
+                  key={p.num}
+                  num={p.num}
+                  color={team1Color}
+                  selected={selectedTeam1Player === p.num}
+                  onClick={() => onSelectTeam1Player(p.num)}
+                />
+              ))}
+            </div>
+          )}
           <div className="flex flex-col gap-1">
             <ActionBtn label="FOUL"     onClick={() => openFoulWizard(1)} />
             <ActionBtn label="TURNOVER" onClick={() => openTurnoverWizard(1)} />
           </div>
         </div>
 
-        {/* Interactive court + possession toggle */}
-        <div className="flex-1 mx-2 min-w-0 overflow-hidden flex flex-col">
-          {/* Possession bar */}
-          <div className="flex items-center justify-center gap-2 py-1 shrink-0">
+        {/* Court — centered, light gray diagram */}
+        <div className="flex-1 min-w-0 overflow-hidden flex flex-col gap-1">
+          <div className="flex items-center justify-center gap-2 py-0.5 shrink-0">
             <button
               onClick={onTogglePossession}
               className={`px-3 py-0.5 rounded-full text-[11px] font-bold tracking-wide transition-all ${
-                possession === 1
-                  ? 'text-white shadow'
-                  : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
+                possession === 1 ? 'text-white shadow' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
               }`}
               style={possession === 1 ? { backgroundColor: team1Color } : {}}
             >
@@ -1289,9 +1354,7 @@ const CourtSection: React.FC<CourtSectionProps> = ({
             <button
               onClick={onTogglePossession}
               className={`px-3 py-0.5 rounded-full text-[11px] font-bold tracking-wide transition-all ${
-                possession === 2
-                  ? 'text-white shadow'
-                  : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
+                possession === 2 ? 'text-white shadow' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
               }`}
               style={possession === 2 ? { backgroundColor: team2Color } : {}}
             >
@@ -1307,19 +1370,48 @@ const CourtSection: React.FC<CourtSectionProps> = ({
           </div>
         </div>
 
-        {/* Team 2 stats column */}
-        <div className="flex flex-col gap-1 shrink-0 w-52 pl-1">
-          <PlayerStatsTable
-            players={TEAM2_PLAYERS}
-            team={2}
-            color={team2Color}
-            selectedNum={selectedTeam2Player}
-            onSelect={onSelectTeam2Player}
-            stats={playerStats}
-          />
+        {/* Team 2 column — aligned to right edge of court */}
+        <div className={`flex flex-col gap-1 shrink-0 ${drawersExpanded ? 'w-52' : 'w-[72px]'}`}>
+          {drawersExpanded ? (
+            <PlayerStatsTable
+              players={TEAM2_PLAYERS}
+              team={2}
+              color={team2Color}
+              selectedNum={selectedTeam2Player}
+              onSelect={onSelectTeam2Player}
+              stats={playerStats}
+            />
+          ) : (
+            <div className="flex flex-col gap-1">
+              {TEAM2_PLAYERS.map((p) => (
+                <PlayerTile
+                  key={p.num}
+                  num={p.num}
+                  color={team2Color}
+                  selected={selectedTeam2Player === p.num}
+                  onClick={() => onSelectTeam2Player(p.num)}
+                />
+              ))}
+            </div>
+          )}
           <div className="flex flex-col gap-1">
             <ActionBtn label="FOUL"     onClick={() => openFoulWizard(2)} />
             <ActionBtn label="TURNOVER" onClick={() => openTurnoverWizard(2)} />
+          </div>
+        </div>
+
+        {/* Far right — dark blue triangular arrow, vertically centered with court */}
+        <div className="w-8 shrink-0 flex items-center justify-center self-stretch py-4">
+          <div className="flex items-center justify-center h-full min-h-[200px]">
+            <button
+              type="button"
+              onClick={() => setDrawersExpanded((e) => !e)}
+              className="p-1 rounded hover:opacity-80 transition-opacity"
+              title={drawersExpanded ? 'Show player buttons' : 'Show stats table'}
+              style={{ color: navArrowColor }}
+            >
+              <FiChevronLeft size={24} strokeWidth={2.5} />
+            </button>
           </div>
         </div>
       </div>

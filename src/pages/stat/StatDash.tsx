@@ -4,6 +4,7 @@ import Scoreboard from './components/Scoreboard';
 import CourtSection from './components/CourtSection';
 import SubstitutionModal, { SubEvent } from './components/SubstitutionModal';
 import TimeoutModal from './components/TimeoutModal';
+import GameLog from './components/GameLog';
 
 // ─── Shared type (also consumed by GameLog) ────────────────────────────────────
 export interface GameEvent {
@@ -96,8 +97,7 @@ const StatDash: React.FC = () => {
     const teamName = teamNum === 1 ? 'Team 1' : 'Team 2';
     const playerNum = teamNum === 1 ? selectedTeam1Player : selectedTeam2Player;
     addEvent(teamName, playerNum ? `#${playerNum}` : teamName, 'foul', 'personal foul');
-    if (teamNum === 1) setTeam2Score((s) => s + 1);
-    else setTeam1Score((s) => s + 1);
+    // Score updates come from CourtSection via onAddScore (made shots + made FTs only)
   };
 
   const handleTurnover = (teamNum: 1 | 2) => {
@@ -174,25 +174,32 @@ const StatDash: React.FC = () => {
         onSub={handleSub}
       />
 
-      {/* ── Court + player tiles — flex-1 so it fills leftover height ──────────── */}
-      <div className="flex-1 min-h-0">
-      <CourtSection
-        team1Color={TEAM_1_COLOR}
-        team2Color={TEAM_2_COLOR}
-        team1Name="TEAM 1"
-        team2Name="TEAM 2"
-        possession={possession}
-        onTogglePossession={() => setPossession((p) => (p === 1 ? 2 : 1))}
-        selectedTeam1Player={selectedTeam1Player}
-        selectedTeam2Player={selectedTeam2Player}
-        onSelectTeam1Player={(n) => setSelectedTeam1Player((p) => (p === n ? null : n))}
-        onSelectTeam2Player={(n) => setSelectedTeam2Player((p) => (p === n ? null : n))}
-        onFoul1={() => handleFoul(1)}
-        onTurnover1={() => handleTurnover(1)}
-        onFoul2={() => handleFoul(2)}
-        onTurnover2={() => handleTurnover(2)}
-        onAddEvent={addEvent}
-      />
+      {/* ── Court + game log — share remaining height; log fixed below court ──── */}
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden w-full">
+        <div className="flex-1 min-h-0 min-w-0 w-full">
+          <CourtSection
+            team1Color={TEAM_1_COLOR}
+            team2Color={TEAM_2_COLOR}
+            team1Name="TEAM 1"
+            team2Name="TEAM 2"
+            possession={possession}
+            onTogglePossession={() => setPossession((p) => (p === 1 ? 2 : 1))}
+            selectedTeam1Player={selectedTeam1Player}
+            selectedTeam2Player={selectedTeam2Player}
+            onSelectTeam1Player={(n) => setSelectedTeam1Player((p) => (p === n ? null : n))}
+            onSelectTeam2Player={(n) => setSelectedTeam2Player((p) => (p === n ? null : n))}
+            onFoul1={() => handleFoul(1)}
+            onTurnover1={() => handleTurnover(1)}
+            onFoul2={() => handleFoul(2)}
+            onTurnover2={() => handleTurnover(2)}
+            onAddEvent={addEvent}
+            onAddScore={(team, points) => {
+              if (team === 1) setTeam1Score((s) => s + points);
+              else setTeam2Score((s) => s + points);
+            }}
+          />
+        </div>
+        <GameLog events={events} />
       </div>
 
       {/* ── Timeout overlay ──────────────────────────────────────────────────── */}

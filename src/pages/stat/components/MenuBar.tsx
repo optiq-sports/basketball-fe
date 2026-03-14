@@ -44,7 +44,8 @@ const MenuBar: React.FC = () => {
   return (
     <div
       ref={barRef}
-      className="bg-black flex items-center justify-between px-4 py-1.5 shrink-0 select-none relative z-50"
+      className="flex items-center justify-between px-4 py-1.5 shrink-0 select-none relative z-50"
+      style={{ backgroundColor: '#1E4DB7' }}
     >
       <div className="flex items-center gap-1">
         {MENUS.map(({ label, items }) => (
@@ -52,8 +53,8 @@ const MenuBar: React.FC = () => {
             {/* Menu trigger */}
             <button
               onClick={() => toggle(label)}
-              className={`text-white text-xs font-medium tracking-wide px-3 py-1 rounded transition-colors ${
-                open === label ? 'bg-gray-700' : 'hover:bg-gray-800'
+                className={`text-white text-xs font-medium tracking-wide px-3 py-1 rounded transition-colors ${
+                open === label ? 'bg-white/20' : 'hover:bg-white/10'
               }`}
             >
               {label}
@@ -61,12 +62,12 @@ const MenuBar: React.FC = () => {
 
             {/* Dropdown panel */}
             {open === label && (
-              <div className="absolute top-full left-0 mt-0 w-52 bg-black border border-gray-700 shadow-xl rounded-sm overflow-hidden">
+              <div className="absolute top-full left-0 mt-0 w-52 border border-gray-600 shadow-xl rounded-sm overflow-hidden" style={{ backgroundColor: '#1E4DB7' }}>
                 {items.map((item) => (
                   <button
                     key={item}
                     onClick={() => setOpen(null)}
-                    className="w-full text-left px-4 py-2.5 text-sm text-white hover:bg-gray-800 transition-colors block"
+                    className="w-full text-left px-4 py-2.5 text-sm text-white hover:bg-white/10 transition-colors block"
                   >
                     {item}
                   </button>
