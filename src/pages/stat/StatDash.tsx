@@ -48,7 +48,6 @@ const StatDash: React.FC = () => {
   const [events, setEvents] = useState<GameEvent[]>(MOCK_EVENTS);
   const [selectedTeam1Player, setSelectedTeam1Player] = useState<number | null>(null);
   const [selectedTeam2Player, setSelectedTeam2Player] = useState<number | null>(null);
-  const [possession, setPossession] = useState<1 | 2>(1);
 
   // ── Accurate countdown using Date.now() as reference ─────────────────────────
   // Polls every 100 ms so the display updates within 1/10 s of a real second tick.
@@ -182,8 +181,6 @@ const StatDash: React.FC = () => {
             team2Color={TEAM_2_COLOR}
             team1Name="TEAM 1"
             team2Name="TEAM 2"
-            possession={possession}
-            onTogglePossession={() => setPossession((p) => (p === 1 ? 2 : 1))}
             selectedTeam1Player={selectedTeam1Player}
             selectedTeam2Player={selectedTeam2Player}
             onSelectTeam1Player={(n) => setSelectedTeam1Player((p) => (p === n ? null : n))}
@@ -199,7 +196,10 @@ const StatDash: React.FC = () => {
             }}
           />
         </div>
-        <GameLog events={events} />
+        {/* Match CourtSection horizontal inset */}
+        <div className="px-1">
+          <GameLog events={events} />
+        </div>
       </div>
 
       {/* ── Timeout overlay ──────────────────────────────────────────────────── */}

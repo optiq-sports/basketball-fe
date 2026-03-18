@@ -29,7 +29,9 @@ const BASKET_X_R = CW - 44;
 const FT_R = 48;
 
 // 3-point arc radius (from basket)
-const THREE_R = 162;
+const THREE_R = 172;
+// Corner 3pt line “point” (where straight line meets arc)
+const THREE_X = 120;
 
 // Arrow geometry
 const BODY_HALF = 22;   // body height ±
@@ -115,11 +117,11 @@ const BasketballCourt: React.FC = () => {
         fill="none" stroke={stroke} strokeWidth={sw} strokeDasharray="5 4"
       />
       {/* Left corner 3-pt lines */}
-      <line x1={0} y1={22} x2={92} y2={22} stroke={stroke} strokeWidth={sw} />
-      <line x1={0} y1={CH - 22} x2={92} y2={CH - 22} stroke={stroke} strokeWidth={sw} />
+      <line x1={0} y1={22} x2={THREE_X} y2={22} stroke={stroke} strokeWidth={sw} />
+      <line x1={0} y1={CH - 22} x2={THREE_X} y2={CH - 22} stroke={stroke} strokeWidth={sw} />
       {/* Left 3-pt arc */}
       <path
-        d={`M 92 22 A ${THREE_R} ${THREE_R} 0 0 1 92 ${CH - 22}`}
+        d={`M ${THREE_X} 22 A ${THREE_R} ${THREE_R} 0 0 1 ${THREE_X} ${CH - 22}`}
         fill="none" stroke={stroke} strokeWidth={sw}
       />
       {/* Left basket */}
@@ -145,10 +147,10 @@ const BasketballCourt: React.FC = () => {
         d={`M ${CW - KEY_W} ${KEY_Y1} A ${FT_R} ${FT_R} 0 0 1 ${CW - KEY_W} ${KEY_Y2}`}
         fill="none" stroke={stroke} strokeWidth={sw} strokeDasharray="5 4"
       />
-      <line x1={CW} y1={22} x2={CW - 92} y2={22} stroke={stroke} strokeWidth={sw} />
-      <line x1={CW} y1={CH - 22} x2={CW - 92} y2={CH - 22} stroke={stroke} strokeWidth={sw} />
+      <line x1={CW} y1={22} x2={CW - THREE_X} y2={22} stroke={stroke} strokeWidth={sw} />
+      <line x1={CW} y1={CH - 22} x2={CW - THREE_X} y2={CH - 22} stroke={stroke} strokeWidth={sw} />
       <path
-        d={`M ${CW - 92} 22 A ${THREE_R} ${THREE_R} 0 0 0 ${CW - 92} ${CH - 22}`}
+        d={`M ${CW - THREE_X} 22 A ${THREE_R} ${THREE_R} 0 0 0 ${CW - THREE_X} ${CH - 22}`}
         fill="none" stroke={stroke} strokeWidth={sw}
       />
       <circle cx={BASKET_X_R} cy={CY} r={7} fill="none" stroke={stroke} strokeWidth={sw} />
@@ -181,13 +183,35 @@ const ChooseSides: React.FC = () => {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-white">
+      {/* Back — fixed top left */}
+      <div className="fixed top-4 left-6 z-10">
+        <button
+          onClick={() => navigate('/starters')}
+          className="flex items-center gap-1.5 text-sm text-gray-700 hover:text-gray-900 font-medium transition-colors"
+        >
+          <FiArrowLeft size={16} />
+          <span>Back</span>
+        </button>
+      </div>
+
+      {/* Continue — fixed top right */}
+      <div className="fixed top-4 right-6 z-10">
+        <button
+          onClick={() => navigate('/jump-ball')}
+          className="flex items-center gap-1.5 text-sm text-gray-700 hover:text-gray-900 font-medium transition-colors"
+        >
+          <FiArrowRight size={16} />
+          <span>Continue</span>
+        </button>
+      </div>
+
       {/* Light blue header strip */}
       <div className="shrink-0 h-3" style={{ backgroundColor: HEADER_BG }} />
 
       {/* White main content */}
       <div className="flex-1 flex flex-col min-h-0 bg-white">
         {/* Title — dark blue, bold, centered */}
-        <h1 className="text-xl font-bold text-center pt-6 pb-4 shrink-0" style={{ color: TITLE_COLOR }}>
+        <h1 className="text-xl font-bold text-center pt-10 pb-4 shrink-0" style={{ color: TITLE_COLOR }}>
           Choose Shooting Sides
         </h1>
 
@@ -258,25 +282,13 @@ const ChooseSides: React.FC = () => {
         </div>
       </div>
 
-      {/* Footer — light gray strip, Back left, Continue right */}
+      {/* Footer — light gray strip (no navigation; nav is fixed at top) */}
       <div
         className="shrink-0 flex items-center justify-between px-6 py-4"
         style={{ backgroundColor: FOOTER_BG }}
       >
-        <button
-          onClick={() => navigate('/starters')}
-          className="flex items-center gap-2 text-sm text-black font-medium hover:opacity-80 transition-opacity"
-        >
-          <FiArrowLeft size={18} />
-          <span>Back</span>
-        </button>
-        <button
-          onClick={() => navigate('/jump-ball')}
-          className="flex items-center gap-2 text-sm text-black font-medium hover:opacity-80 transition-opacity"
-        >
-          <span>Continue</span>
-          <FiArrowRight size={18} />
-        </button>
+        <div />
+        <div />
       </div>
     </div>
   );

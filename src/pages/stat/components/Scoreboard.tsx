@@ -26,7 +26,7 @@ const formatTime = (s: number) => {
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 };
 
-// ─── Device status hook ────────────────────────────────────────────────────────
+// ─── Device status hook ────────────a────────────────────────────────────────────
 interface BatteryState {
   charging: boolean;
   level: number; // 0–1

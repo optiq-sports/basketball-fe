@@ -20,8 +20,6 @@ export interface CourtSectionProps {
   team2Color: string;
   team1Name?: string;
   team2Name?: string;
-  possession: 1 | 2;
-  onTogglePossession: () => void;
   selectedTeam1Player: number | null;
   selectedTeam2Player: number | null;
   onSelectTeam1Player: (n: number) => void;
@@ -196,6 +194,12 @@ interface GrayCourtProps {
 
 const GrayCourt: React.FC<GrayCourtProps> = ({ onCourtLeftClick, onCourtRightClick, markers = [] }) => {
   const frame = '#BABABA', surface = '#DEDEDE', line = '#8A8A8A', sw = 2;
+  // 3pt line geometry (approximate, matches left/right basket orientation)
+  const threeYTop = 12 + 22;
+  const threeYBot = 348 - 22;
+  const threeXLeft = 130;
+  const threeXRight = 600 - 130;
+  const threeR = 172;
 
   const coords = (e: React.MouseEvent<SVGRectElement>) => {
     const svgEl = e.currentTarget.closest('svg') as SVGSVGElement;
@@ -216,6 +220,15 @@ const GrayCourt: React.FC<GrayCourtProps> = ({ onCourtLeftClick, onCourtRightCli
       <rect x={12} y={124} width={132} height={112} fill="none" stroke={line} strokeWidth={sw} />
       <path d="M 144 124 A 56 56 0 0 1 144 236" fill="none" stroke={line} strokeWidth={sw} />
       <path d="M 144 124 A 56 56 0 0 0 144 236" fill="none" stroke={line} strokeWidth={sw} strokeDasharray="5 4" />
+      {/* Left 3pt line */}
+      <line x1={12} y1={threeYTop} x2={threeXLeft} y2={threeYTop} stroke={line} strokeWidth={sw} />
+      <line x1={12} y1={threeYBot} x2={threeXLeft} y2={threeYBot} stroke={line} strokeWidth={sw} />
+      <path
+        d={`M ${threeXLeft} ${threeYTop} A ${threeR} ${threeR} 0 0 1 ${threeXLeft} ${threeYBot}`}
+        fill="none"
+        stroke={line}
+        strokeWidth={sw}
+      />
       <line x1={20} y1={160} x2={20} y2={200} stroke={line} strokeWidth={3.5} />
       <circle cx={46} cy={180} r={9} fill="none" stroke={line} strokeWidth={sw} />
       <path d="M 46 161 A 19 19 0 0 1 46 199" fill="none" stroke={line} strokeWidth={sw} />
@@ -229,6 +242,15 @@ const GrayCourt: React.FC<GrayCourtProps> = ({ onCourtLeftClick, onCourtRightCli
       <rect x={456} y={124} width={132} height={112} fill="none" stroke={line} strokeWidth={sw} />
       <path d="M 456 124 A 56 56 0 0 0 456 236" fill="none" stroke={line} strokeWidth={sw} />
       <path d="M 456 124 A 56 56 0 0 1 456 236" fill="none" stroke={line} strokeWidth={sw} strokeDasharray="5 4" />
+      {/* Right 3pt line */}
+      <line x1={588} y1={threeYTop} x2={threeXRight} y2={threeYTop} stroke={line} strokeWidth={sw} />
+      <line x1={588} y1={threeYBot} x2={threeXRight} y2={threeYBot} stroke={line} strokeWidth={sw} />
+      <path
+        d={`M ${threeXRight} ${threeYTop} A ${threeR} ${threeR} 0 0 0 ${threeXRight} ${threeYBot}`}
+        fill="none"
+        stroke={line}
+        strokeWidth={sw}
+      />
       <line x1={580} y1={160} x2={580} y2={200} stroke={line} strokeWidth={3.5} />
       <circle cx={554} cy={180} r={9} fill="none" stroke={line} strokeWidth={sw} />
       <path d="M 554 161 A 19 19 0 0 0 554 199" fill="none" stroke={line} strokeWidth={sw} />
@@ -1043,7 +1065,6 @@ const WIZARD_INIT: WizardData = {
 const CourtSection: React.FC<CourtSectionProps> = ({
   team1Color, team2Color,
   team1Name = 'TEAM 1', team2Name = 'TEAM 2',
-  possession, onTogglePossession,
   selectedTeam1Player, selectedTeam2Player,
   onSelectTeam1Player, onSelectTeam2Player,
   onFoul1, onTurnover1, onFoul2, onTurnover2,
@@ -1055,6 +1076,9 @@ const CourtSection: React.FC<CourtSectionProps> = ({
   const [foulWizard,      setFoulWizard]      = useState<FoulWizardData | null>(null);
   const [turnoverWizard,  setTurnoverWizard]  = useState<TurnoverWizardData | null>(null);
   const [drawersExpanded, setDrawersExpanded]  = useState(false);
+  // Possession is still used to group offense/defense in wizards.
+  // The dashboard possession toggle bar was removed per request, so we default to Team 1.
+  const possession: 1 | 2 = 1;
 
   // ── Per-player live stats ─────────────────────────────────────────────────
   // key = `${team}-${num}`  e.g. "1-5"
@@ -1294,14 +1318,6 @@ const CourtSection: React.FC<CourtSectionProps> = ({
 
         {/* Team 1 column — collapsed: player tiles; expanded: stats table; blue chevron toward court */}
         <div className={`flex flex-col gap-1 shrink-0 pr-1 ${drawersExpanded ? 'w-52' : 'w-[72px]'}`}>
-          <button
-            type="button"
-            onClick={() => setDrawersExpanded((e) => !e)}
-            className="self-center p-1 text-blue-600 hover:text-blue-800 rounded flex items-center justify-center"
-            title={drawersExpanded ? 'Show player buttons' : 'Show stats table'}
-          >
-            {drawersExpanded ? <FiChevronLeft size={20} className="text-blue-600" /> : <FiChevronRight size={20} className="text-blue-600" />}
-          </button>
           {drawersExpanded ? (
             <PlayerStatsTable
               players={TEAM1_PLAYERS}
@@ -1330,34 +1346,26 @@ const CourtSection: React.FC<CourtSectionProps> = ({
           </div>
         </div>
 
-        {/* Interactive court + possession toggle */}
-        <div className="flex-1 mx-2 min-w-0 overflow-hidden flex flex-col">
-          {/* Possession bar */}
-          <div className="flex items-center justify-center gap-2 py-1 shrink-0">
-            <button
-              onClick={onTogglePossession}
-              className={`px-3 py-0.5 rounded-full text-[11px] font-bold tracking-wide transition-all ${
-                possession === 1
-                  ? 'text-white shadow'
-                  : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
-              }`}
-              style={possession === 1 ? { backgroundColor: team1Color } : {}}
-            >
-              {team1Name} ◀
-            </button>
-            <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-widest">BALL</span>
-            <button
-              onClick={onTogglePossession}
-              className={`px-3 py-0.5 rounded-full text-[11px] font-bold tracking-wide transition-all ${
-                possession === 2
-                  ? 'text-white shadow'
-                  : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
-              }`}
-              style={possession === 2 ? { backgroundColor: team2Color } : {}}
-            >
-              ▶ {team2Name}
-            </button>
-          </div>
+        {/* Interactive court */}
+        <div className="flex-1 mx-2 min-w-0 overflow-hidden flex flex-col relative">
+          {/* Drawer toggles — both sides of the court */}
+          <button
+            type="button"
+            onClick={() => setDrawersExpanded((e) => !e)}
+            className="absolute left-0 top-1 z-10 -translate-x-2 text-blue-600 hover:text-blue-800 rounded flex items-center justify-center"
+            title={drawersExpanded ? 'Show player buttons' : 'Show stats table'}
+          >
+            {drawersExpanded ? <FiChevronLeft size={20} className="text-blue-600" /> : <FiChevronRight size={20} className="text-blue-600" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => setDrawersExpanded((e) => !e)}
+            className="absolute right-0 top-1 z-10 translate-x-2 text-blue-600 hover:text-blue-800 rounded flex items-center justify-center"
+            title={drawersExpanded ? 'Show player buttons' : 'Show stats table'}
+          >
+            {drawersExpanded ? <FiChevronRight size={20} className="text-blue-600" /> : <FiChevronLeft size={20} className="text-blue-600" />}
+          </button>
+
           <div className="flex-1 min-h-0 flex items-center justify-center overflow-hidden">
             <GrayCourt
               onCourtLeftClick={handleLeftClick}
@@ -1369,14 +1377,6 @@ const CourtSection: React.FC<CourtSectionProps> = ({
 
         {/* Team 2 column — collapsed: player tiles; expanded: stats table; blue chevron toward court */}
         <div className={`flex flex-col gap-1 shrink-0 pl-1 ${drawersExpanded ? 'w-52' : 'w-[72px]'}`}>
-          <button
-            type="button"
-            onClick={() => setDrawersExpanded((e) => !e)}
-            className="self-center p-1 text-blue-600 hover:text-blue-800 rounded flex items-center justify-center"
-            title={drawersExpanded ? 'Show player buttons' : 'Show stats table'}
-          >
-            {drawersExpanded ? <FiChevronRight size={20} className="text-blue-600" /> : <FiChevronLeft size={20} className="text-blue-600" />}
-          </button>
           {drawersExpanded ? (
             <PlayerStatsTable
               players={TEAM2_PLAYERS}
