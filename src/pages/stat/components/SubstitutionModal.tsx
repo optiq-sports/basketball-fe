@@ -20,6 +20,7 @@ interface Props {
   team2Name: string;
   onFinish: (subs: SubEvent[]) => void;
   onCancel: () => void;
+  inline?: boolean;
 }
 
 // ─── Initial mock rosters ──────────────────────────────────────────────────────
@@ -34,6 +35,7 @@ const SubstitutionModal: React.FC<Props> = ({
   team2Name,
   onFinish,
   onCancel,
+  inline = false,
 }) => {
   const [t1, setT1] = useState<TeamRoster>({
     court: [...INIT_COURT],
@@ -191,55 +193,65 @@ const SubstitutionModal: React.FC<Props> = ({
   };
 
   // ─── Render ───────────────────────────────────────────────────────────────────
-  return (
-    <div className="fixed inset-0 z-[950] bg-black/60 flex items-center justify-center">
-      <div className="bg-white rounded-lg w-full max-w-4xl mx-4 shadow-2xl overflow-hidden">
-        {/* Title */}
-        <div className="px-7 pt-5 pb-1">
-          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-gray-400">
-            Substitution
-          </p>
-        </div>
+  const content = (
+    <div className="bg-white rounded-lg w-full max-w-4xl mx-4 shadow-2xl overflow-hidden">
+      {/* Title */}
+      <div className="px-7 pt-5 pb-1">
+        <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-gray-400">
+          Substitution
+        </p>
+      </div>
 
-        {/* Body: two panels + vertical divider */}
-        <div className="flex items-stretch">
-          <TeamPanel
-            team={1}
-            color={team1Color}
-            name={team1Name}
-            roster={t1}
-            mirrored={false}
-          />
-          <div className="w-px bg-gray-200 my-4" />
-          <TeamPanel
-            team={2}
-            color={team2Color}
-            name={team2Name}
-            roster={t2}
-            mirrored={true}
-          />
-        </div>
+      {/* Body: two panels + vertical divider */}
+      <div className="flex items-stretch">
+        <TeamPanel
+          team={1}
+          color={team1Color}
+          name={team1Name}
+          roster={t1}
+          mirrored={false}
+        />
+        <div className="w-px bg-gray-200 my-4" />
+        <TeamPanel
+          team={2}
+          color={team2Color}
+          name={team2Name}
+          roster={t2}
+          mirrored={true}
+        />
+      </div>
 
-        {/* Footer */}
-        <div className="border-t border-gray-100 px-7 py-3 flex justify-between items-center">
-          <button
-            onClick={onCancel}
-            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-red-500 transition-colors font-semibold"
-          >
-            <FiX size={13} />
-            Cancel
-          </button>
-          <button
-            onClick={handleFinish}
-            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-blue-600 transition-colors font-semibold"
-          >
-            Finish
-            <FiArrowRight size={13} />
-          </button>
-        </div>
+      {/* Footer */}
+      <div className="border-t border-gray-100 px-7 py-3 flex justify-between items-center">
+        <button
+          onClick={onCancel}
+          className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-red-500 transition-colors font-semibold"
+        >
+          <FiX size={13} />
+          Cancel
+        </button>
+        <button
+          onClick={handleFinish}
+          className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-blue-600 transition-colors font-semibold"
+        >
+          Finish
+          <FiArrowRight size={13} />
+        </button>
       </div>
     </div>
   );
+
+  return inline
+    ? (
+      <div className="w-full h-full flex items-center justify-center overflow-auto py-4 px-3">
+        {content}
+      </div>
+    )
+    : (
+      <div className="fixed inset-0 z-[950] bg-black/60 flex items-center justify-center">
+        {content}
+      </div>
+    );
 };
 
 export default SubstitutionModal;

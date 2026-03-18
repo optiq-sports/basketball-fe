@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import MenuBar from './components/MenuBar';
 import Scoreboard from './components/Scoreboard';
 import CourtSection from './components/CourtSection';
@@ -42,35 +42,25 @@ const StatDash: React.FC = () => {
   const [timeLeft, setTimeLeft]   = useState(PERIOD_SECONDS);
   const [isRunning, setIsRunning] = useState(false);
 
-  // Refs used by the tick loop — avoids stale closures
-  const startEpochRef = useRef<number>(0);   // Date.now() when clock last started
-  const startValueRef = useRef<number>(PERIOD_SECONDS); // timeLeft value at that moment
   const [events, setEvents] = useState<GameEvent[]>(MOCK_EVENTS);
   const [selectedTeam1Player, setSelectedTeam1Player] = useState<number | null>(null);
   const [selectedTeam2Player, setSelectedTeam2Player] = useState<number | null>(null);
 
-  // ── Accurate countdown using Date.now() as reference ─────────────────────────
-  // Polls every 100 ms so the display updates within 1/10 s of a real second tick.
+  // ── Countdown timer ─────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isRunning) return;
-
-    // Capture the real-world start point each time the clock is (re)started
-    startEpochRef.current = Date.now();
-    startValueRef.current = timeLeft;          // snapshot of current value
-
     const id = setInterval(() => {
-      const elapsed   = Math.floor((Date.now() - startEpochRef.current) / 1000);
-      const remaining = Math.max(0, startValueRef.current - elapsed);
-
-      setTimeLeft(remaining);
-
-      if (remaining <= 0) {
-        setIsRunning(false);
-      }
-    }, 100); // 100 ms poll — tight enough to never skip a visible second
+      setTimeLeft((t) => {
+        if (t <= 1) {
+          setIsRunning(false);
+          return 0;
+        }
+        return t - 1;
+      });
+    }, 1000);
 
     return () => clearInterval(id);
-  }, [isRunning]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isRunning]);
 
   // ── Event log helper ─────────────────────────────────────────────────────────
   const addEvent = useCallback(
@@ -159,12 +149,6 @@ const StatDash: React.FC = () => {
         onAdjustTime={(delta) =>
           setTimeLeft((t) => {
             const next = Math.max(0, Math.min(PERIOD_SECONDS, t + delta));
-            // If the clock is ticking, reset the reference so the interval
-            // continues counting from the adjusted value without jumping
-            if (isRunning) {
-              startEpochRef.current = Date.now();
-              startValueRef.current = next;
-            }
             return next;
           })
         }
@@ -176,55 +160,53 @@ const StatDash: React.FC = () => {
       {/* ── Court + game log — share remaining height; log fixed below court ──── */}
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
         <div className="flex-1 min-h-0">
-          <CourtSection
-            team1Color={TEAM_1_COLOR}
-            team2Color={TEAM_2_COLOR}
-            team1Name="TEAM 1"
-            team2Name="TEAM 2"
-            selectedTeam1Player={selectedTeam1Player}
-            selectedTeam2Player={selectedTeam2Player}
-            onSelectTeam1Player={(n) => setSelectedTeam1Player((p) => (p === n ? null : n))}
-            onSelectTeam2Player={(n) => setSelectedTeam2Player((p) => (p === n ? null : n))}
-            onFoul1={() => handleFoul(1)}
-            onTurnover1={() => handleTurnover(1)}
-            onFoul2={() => handleFoul(2)}
-            onTurnover2={() => handleTurnover(2)}
-            onAddEvent={addEvent}
-            onAddScore={(team, points) => {
-              if (team === 1) setTeam1Score((s) => s + points);
-              else setTeam2Score((s) => s + points);
-            }}
-          />
+          {showTimeout ? (
+            <TimeoutModal
+              inline
+              team1Color={TEAM_1_COLOR}
+              team2Color={TEAM_2_COLOR}
+              team1Name="TEAM 1"
+              team2Name="TEAM 2"
+              onSelect={handleTimeoutSelect}
+              onCancel={() => setShowTimeout(false)}
+            />
+          ) : showSub ? (
+            <SubstitutionModal
+              inline
+              team1Color={TEAM_1_COLOR}
+              team2Color={TEAM_2_COLOR}
+              team1Name="TEAM 1"
+              team2Name="TEAM 2"
+              onFinish={handleSubFinish}
+              onCancel={() => setShowSub(false)}
+            />
+          ) : (
+            <CourtSection
+              team1Color={TEAM_1_COLOR}
+              team2Color={TEAM_2_COLOR}
+              team1Name="TEAM 1"
+              team2Name="TEAM 2"
+              selectedTeam1Player={selectedTeam1Player}
+              selectedTeam2Player={selectedTeam2Player}
+              onSelectTeam1Player={(n) => setSelectedTeam1Player((p) => (p === n ? null : n))}
+              onSelectTeam2Player={(n) => setSelectedTeam2Player((p) => (p === n ? null : n))}
+              onFoul1={() => handleFoul(1)}
+              onTurnover1={() => handleTurnover(1)}
+              onFoul2={() => handleFoul(2)}
+              onTurnover2={() => handleTurnover(2)}
+              onAddEvent={addEvent}
+              onAddScore={(team, points) => {
+                if (team === 1) setTeam1Score((s) => s + points);
+                else setTeam2Score((s) => s + points);
+              }}
+            />
+          )}
         </div>
         {/* Match CourtSection horizontal inset */}
         <div className="px-1">
           <GameLog events={events} />
         </div>
       </div>
-
-      {/* ── Timeout overlay ──────────────────────────────────────────────────── */}
-      {showTimeout && (
-        <TimeoutModal
-          team1Color={TEAM_1_COLOR}
-          team2Color={TEAM_2_COLOR}
-          team1Name="TEAM 1"
-          team2Name="TEAM 2"
-          onSelect={handleTimeoutSelect}
-          onCancel={() => setShowTimeout(false)}
-        />
-      )}
-
-      {/* ── Substitution overlay ─────────────────────────────────────────────── */}
-      {showSub && (
-        <SubstitutionModal
-          team1Color={TEAM_1_COLOR}
-          team2Color={TEAM_2_COLOR}
-          team1Name="TEAM 1"
-          team2Name="TEAM 2"
-          onFinish={handleSubFinish}
-          onCancel={() => setShowSub(false)}
-        />
-      )}
     </div>
   );
 };

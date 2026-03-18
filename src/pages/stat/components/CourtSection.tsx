@@ -387,14 +387,14 @@ const ShotWizard: React.FC<ShotWizardProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 z-[900] flex items-center justify-center bg-black/60">
-      <div className="w-full max-w-5xl px-6">
-        <div className="grid grid-cols-3 gap-4 mb-2">
+    <div className="w-full h-full flex items-center justify-center overflow-auto py-4">
+      <div className="w-full max-w-5xl px-3 md:px-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 md:gap-4 mb-2">
           {PANEL_LABELS.map((label, i) => (
             <p key={label} className={`text-xs font-bold tracking-widest uppercase px-1 ${i === step ? 'text-white' : 'text-gray-500 opacity-50'}`}>{label}</p>
           ))}
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
 
           {/* Panel 1 — MADE SHOT PLAYER */}
           <div className={`bg-white rounded-lg flex flex-col ${step === 0 ? '' : 'opacity-50 pointer-events-none'}`} style={{ minHeight: 300 }}>
@@ -490,14 +490,14 @@ const MissedShotWizard: React.FC<MissedWizardProps> = ({
   // ── Steps 0–1: player + shot type (2 panels) ────────────────────────────
   if (step <= 1) {
     return (
-      <div className="fixed inset-0 z-[900] flex items-center justify-center bg-black/60">
-        <div className="w-full max-w-3xl px-6">
-          <div className="grid grid-cols-2 gap-4 mb-2">
+      <div className="w-full h-full flex items-center justify-center overflow-auto py-4">
+        <div className="w-full max-w-3xl px-3 md:px-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-4 mb-2">
             {['MISSED SHOT PLAYER', 'SHOT TYPE / MISSED SHOT'].map((label, i) => (
               <p key={label} className={`text-xs font-bold tracking-widest uppercase px-1 ${i === step ? 'text-white' : 'text-gray-500 opacity-50'}`}>{label}</p>
             ))}
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
 
             {/* Panel 1 — player */}
             <div className={`bg-white rounded-lg flex flex-col ${step === 0 ? '' : 'opacity-50 pointer-events-none'}`} style={{ minHeight: 300 }}>
@@ -540,8 +540,8 @@ const MissedShotWizard: React.FC<MissedWizardProps> = ({
   // ── Step 2: Rebound / outcome (single wide panel) ────────────────────────
   if (step === 2) {
     return (
-      <div className="fixed inset-0 z-[900] flex items-center justify-center bg-black/60">
-        <div className="w-full max-w-xl px-6">
+      <div className="w-full h-full flex items-center justify-center overflow-auto py-4">
+        <div className="w-full max-w-xl px-3 md:px-6">
           <p className="text-xs font-bold tracking-widest uppercase text-white mb-2">REBOUND / MISSED SHOT</p>
           <div className="bg-white rounded-lg flex flex-col" style={{ minHeight: 300 }}>
             <div className="px-4 py-2 border-b border-gray-100">
@@ -572,14 +572,14 @@ const MissedShotWizard: React.FC<MissedWizardProps> = ({
 
   // ── Steps 3–4: Blocked flow (2 panels) ──────────────────────────────────
   return (
-    <div className="fixed inset-0 z-[900] flex items-center justify-center bg-black/60">
-      <div className="w-full max-w-3xl px-6">
-        <div className="grid grid-cols-2 gap-4 mb-2">
+    <div className="w-full h-full flex items-center justify-center overflow-auto py-4">
+      <div className="w-full max-w-3xl px-3 md:px-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-4 mb-2">
           {['SHOT BLOCK PLAYER', 'MISSED SHOT PLAYER'].map((label, i) => (
             <p key={label} className={`text-xs font-bold tracking-widest uppercase px-1 ${(step === 3 && i === 0) || (step === 4 && i === 1) ? 'text-white' : 'text-gray-500 opacity-50'}`}>{label}</p>
           ))}
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
 
           {/* Panel — block player (defense team first) */}
           <div className={`bg-white rounded-lg flex flex-col ${step === 3 ? '' : 'opacity-50 pointer-events-none'}`} style={{ minHeight: 300 }}>
@@ -661,14 +661,14 @@ const TurnoverWizard: React.FC<TurnoverWizardProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 z-[900] flex items-center justify-center bg-black/60">
-      <div className="w-full max-w-5xl px-6">
-        <div className="grid grid-cols-3 gap-4 mb-2">
+    <div className="w-full h-full flex items-center justify-center overflow-auto py-4">
+      <div className="w-full max-w-5xl px-3 md:px-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 md:gap-4 mb-2">
           <PLabel label="PLAYER FOR TURNOVER" active={step === 0} />
           <PLabel label="TURNOVER TYPE"        active={step === 1} />
           <PLabel label="STEAL"                active={step === 2} />
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
 
           {/* Panel 0 — Turnover player */}
           <div className={`bg-white rounded-lg flex flex-col ${step === 0 ? '' : 'opacity-50 pointer-events-none'}`} style={{ minHeight: 300 }}>
@@ -796,11 +796,10 @@ const FoulWizard: React.FC<FoulWizardProps> = ({
   // ── Step 0: Foul with Bench pop-up (side columns + center panel) ─────────────
   if (step === 0) {
     return (
-      <div className="fixed inset-0 z-[900] flex items-center justify-center bg-black/60">
-        <p className="absolute top-4 left-6 text-[10px] font-bold text-gray-300 uppercase tracking-widest">FOUL WITH BENCH POP-UP</p>
-        <div className="flex items-stretch gap-4 max-w-4xl w-full px-6">
+      <div className="w-full h-full flex items-center justify-center overflow-auto py-4">
+        <div className="flex flex-col md:flex-row items-stretch gap-4 max-w-4xl w-full px-3 md:px-6">
           {/* Left column — fouling team players + BENCH + COACH */}
-          <div className="flex flex-col gap-1.5 w-24 shrink-0">
+          <div className="flex flex-col gap-1.5 w-full md:w-24 shrink-0">
             {foulingTeamPlayers.map((p) => (
               <button
                 key={p.num}
@@ -839,7 +838,7 @@ const FoulWizard: React.FC<FoulWizardProps> = ({
           </div>
 
           {/* Right column — empty for symmetry */}
-          <div className="w-24 shrink-0" />
+          <div className="hidden md:block w-24 shrink-0" />
         </div>
       </div>
     );
@@ -848,15 +847,15 @@ const FoulWizard: React.FC<FoulWizardProps> = ({
   // ── Steps 1-2: Foul type + Receiver (3-panel grid) ───────────────────────────
   if (step <= 2) {
     return (
-      <div className="fixed inset-0 z-[900] flex items-center justify-center bg-black/60">
-        <div className="w-full max-w-5xl px-6">
-          <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest mb-1">FOUL FLOW MODALS</p>
-          <div className="grid grid-cols-3 gap-4 mb-2">
+      <div className="w-full h-full flex items-center justify-center overflow-auto py-4">
+        <div className="w-full max-w-5xl px-3 md:px-6">
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">FOUL FLOW</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 md:gap-4 mb-2">
             <PLabel label="SELECT PLAYER FOR FOUL"  active={false} />
             <PLabel label="FOUL TYPE"                active={step === 1} />
             <PLabel label="FREE THROWS AWARDED"      active={step === 2} />
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
 
             {/* Panel 0 — Fouler (summary, Back returns to step 0) */}
             <Panel active={false}>
@@ -899,15 +898,15 @@ const FoulWizard: React.FC<FoulWizardProps> = ({
 
   // ── Group 2: steps 3-5 ────────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 z-[900] flex items-center justify-center bg-black/60">
-      <div className="w-full max-w-5xl px-6">
-        <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest mb-1">FOUL FLOW MODALS</p>
-        <div className="grid grid-cols-3 gap-4 mb-2">
+    <div className="w-full h-full flex items-center justify-center overflow-auto py-4">
+      <div className="w-full max-w-5xl px-3 md:px-6">
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">FOUL FLOW</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 md:gap-4 mb-2">
           <PLabel label="FREE THROWS AWARDED" active={step === 3} />
           <PLabel label="PLAYER FOR ASSIST"   active={step === 4} />
           <PLabel label="FREE THROW RESULTS"  active={step === 5} />
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
 
           {/* Panel 3 — FT count */}
           <Panel active={step === 3}>
@@ -1305,12 +1304,8 @@ const CourtSection: React.FC<CourtSectionProps> = ({
 
   const turnoverCancel = () => setTurnoverWizard(null);
 
-  // Show only the selected player's markers; show all when no one is selected
-  const visibleMarkers = markers.filter((m) => {
-    if (m.playerTeam === 1 && selectedTeam1Player !== null && m.playerNum !== selectedTeam1Player) return false;
-    if (m.playerTeam === 2 && selectedTeam2Player !== null && m.playerNum !== selectedTeam2Player) return false;
-    return true;
-  });
+  // Always show all markers on court (no per-player filtering)
+  const visibleMarkers = markers;
 
   return (
     <>
@@ -1348,31 +1343,104 @@ const CourtSection: React.FC<CourtSectionProps> = ({
 
         {/* Interactive court */}
         <div className="flex-1 mx-2 min-w-0 overflow-hidden flex flex-col relative">
-          {/* Drawer toggles — both sides of the court */}
-          <button
-            type="button"
-            onClick={() => setDrawersExpanded((e) => !e)}
-            className="absolute left-0 top-1 z-10 -translate-x-2 text-blue-600 hover:text-blue-800 rounded flex items-center justify-center"
-            title={drawersExpanded ? 'Show player buttons' : 'Show stats table'}
-          >
-            {drawersExpanded ? <FiChevronLeft size={20} className="text-blue-600" /> : <FiChevronRight size={20} className="text-blue-600" />}
-          </button>
-          <button
-            type="button"
-            onClick={() => setDrawersExpanded((e) => !e)}
-            className="absolute right-0 top-1 z-10 translate-x-2 text-blue-600 hover:text-blue-800 rounded flex items-center justify-center"
-            title={drawersExpanded ? 'Show player buttons' : 'Show stats table'}
-          >
-            {drawersExpanded ? <FiChevronRight size={20} className="text-blue-600" /> : <FiChevronLeft size={20} className="text-blue-600" />}
-          </button>
+          {(wizard || missedWizard || foulWizard || turnoverWizard) ? (
+            <div className="flex-1 min-h-0 flex items-center justify-center overflow-hidden">
+              {wizard && (
+                <ShotWizard
+                  wizard={wizard}
+                  team1Color={team1Color}
+                  team2Color={team2Color}
+                  team1Name={team1Name}
+                  team2Name={team2Name}
+                  possession={possession}
+                  onSelectPlayer={wizardSelectPlayer}
+                  onSelectShot={wizardSelectShot}
+                  onToggleFastBreak={wizardToggleFastBreak}
+                  onSelectAssist={wizardSelectAssist}
+                  onBack={wizardBack}
+                  onCancel={wizardCancel}
+                />
+              )}
+              {turnoverWizard && (
+                <TurnoverWizard
+                  wizard={turnoverWizard}
+                  team1Color={team1Color}
+                  team2Color={team2Color}
+                  team1Name={team1Name}
+                  team2Name={team2Name}
+                  onSelectPlayer={turnoverSelectPlayer}
+                  onSelectType={turnoverSelectType}
+                  onSelectSteal={turnoverSelectSteal}
+                  onBack={turnoverBack}
+                  onCancel={turnoverCancel}
+                />
+              )}
+              {foulWizard && (
+                <FoulWizard
+                  wizard={foulWizard}
+                  team1Color={team1Color}
+                  team2Color={team2Color}
+                  team1Name={team1Name}
+                  team2Name={team2Name}
+                  onSelectFouler={foulSelectFouler}
+                  onSelectFoulType={foulSelectType}
+                  onSelectReceiver={foulSelectReceiver}
+                  onSelectFTCount={foulSelectFTCount}
+                  onSelectAssist={foulSelectAssist}
+                  onSetFTResult={foulSetFTResult}
+                  onComplete={foulComplete}
+                  onBack={foulBack}
+                  onCancel={foulCancel}
+                />
+              )}
+              {missedWizard && (
+                <MissedShotWizard
+                  wizard={missedWizard}
+                  team1Color={team1Color}
+                  team2Color={team2Color}
+                  team1Name={team1Name}
+                  team2Name={team2Name}
+                  possession={possession}
+                  onSelectPlayer={missedSelectPlayer}
+                  onSelectShot={missedSelectShot}
+                  onToggleFastBreak={missedToggleFastBreak}
+                  onSelectRebound={missedSelectRebound}
+                  onSelectBlockPlayer={missedSelectBlockPlayer}
+                  onSelectMissedPlayer={missedSelectMissedPlayer}
+                  onBack={missedBack}
+                  onCancel={missedCancel}
+                />
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Drawer toggles — both sides of the court */}
+              <button
+                type="button"
+                onClick={() => setDrawersExpanded((e) => !e)}
+                className="absolute left-0 top-1/2 -translate-y-1/2 z-10 -translate-x-2 text-blue-600 hover:text-blue-800 rounded flex items-center justify-center"
+                title={drawersExpanded ? 'Show player buttons' : 'Show stats table'}
+              >
+                {drawersExpanded ? <FiChevronLeft size={20} className="text-blue-600" /> : <FiChevronRight size={20} className="text-blue-600" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDrawersExpanded((e) => !e)}
+                className="absolute right-0 top-1/2 -translate-y-1/2 z-10 translate-x-2 text-blue-600 hover:text-blue-800 rounded flex items-center justify-center"
+                title={drawersExpanded ? 'Show player buttons' : 'Show stats table'}
+              >
+                {drawersExpanded ? <FiChevronRight size={20} className="text-blue-600" /> : <FiChevronLeft size={20} className="text-blue-600" />}
+              </button>
 
-          <div className="flex-1 min-h-0 flex items-center justify-center overflow-hidden">
-            <GrayCourt
-              onCourtLeftClick={handleLeftClick}
-              onCourtRightClick={handleRightClick}
-              markers={visibleMarkers}
-            />
-          </div>
+              <div className="flex-1 min-h-0 flex items-center justify-center overflow-hidden">
+                <GrayCourt
+                  onCourtLeftClick={handleLeftClick}
+                  onCourtRightClick={handleRightClick}
+                  markers={visibleMarkers}
+                />
+              </div>
+            </>
+          )}
         </div>
 
         {/* Team 2 column — collapsed: player tiles; expanded: stats table; blue chevron toward court */}
@@ -1405,80 +1473,6 @@ const CourtSection: React.FC<CourtSectionProps> = ({
           </div>
         </div>
       </div>
-
-      {/* Made-shot wizard (right-click) */}
-      {wizard && (
-        <ShotWizard
-          wizard={wizard}
-          team1Color={team1Color}
-          team2Color={team2Color}
-          team1Name={team1Name}
-          team2Name={team2Name}
-          possession={possession}
-          onSelectPlayer={wizardSelectPlayer}
-          onSelectShot={wizardSelectShot}
-          onToggleFastBreak={wizardToggleFastBreak}
-          onSelectAssist={wizardSelectAssist}
-          onBack={wizardBack}
-          onCancel={wizardCancel}
-        />
-      )}
-
-      {/* Turnover wizard (TURNOVER button) */}
-      {turnoverWizard && (
-        <TurnoverWizard
-          wizard={turnoverWizard}
-          team1Color={team1Color}
-          team2Color={team2Color}
-          team1Name={team1Name}
-          team2Name={team2Name}
-          onSelectPlayer={turnoverSelectPlayer}
-          onSelectType={turnoverSelectType}
-          onSelectSteal={turnoverSelectSteal}
-          onBack={turnoverBack}
-          onCancel={turnoverCancel}
-        />
-      )}
-
-      {/* Foul wizard (FOUL button) */}
-      {foulWizard && (
-        <FoulWizard
-          wizard={foulWizard}
-          team1Color={team1Color}
-          team2Color={team2Color}
-          team1Name={team1Name}
-          team2Name={team2Name}
-          onSelectFouler={foulSelectFouler}
-          onSelectFoulType={foulSelectType}
-          onSelectReceiver={foulSelectReceiver}
-          onSelectFTCount={foulSelectFTCount}
-          onSelectAssist={foulSelectAssist}
-          onSetFTResult={foulSetFTResult}
-          onComplete={foulComplete}
-          onBack={foulBack}
-          onCancel={foulCancel}
-        />
-      )}
-
-      {/* Missed-shot wizard (left-click) */}
-      {missedWizard && (
-        <MissedShotWizard
-          wizard={missedWizard}
-          team1Color={team1Color}
-          team2Color={team2Color}
-          team1Name={team1Name}
-          team2Name={team2Name}
-          possession={possession}
-          onSelectPlayer={missedSelectPlayer}
-          onSelectShot={missedSelectShot}
-          onToggleFastBreak={missedToggleFastBreak}
-          onSelectRebound={missedSelectRebound}
-          onSelectBlockPlayer={missedSelectBlockPlayer}
-          onSelectMissedPlayer={missedSelectMissedPlayer}
-          onBack={missedBack}
-          onCancel={missedCancel}
-        />
-      )}
     </>
   );
 };
