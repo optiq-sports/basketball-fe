@@ -1,0 +1,137 @@
+import React, { useEffect } from 'react';
+import { IoChevronDown, IoChevronUp } from 'react-icons/io5';
+import { cl } from '../utils/cl';
+
+export interface GameTimerProps {
+  quarter: number;
+  timerSeconds: number;
+  isRunning: boolean;
+  onStartStop: () => void;
+  onTick: () => void;
+  onAdjustMinutes: (deltaSeconds: number) => void;
+  onAdjustSeconds: (deltaSeconds: number) => void;
+}
+
+const chevronSize = 13;
+
+export function quarterLabel(q: number): string {
+  const suffix = q === 1 ? 'st' : q === 2 ? 'nd' : q === 3 ? 'rd' : 'th';
+  return `${q}${suffix} QUARTER`;
+}
+
+export function formatClock(totalSeconds: number): string {
+  const s = Math.max(0, totalSeconds);
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
+
+const GameTimer: React.FC<GameTimerProps> = ({
+  quarter,
+  timerSeconds,
+  isRunning,
+  onStartStop,
+  onTick,
+  onAdjustMinutes,
+  onAdjustSeconds,
+}) => {
+  useEffect(() => {
+    if (!isRunning) return;
+    const id = window.setInterval(() => onTick(), 1000);
+    return () => window.clearInterval(id);
+  }, [isRunning, onTick]);
+
+  const btnPadY = cl('7px', '1vh', '13px');
+  const btnPadX = cl('10px', '1.3vw', '22px');
+
+  return (
+    <div
+      className="flex min-w-0 shrink-0 flex-col font-sans"
+      style={{ minWidth: cl('200px', '26vw', '340px') }}
+    >
+      <div
+        className="rounded-t text-center font-bold text-white"
+        style={{
+          background: '#1a3a8a',
+          fontSize: cl('9px', '0.82vw', '12px'),
+          letterSpacing: 2,
+          padding: '4px 0',
+        }}
+      >
+        {quarterLabel(quarter)}
+      </div>
+      <div
+        className="flex flex-1 items-center gap-[clamp(4px,0.5vw,8px)] border-2 border-t-0 border-[#999] bg-white"
+        style={{
+          padding: `${cl('6px', '1vh', '14px')} ${cl('6px', '0.8vw', '12px')}`,
+        }}
+      >
+        <div className="flex shrink-0 flex-col gap-1">
+          <button
+            type="button"
+            className="flex p-0 text-[#555] hover:opacity-70"
+            aria-label="Add one minute"
+            onClick={() => onAdjustMinutes(60)}
+          >
+            <IoChevronUp size={chevronSize} />
+          </button>
+          <button
+            type="button"
+            className="flex p-0 text-[#555] hover:opacity-70"
+            aria-label="Subtract one minute"
+            onClick={() => onAdjustMinutes(-60)}
+          >
+            <IoChevronDown size={chevronSize} />
+          </button>
+        </div>
+
+        <span
+          className="min-w-0 flex-1 text-center font-bold tabular-nums leading-none text-black"
+          style={{
+            fontSize: cl('26px', '3.5vw', '52px'),
+            letterSpacing: 3,
+          }}
+          aria-live="polite"
+        >
+          {formatClock(timerSeconds)}
+        </span>
+
+        <div className="flex shrink-0 flex-col gap-1">
+          <button
+            type="button"
+            className="flex p-0 text-[#555] hover:opacity-70"
+            aria-label="Add one second"
+            onClick={() => onAdjustSeconds(1)}
+          >
+            <IoChevronUp size={chevronSize} />
+          </button>
+          <button
+            type="button"
+            className="flex p-0 text-[#555] hover:opacity-70"
+            aria-label="Subtract one second"
+            onClick={() => onAdjustSeconds(-1)}
+          >
+            <IoChevronDown size={chevronSize} />
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={onStartStop}
+          className="shrink-0 cursor-pointer whitespace-nowrap border-none font-bold text-white hover:opacity-95"
+          style={{
+            background: isRunning ? '#cc2222' : '#00bb44',
+            borderRadius: 5,
+            padding: `${btnPadY} ${btnPadX}`,
+            fontSize: cl('12px', '1.25vw', '18px'),
+            letterSpacing: 1,
+          }}
+        >
+          {isRunning ? 'STOP' : 'START'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default GameTimer;

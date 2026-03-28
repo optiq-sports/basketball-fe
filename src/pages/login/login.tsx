@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLogin } from '../../api/hooks';
+import { ROLE_STATISTICIAN } from '../../constants/roles';
 
 const AdminLoginPage: React.FC = () => {
   const [email, setEmail] = useState<string>('');
@@ -16,7 +17,10 @@ const AdminLoginPage: React.FC = () => {
     login.mutate(
       { email, password },
       {
-        onSuccess: () => navigate('/dashboard'),
+        onSuccess: (res) => {
+          const role = (res.data?.user as { role?: string } | undefined)?.role;
+          navigate(role === ROLE_STATISTICIAN ? '/match-key' : '/dashboard');
+        },
       }
     );
   };
