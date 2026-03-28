@@ -3,7 +3,6 @@ import { IoChevronBack, IoChevronForward } from 'react-icons/io5';
 import MenuBar from './components/MenuBar';
 import StatusStrip from './components/StatusStrip';
 import GameHeader from './components/GameHeader';
-import ActionButtons from './components/ActionButtons';
 import GameCenter from './components/GameCenter';
 import GameLog from './components/GameLog';
 import { formatClock } from './components/GameTimer';
@@ -182,29 +181,29 @@ const StatDash: React.FC = () => {
         </button>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden px-4 py-4 sm:px-6">
-          <div className="flex shrink-0 flex-col gap-3">
-            {/* Status column left of Team 1 card — same band as scoreboard (reference layout) */}
-            <div className="flex min-w-0 items-start gap-1 sm:gap-2">
-              <StatusStrip />
-              <div className="min-w-0 flex-1">
-                <GameHeader
-                  homeName={homeName}
-                  awayName={awayName}
-                  homeScore={homeScore}
-                  awayScore={awayScore}
-                  homeColor={STAT_DASH.homeRed}
-                  awayColor={STAT_DASH.awayYellow}
-                  quarter={quarter}
-                  timerSeconds={timerSeconds}
-                  isRunning={isRunning}
-                  onStartStop={onStartStop}
-                  onTick={onTick}
-                  onAdjustMinutes={onAdjustMinutes}
-                  onAdjustSeconds={onAdjustSeconds}
-                />
-              </div>
+          {/* Status column left of scoreboard tray (reference layout) */}
+          <div className="flex min-w-0 shrink-0 items-center justify-evenly sm:gap-4">
+            <StatusStrip />
+            <div className="min-w-0 flex-1">
+              <GameHeader
+                homeName={homeName}
+                awayName={awayName}
+                homeScore={homeScore}
+                awayScore={awayScore}
+                homeColor={STAT_DASH.homeRed}
+                awayColor={STAT_DASH.awayYellow}
+                quarter={quarter}
+                timerSeconds={timerSeconds}
+                isRunning={isRunning}
+                onStartStop={onStartStop}
+                onTick={onTick}
+                onAdjustMinutes={onAdjustMinutes}
+                onAdjustSeconds={onAdjustSeconds}
+                onTimeout={onTimeout}
+                onJumpBall={onJumpBall}
+                onSub={onSub}
+              />
             </div>
-            <ActionButtons onTimeout={onTimeout} onJumpBall={onJumpBall} onSub={onSub} />
           </div>
 
           <GameCenter

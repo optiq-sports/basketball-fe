@@ -13,17 +13,19 @@ const ActionButtons: React.FC<ActionButtonsProps> = ({ onTimeout, onJumpBall, on
   const handlers = [onTimeout, onJumpBall, onSub] as const;
 
   return (
-    <div className="flex justify-center gap-0 font-sans">
+    <div className="flex w-full justify-center gap-1 font-sans">
       {ACTIONS.map((btn, i) => (
         <button
           key={btn}
           type="button"
           onClick={handlers[i]}
-          className="cursor-pointer border border-gray-300 bg-white font-bold text-gray-800 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3B82F6] focus-visible:ring-offset-1"
+          className="cursor-pointer rounded-md border border-gray-300/90 bg-white font-bold uppercase text-gray-900 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3B82F6] focus-visible:ring-offset-1"
           style={{
-            padding: `${cl('4px', '0.5vh', '7px')} ${cl('10px', '1.8vw', '24px')}`,
+            flex: i === 1 ? '1.35 1 0%' : '1 1 0%',
+            minWidth: 0,
+            padding: `${cl('5px', '0.55vh', '8px')} ${cl(i === 1 ? '14px' : '8px', i === 1 ? '2.2vw' : '1.2vw', i === 1 ? '28px' : '14px')}`,
             fontSize: cl('10px', '1vw', '13px'),
-            letterSpacing: 1,
+            letterSpacing: 0.8,
           }}
         >
           {btn}

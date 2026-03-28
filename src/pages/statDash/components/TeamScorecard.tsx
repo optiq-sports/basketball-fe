@@ -15,14 +15,15 @@ const TeamScorecard: React.FC<TeamScorecardProps> = ({
   accentColor,
   accentSide,
 }) => {
+  const accentPx = cl('4px', '0.45vw', '6px');
   const accentBorder =
     accentSide === 'left'
-      ? { borderLeft: `8px solid ${accentColor}` as const }
-      : { borderRight: `8px solid ${accentColor}` as const };
+      ? { borderLeft: `${accentPx} solid ${accentColor}` as const }
+      : { borderRight: `${accentPx} solid ${accentColor}` as const };
 
   return (
     <div
-      className="flex flex-1 flex-col items-center justify-center rounded-lg bg-white font-sans shadow-none"
+      className="flex flex-1 flex-col items-center justify-center rounded-lg bg-white font-sans shadow-sm"
       style={{
         border: `1px solid ${STAT_DASH.cardBorder}`,
         ...accentBorder,
@@ -30,7 +31,7 @@ const TeamScorecard: React.FC<TeamScorecardProps> = ({
       }}
     >
       <div
-        className="font-bold uppercase text-gray-800"
+        className="font-semibold uppercase text-gray-900"
         style={{
           fontSize: cl('13px', '1.4vw', '22px'),
           letterSpacing: 2,

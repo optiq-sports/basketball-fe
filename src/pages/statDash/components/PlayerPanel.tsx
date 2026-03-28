@@ -21,13 +21,13 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
   onFoul,
   onTurnover,
 }) => {
-  const btnW = cl('44px', '4.8vw', '64px');
+  const btnW = cl('48px', '5.1vw', '68px');
 
   return (
     <div
       className="flex shrink-0 flex-col font-sans"
       style={{
-        gap: cl('3px', '0.4vw', '6px'),
+        gap: cl('5px', '0.55vw', '8px'),
         width: btnW,
       }}
     >
@@ -42,7 +42,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
             aspectRatio: '1',
             background: accentColor,
             fontSize: cl('16px', '1.9vw', '28px'),
-            borderRadius: 4,
+            borderRadius: 6,
           }}
           aria-label={`${side} player number ${n}`}
         >
@@ -54,14 +54,14 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
           key={lbl}
           type="button"
           onClick={() => (lbl === 'FOUL' ? onFoul(side) : onTurnover(side))}
-          className="cursor-pointer border border-[#aaa] bg-[#e2e2e2] font-bold hover:bg-[#d8d8d8] focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
+          className="cursor-pointer border border-gray-400/90 bg-gray-200 font-bold uppercase tracking-wide text-gray-900 hover:bg-gray-300/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
           style={{
             width: btnW,
-            padding: `${cl('4px', '0.6vh', '9px')} 0`,
-            fontSize:
-              lbl === 'FOUL' ? cl('8px', '0.72vw', '10px') : cl('6px', '0.6vw', '8px'),
-            letterSpacing: 0.3,
-            borderRadius: 3,
+            padding: `${cl('5px', '0.55vh', '8px')} ${cl('2px', '0.2vw', '4px')}`,
+            fontSize: cl('7px', '0.68vw', '10px'),
+            letterSpacing: lbl === 'TURNOVER' ? 0.15 : 0.45,
+            borderRadius: 6,
+            lineHeight: 1.15,
           }}
         >
           {lbl}

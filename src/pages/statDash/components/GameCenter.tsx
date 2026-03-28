@@ -28,7 +28,7 @@ const GameCenter: React.FC<GameCenterProps> = ({
     <div className={`${STAT_DASH_MAIN_OUTER} min-h-0 flex-1 items-start font-sans`}>
       <div
         className={`${STAT_DASH_MAIN_INNER} items-start`}
-        style={{ gap: cl('6px', '0.8vw', '12px') }}
+        style={{ gap: cl('12px', '1.4vw', '24px') }}
       >
         <PlayerPanel
           side="home"
@@ -39,9 +39,9 @@ const GameCenter: React.FC<GameCenterProps> = ({
           onTurnover={onTurnover}
         />
 
-        {/* Compact court between sidebars (row max 900px; court fills middle column) */}
-        <div className="flex min-w-0 flex-1 justify-center px-0 sm:px-1">
-          <div className="aspect-[620/380] w-full shrink-0 overflow-hidden rounded-lg border-2 border-gray-500 bg-[#c8cdd2] shadow-sm">
+        {/* Court ~60–70% width at max row; margin from side columns matches reference */}
+        <div className="flex min-w-0 flex-[1.35] justify-center px-0 sm:px-0.5">
+          <div className="aspect-[620/380] w-full max-w-full shrink-0 overflow-hidden rounded-lg border-[3px] border-gray-500 bg-[#d8dce1] shadow-sm">
             <BasketballCourt />
           </div>
         </div>

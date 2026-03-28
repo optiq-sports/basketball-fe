@@ -9,11 +9,11 @@ import { STAT_DASH } from '../statDashTheme';
  */
 const StatusStrip: React.FC = () => {
   const labelStyle: React.CSSProperties = {
-    fontWeight: 'bold',
+    fontWeight: 600,
     fontSize: cl('9px', '0.8vw', '12px'),
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
     textTransform: 'uppercase',
-    color: '#111827',
+    color: '#000000',
   };
 
   return (

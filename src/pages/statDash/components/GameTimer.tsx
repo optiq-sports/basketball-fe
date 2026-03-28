@@ -47,26 +47,27 @@ const GameTimer: React.FC<GameTimerProps> = ({
 
   return (
     <div
-      className="flex min-w-0 shrink-0 flex-col items-center font-sans"
-      style={{ minWidth: cl('200px', '26vw', '360px') }}
+      className="flex min-w-0 w-full shrink-0 flex-col overflow-hidden rounded-lg bg-white font-sans"
+      style={{
+        minWidth: cl('200px', '26vw', '360px'),
+        border: `1px solid ${STAT_DASH.cardBorder}`,
+      }}
     >
       <div
-        className="mb-1 w-fit rounded-full px-6 text-center font-bold uppercase text-white"
+        className="w-full text-center font-bold uppercase text-white"
         style={{
           background: STAT_DASH.accentBlue,
           fontSize: cl('9px', '0.82vw', '12px'),
           letterSpacing: 2,
-          paddingTop: '5px',
-          paddingBottom: '5px',
+          paddingTop: '6px',
+          paddingBottom: '6px',
         }}
       >
         {quarterLabel(quarter)}
       </div>
       <div
-        className="flex w-full flex-1 items-center gap-[clamp(4px,0.5vw,8px)] rounded-lg border bg-white"
+        className="flex w-full flex-1 items-center gap-[clamp(4px,0.5vw,8px)] bg-white"
         style={{
-          borderColor: STAT_DASH.cardBorder,
-          borderWidth: 1,
           padding: `${cl('6px', '1vh', '14px')} ${cl('6px', '0.8vw', '12px')}`,
         }}
       >
@@ -122,9 +123,9 @@ const GameTimer: React.FC<GameTimerProps> = ({
         <button
           type="button"
           onClick={onStartStop}
-          className="shrink-0 cursor-pointer whitespace-nowrap rounded-md border-none font-bold text-white hover:opacity-95"
+          className="shrink-0 cursor-pointer whitespace-nowrap rounded-md border-none font-bold uppercase text-white hover:opacity-95"
           style={{
-            background: isRunning ? STAT_DASH.stopRed : STAT_DASH.startGreen,
+            background: isRunning ? STAT_DASH.startGreen : STAT_DASH.stopRed,
             padding: `${btnPadY} ${btnPadX}`,
             fontSize: cl('12px', '1.25vw', '18px'),
             letterSpacing: 1,
