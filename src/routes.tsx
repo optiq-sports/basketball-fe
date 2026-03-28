@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useLayoutEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import Login from './pages/login/login';
@@ -7,6 +7,7 @@ import Wrapper from './components/wrapper';
 import { useProfile, queryKeys } from './api/hooks';
 import { ROLE_STATISTICIAN } from './constants/roles';
 import { StatisticianTeamColorsProvider } from './contexts/StatisticianTeamColorsContext';
+import { enterFullscreenBestEffort } from './utils/enterFullscreen';
 
 const TOKEN_KEY = 'access_token';
 
@@ -56,8 +57,17 @@ const AppGate: React.FC = () => {
   return <Wrapper />;
 };
 
+/** One attempt when the statistician app tree mounts (covers refresh and deep links). */
+const StatisticianFullscreenOnEnter: React.FC = () => {
+  useLayoutEffect(() => {
+    enterFullscreenBestEffort();
+  }, []);
+  return null;
+};
+
 const StatisticianRoutes: React.FC = () => (
   <StatisticianTeamColorsProvider>
+    <StatisticianFullscreenOnEnter />
     <Routes>
       <Route path="/match-key" element={<MatchKey />} />
       <Route path="/starters" element={<Starters />} />

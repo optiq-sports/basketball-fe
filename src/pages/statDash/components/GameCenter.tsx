@@ -1,22 +1,27 @@
 import React from 'react';
 import type { TeamSide } from '../types';
 import type { ActiveShotFlow, ShotTypeId } from '../shotRecordingUtils';
-import type { ActiveFoulFlow, FoulTypeId } from '../foulRecordingUtils';
+import type { ActiveFoulFlow, FoulTypeId, PanelFoulPick } from '../foulRecordingUtils';
+import type { ActiveTurnoverFlow, TurnoverTypeId } from '../turnoverRecordingUtils';
 import PlayerPanel from './PlayerPanel';
 import BasketballCourt, { type CourtMarker } from './BasketballCourt';
 import ShotRecordingCourtPanel from './ShotRecordingCourtPanel';
 import FoulRecordingCourtPanel from './FoulRecordingCourtPanel';
+import TurnoverRecordingCourtPanel from './TurnoverRecordingCourtPanel';
+import FoulPanelPickerModal from './FoulPanelPickerModal';
 import { cl } from '../utils/cl';
 import { STAT_DASH_MAIN_INNER, STAT_DASH_MAIN_OUTER } from '../statDashTheme';
 
 export type ShotFlowState = 'idle' | ActiveShotFlow;
 export type FoulFlowState = 'idle' | ActiveFoulFlow;
+export type TurnoverFlowState = 'idle' | ActiveTurnoverFlow;
 
 export interface GameCenterProps {
   homeColor: string;
   awayColor: string;
-  homePlayers: number[];
-  awayPlayers: number[];
+  /** On-court jerseys only — side columns and recording overlays */
+  homeActivePlayers: number[];
+  awayActivePlayers: number[];
   onPlayerFoulClick: (side: TeamSide, jersey: number) => void;
   onPlayerShotContextMenu: (side: TeamSide, jersey: number, e: React.MouseEvent) => void;
   onFoul: (side: TeamSide) => void;
@@ -27,6 +32,7 @@ export interface GameCenterProps {
   onCourtShotContextMenu: (e: React.MouseEvent) => void;
   shotFlow: ShotFlowState;
   foulFlow: FoulFlowState;
+  turnoverFlow: TurnoverFlowState;
   homeName: string;
   awayName: string;
   onShotFlowBack: () => void;
@@ -44,15 +50,27 @@ export interface GameCenterProps {
   onFoulFtShooterSame: () => void;
   onFoulFtResult: (result: 'made' | 'miss') => void;
   onFoulPickRebounder: (side: TeamSide, jersey: number) => void;
+  onTurnoverFlowBack: () => void;
+  onTurnoverFlowCancel: () => void;
+  onTurnoverPickCommittingPlayer: (jersey: number) => void;
+  onTurnoverSelectType: (type: TurnoverTypeId) => void;
+  onTurnoverNoSteal: () => void;
+  onTurnoverPickStealer: (side: TeamSide, jersey: number) => void;
   courtShotMarkers: CourtMarker[];
   courtFoulMarkers: CourtMarker[];
+  /** FOUL strip: initial picker inside court (same placement as shot flow) */
+  foulPickerOpen: boolean;
+  homeBench: number[];
+  awayBench: number[];
+  onFoulPanelPick: (side: TeamSide, pick: PanelFoulPick) => void;
+  onFoulPanelCancel: () => void;
 }
 
 const GameCenter: React.FC<GameCenterProps> = ({
   homeColor,
   awayColor,
-  homePlayers,
-  awayPlayers,
+  homeActivePlayers,
+  awayActivePlayers,
   onPlayerFoulClick,
   onPlayerShotContextMenu,
   onFoul,
@@ -61,6 +79,7 @@ const GameCenter: React.FC<GameCenterProps> = ({
   onCourtShotContextMenu,
   shotFlow,
   foulFlow,
+  turnoverFlow,
   homeName,
   awayName,
   onShotFlowBack,
@@ -78,12 +97,25 @@ const GameCenter: React.FC<GameCenterProps> = ({
   onFoulFtShooterSame,
   onFoulFtResult,
   onFoulPickRebounder,
+  onTurnoverFlowBack,
+  onTurnoverFlowCancel,
+  onTurnoverPickCommittingPlayer,
+  onTurnoverSelectType,
+  onTurnoverNoSteal,
+  onTurnoverPickStealer,
   courtShotMarkers,
   courtFoulMarkers,
+  foulPickerOpen,
+  homeBench,
+  awayBench,
+  onFoulPanelPick,
+  onFoulPanelCancel,
 }) => {
   const shotActive = shotFlow !== 'idle';
   const foulActive = foulFlow !== 'idle';
-  const flowActive = shotActive || foulActive;
+  const turnoverActive = turnoverFlow !== 'idle';
+  const flowActive = shotActive || foulActive || turnoverActive;
+  const courtOverlayActive = flowActive || foulPickerOpen;
 
   return (
     <div className={`${STAT_DASH_MAIN_OUTER} min-h-0 flex-1 items-start font-sans`}>
@@ -94,7 +126,8 @@ const GameCenter: React.FC<GameCenterProps> = ({
         <PlayerPanel
           side="home"
           accentColor={homeColor}
-          playerNumbers={homePlayers}
+          playerNumbers={homeActivePlayers}
+          interactionsLocked={courtOverlayActive}
           onPlayerFoulClick={onPlayerFoulClick}
           onPlayerShotContextMenu={onPlayerShotContextMenu}
           onFoul={onFoul}
@@ -105,9 +138,9 @@ const GameCenter: React.FC<GameCenterProps> = ({
           <div className="relative aspect-[620/380] w-full max-w-full shrink-0">
             <div
               className={`absolute inset-0 transition-opacity duration-300 ease-out ${
-                flowActive ? 'pointer-events-none opacity-0' : 'opacity-100'
+                courtOverlayActive ? 'pointer-events-none opacity-0' : 'opacity-100'
               }`}
-              aria-hidden={flowActive}
+              aria-hidden={courtOverlayActive}
             >
               <button
                 type="button"
@@ -116,7 +149,7 @@ const GameCenter: React.FC<GameCenterProps> = ({
                   e.preventDefault();
                   onCourtShotContextMenu(e);
                 }}
-                className="h-full w-full cursor-pointer overflow-hidden rounded-lg border-[3px] border-gray-500 bg-transparent p-0 text-left shadow-sm hover:brightness-[1.02] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3B82F6] focus-visible:ring-offset-2"
+                className="h-full w-full cursor-pointer overflow-hidden rounded-lg border-[3px] border-gray-500 bg-[#d8dce1] p-0 text-left shadow-sm hover:brightness-[1.02] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3B82F6] focus-visible:ring-offset-2"
                 aria-label="Court. Left-click: foul. Right-click: made shot."
               >
                 <BasketballCourt shotMarkers={courtShotMarkers} foulMarkers={courtFoulMarkers} />
@@ -133,8 +166,8 @@ const GameCenter: React.FC<GameCenterProps> = ({
                   flow={shotFlow}
                   homeName={homeName}
                   awayName={awayName}
-                  homePlayers={homePlayers}
-                  awayPlayers={awayPlayers}
+                  homePlayers={homeActivePlayers}
+                  awayPlayers={awayActivePlayers}
                   homeColor={homeColor}
                   awayColor={awayColor}
                   onBack={onShotFlowBack}
@@ -157,8 +190,8 @@ const GameCenter: React.FC<GameCenterProps> = ({
                   flow={foulFlow}
                   homeName={homeName}
                   awayName={awayName}
-                  homePlayers={homePlayers}
-                  awayPlayers={awayPlayers}
+                  homePlayers={homeActivePlayers}
+                  awayPlayers={awayActivePlayers}
                   homeColor={homeColor}
                   awayColor={awayColor}
                   onBack={onFoulFlowBack}
@@ -173,13 +206,59 @@ const GameCenter: React.FC<GameCenterProps> = ({
                 />
               )}
             </div>
+            <div
+              className={`absolute inset-0 transition-opacity duration-300 ease-out ${
+                turnoverActive ? 'opacity-100' : 'pointer-events-none opacity-0'
+              }`}
+              aria-hidden={!turnoverActive}
+            >
+              {turnoverActive && (
+                <TurnoverRecordingCourtPanel
+                  flow={turnoverFlow}
+                  homeName={homeName}
+                  awayName={awayName}
+                  homePlayers={homeActivePlayers}
+                  awayPlayers={awayActivePlayers}
+                  homeColor={homeColor}
+                  awayColor={awayColor}
+                  onBack={onTurnoverFlowBack}
+                  onCancel={onTurnoverFlowCancel}
+                  onPickCommittingPlayer={onTurnoverPickCommittingPlayer}
+                  onSelectTurnoverType={onTurnoverSelectType}
+                  onSelectNoSteal={onTurnoverNoSteal}
+                  onPickStealer={onTurnoverPickStealer}
+                />
+              )}
+            </div>
+            <div
+              className={`absolute inset-0 transition-opacity duration-300 ease-out ${
+                foulPickerOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
+              }`}
+              aria-hidden={!foulPickerOpen}
+            >
+              {foulPickerOpen && (
+                <FoulPanelPickerModal
+                  homeName={homeName}
+                  awayName={awayName}
+                  homeColor={homeColor}
+                  awayColor={awayColor}
+                  homeOnCourt={homeActivePlayers}
+                  awayOnCourt={awayActivePlayers}
+                  homeBench={homeBench}
+                  awayBench={awayBench}
+                  onPick={onFoulPanelPick}
+                  onCancel={onFoulPanelCancel}
+                />
+              )}
+            </div>
           </div>
         </div>
 
         <PlayerPanel
           side="away"
           accentColor={awayColor}
-          playerNumbers={awayPlayers}
+          playerNumbers={awayActivePlayers}
+          interactionsLocked={courtOverlayActive}
           onPlayerFoulClick={onPlayerFoulClick}
           onPlayerShotContextMenu={onPlayerShotContextMenu}
           onFoul={onFoul}

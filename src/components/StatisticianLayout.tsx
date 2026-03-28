@@ -1,4 +1,5 @@
 import React from 'react';
+import StatisticianFullscreenGate from './StatisticianFullscreenGate';
 
 /**
  * Minimal shell for statistician-only screens (no main app sidebar/nav chrome).
@@ -7,6 +8,7 @@ import React from 'react';
 const StatisticianLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
     <div className="flex min-h-[100dvh] flex-col bg-[#F4F7F9]">
+      <StatisticianFullscreenGate />
       <div className="flex min-h-0 flex-1 flex-col">{children}</div>
     </div>
   );

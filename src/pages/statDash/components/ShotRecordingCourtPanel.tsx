@@ -9,7 +9,9 @@ export interface ShotRecordingCourtPanelProps {
   flow: ActiveShotFlow;
   homeName: string;
   awayName: string;
+  /** On-court jersey numbers only */
   homePlayers: number[];
+  /** On-court jersey numbers only */
   awayPlayers: number[];
   homeColor: string;
   awayColor: string;

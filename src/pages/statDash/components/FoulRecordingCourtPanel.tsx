@@ -9,7 +9,9 @@ export interface FoulRecordingCourtPanelProps {
   flow: ActiveFoulFlow;
   homeName: string;
   awayName: string;
+  /** On-court jersey numbers only */
   homePlayers: number[];
+  /** On-court jersey numbers only */
   awayPlayers: number[];
   homeColor: string;
   awayColor: string;

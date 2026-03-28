@@ -6,6 +6,8 @@ export interface PlayerPanelProps {
   side: TeamSide;
   accentColor: string;
   playerNumbers: number[];
+  /** When true, jersey and FOUL/TURNOVER actions are disabled (court flow active). */
+  interactionsLocked?: boolean;
   /** Left-click: foul flow */
   onPlayerFoulClick: (side: TeamSide, jersey: number) => void;
   /** Right-click: made-shot flow (caller must preventDefault on event) */
@@ -20,6 +22,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
   side,
   accentColor,
   playerNumbers,
+  interactionsLocked = false,
   onPlayerFoulClick,
   onPlayerShotContextMenu,
   onFoul,
@@ -29,22 +32,25 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
 
   return (
     <div
-      className="flex shrink-0 flex-col font-sans"
+      className={`flex shrink-0 flex-col font-sans ${interactionsLocked ? 'pointer-events-none opacity-45' : ''}`.trim()}
+      aria-busy={interactionsLocked || undefined}
       style={{
         gap: cl('5px', '0.55vw', '8px'),
         width: btnW,
       }}
     >
-      {playerNumbers.map((n) => (
+      {playerNumbers.map((n, idx) => (
         <button
-          key={n}
+          key={`${side}-jersey-${idx}-${n}`}
           type="button"
+          disabled={interactionsLocked}
           onClick={() => onPlayerFoulClick(side, n)}
           onContextMenu={(e) => {
             e.preventDefault();
+            if (interactionsLocked) return;
             onPlayerShotContextMenu(side, n, e);
           }}
-          className="flex shrink-0 cursor-pointer select-none items-center justify-center border-none font-bold text-white hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+          className="flex shrink-0 cursor-pointer select-none items-center justify-center border-none font-bold text-white hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:cursor-not-allowed disabled:opacity-60"
           style={{
             width: btnW,
             aspectRatio: '1',
@@ -61,8 +67,9 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
         <button
           key={lbl}
           type="button"
+          disabled={interactionsLocked}
           onClick={() => (lbl === 'FOUL' ? onFoul(side) : onTurnover(side))}
-          className="cursor-pointer border border-gray-400/90 bg-gray-200 font-bold uppercase tracking-wide text-gray-900 hover:bg-gray-300/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
+          className="cursor-pointer border border-gray-400/90 bg-gray-200 font-bold uppercase tracking-wide text-gray-900 hover:bg-gray-300/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-60"
           style={{
             width: btnW,
             padding: `${cl('5px', '0.55vh', '8px')} ${cl('2px', '0.2vw', '4px')}`,

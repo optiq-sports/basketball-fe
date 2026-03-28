@@ -21,7 +21,9 @@ export function foulTypeLabel(id: FoulTypeId): string {
   return FOUL_TYPE_OPTIONS.find((o) => o.id === id)?.label ?? id;
 }
 
-export type FoulFlowEntry = 'court' | 'player';
+export type FoulFlowEntry = 'court' | 'player' | 'panel';
+
+export type FoulerRole = 'player' | 'bench' | 'coach';
 
 export type FoulFlowStep =
   | 'pickFouler'
@@ -35,6 +37,7 @@ export type FoulFlowStep =
 export type FoulFlowDraft = {
   foulerSide: TeamSide | null;
   foulerJersey: number | null;
+  foulerRole: FoulerRole | null;
   foulType: FoulTypeId | null;
   fouledJersey: number | null;
   /** 0 = no free throws */
@@ -55,6 +58,7 @@ export function emptyFoulDraft(): FoulFlowDraft {
   return {
     foulerSide: null,
     foulerJersey: null,
+    foulerRole: null,
     foulType: null,
     fouledJersey: null,
     ftCount: null,
@@ -67,6 +71,71 @@ export function emptyFoulDraft(): FoulFlowDraft {
 
 export function opponentOf(side: TeamSide): TeamSide {
   return side === 'home' ? 'away' : 'home';
+}
+
+/** Game log `player` column for the fouler. */
+export function foulerLogPlayerField(draft: FoulFlowDraft): string {
+  if (draft.foulerRole === 'bench') {
+    return draft.foulerJersey !== null ? `#${draft.foulerJersey} (bench)` : 'Bench';
+  }
+  if (draft.foulerRole === 'coach') return 'Coach';
+  if (draft.foulerJersey !== null) return `#${draft.foulerJersey}`;
+  return '—';
+}
+
+export function isFoulerDraftComplete(draft: FoulFlowDraft): boolean {
+  if (draft.foulerSide === null || draft.foulerRole === null) return false;
+  if (draft.foulerRole === 'player') return draft.foulerJersey !== null;
+  if (draft.foulerRole === 'bench') return true;
+  if (draft.foulerRole === 'coach') return draft.foulerJersey === null;
+  return false;
+}
+
+export type PanelFoulPick =
+  | { kind: 'player'; jersey: number }
+  | { kind: 'bench_player'; jersey: number }
+  | { kind: 'bench' }
+  | { kind: 'coach' };
+
+export function initialFoulFlowFromPanelSelection(
+  side: TeamSide,
+  pick: PanelFoulPick
+): ActiveFoulFlow {
+  const base = emptyFoulDraft();
+  if (pick.kind === 'player') {
+    return {
+      entry: 'panel',
+      step: 'foulType',
+      draft: {
+        ...base,
+        foulerSide: side,
+        foulerJersey: pick.jersey,
+        foulerRole: 'player',
+      },
+    };
+  }
+  if (pick.kind === 'bench_player') {
+    return {
+      entry: 'panel',
+      step: 'foulType',
+      draft: {
+        ...base,
+        foulerSide: side,
+        foulerJersey: pick.jersey,
+        foulerRole: 'bench',
+      },
+    };
+  }
+  return {
+    entry: 'panel',
+    step: 'foulType',
+    draft: {
+      ...base,
+      foulerSide: side,
+      foulerJersey: null,
+      foulerRole: pick.kind === 'bench' ? 'bench' : 'coach',
+    },
+  };
 }
 
 /** Back navigation (linear undo). */
@@ -113,6 +182,7 @@ export function foulFlowBack(cur: ActiveFoulFlow): ActiveFoulFlow | 'idle' {
             foulType: null,
             foulerSide: null,
             foulerJersey: null,
+            foulerRole: null,
           },
         };
       }
@@ -140,6 +210,7 @@ export function initialFoulFlowFromPlayer(side: TeamSide, jersey: number): Activ
       ...emptyFoulDraft(),
       foulerSide: side,
       foulerJersey: jersey,
+      foulerRole: 'player',
     },
   };
 }
