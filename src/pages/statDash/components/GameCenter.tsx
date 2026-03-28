@@ -39,7 +39,7 @@ const GameCenter: React.FC<GameCenterProps> = ({
 
       {/* Compact court between sidebars (reference: height ~ jersey column, not full viewport) */}
       <div className="flex min-w-0 flex-1 justify-center px-0 sm:px-1">
-        <div className="aspect-[620/380] w-full max-w-[min(100%,520px)] shrink-0 overflow-hidden rounded-lg border-2 border-gray-500 bg-[#c8cdd2] shadow-sm">
+        <div className="aspect-[620/380] w-full max-w-[min(100%,900px)] shrink-0 overflow-hidden rounded-lg border-2 border-gray-500 bg-[#c8cdd2] shadow-sm">
           <BasketballCourt />
         </div>
       </div>

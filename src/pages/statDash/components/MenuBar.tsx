@@ -29,9 +29,10 @@ const MenuBar: React.FC = () => {
       <button
         type="button"
         onClick={() => navigate('/match-key')}
-        className="ml-2 shrink-0 bg-transparent font-sans text-[11px] text-gray-300 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 sm:text-xs"
+        className="ml-2 shrink-0 cursor-pointer bg-transparent p-0 font-sans font-normal text-white hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+        style={{ fontSize: cl('11px', '1.1vw', '14px') }}
       >
-        Exit
+        EXIT
       </button>
       <div className="ml-auto flex items-center gap-[18px]">
         <button type="button" className="flex p-0.5 text-white hover:opacity-80" aria-label="Minimize">

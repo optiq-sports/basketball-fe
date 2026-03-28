@@ -30,13 +30,22 @@ const SEED_LOG: GameLogEntry[] = [
     id: 'seed-2',
     period: '',
     clock: '',
-    team: '',
-    player: '#5 I. Maina',
-    action: '',
-    result: '',
+    team: 'Team 2',
+    player: '#10 S. Langas',
+    action: 'rebound',
+    result: 'DF rebound',
   },
   {
     id: 'seed-3',
+    period: '',
+    clock: '',
+    team: 'Team 2',
+    player: '#10 S. Langas',
+    action: 'rebound',
+    result: 'DF rebound',
+  },
+  {
+    id: 'seed-4',
     period: '',
     clock: '',
     team: 'Team 2',
@@ -171,7 +180,7 @@ const StatDash: React.FC = () => {
 
   return (
     <div
-      className="flex min-h-[100dvh] flex-col overflow-hidden text-gray-900"
+      className="flex min-h-[90dvh] flex-col overflow-hidden text-gray-900"
       style={{ fontFamily: STAT_DASH.fontStack, background: STAT_DASH.pageBg }}
     >
       <MenuBar />
@@ -181,7 +190,7 @@ const StatDash: React.FC = () => {
           <IoChevronBack size={18} />
         </button>
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 py-4 sm:px-6">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden px-4 py-4 sm:px-6">
           <div className="flex shrink-0 flex-col gap-3">
             {/* Status column left of Team 1 card — same band as scoreboard (reference layout) */}
             <div className="flex min-w-0 items-start gap-1 sm:gap-2">
@@ -217,7 +226,8 @@ const StatDash: React.FC = () => {
             onTurnover={onTurnover}
           />
 
-          <div className="statdash-log-scroll max-h-[220px] min-h-0 shrink-0 overflow-auto sm:max-h-[280px]">
+          <div className="flex h-[min(220px,42dvh)] w-full shrink-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm sm:h-[min(140px,36dvh)]">
+            {/* Header is fixed; only GameLog body scrolls */}
             <GameLog entries={gameLog} />
           </div>
         </div>
