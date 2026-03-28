@@ -6,7 +6,10 @@ export interface PlayerPanelProps {
   side: TeamSide;
   accentColor: string;
   playerNumbers: number[];
-  onPlayerClick: (side: TeamSide, jersey: number) => void;
+  /** Left-click: foul flow */
+  onPlayerFoulClick: (side: TeamSide, jersey: number) => void;
+  /** Right-click: made-shot flow (caller must preventDefault on event) */
+  onPlayerShotContextMenu: (side: TeamSide, jersey: number, e: React.MouseEvent) => void;
   onFoul: (side: TeamSide) => void;
   onTurnover: (side: TeamSide) => void;
 }
@@ -17,7 +20,8 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
   side,
   accentColor,
   playerNumbers,
-  onPlayerClick,
+  onPlayerFoulClick,
+  onPlayerShotContextMenu,
   onFoul,
   onTurnover,
 }) => {
@@ -35,7 +39,11 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
         <button
           key={n}
           type="button"
-          onClick={() => onPlayerClick(side, n)}
+          onClick={() => onPlayerFoulClick(side, n)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            onPlayerShotContextMenu(side, n, e);
+          }}
           className="flex shrink-0 cursor-pointer select-none items-center justify-center border-none font-bold text-white hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
           style={{
             width: btnW,
@@ -44,7 +52,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
             fontSize: cl('16px', '1.9vw', '28px'),
             borderRadius: 6,
           }}
-          aria-label={`${side} player number ${n}`}
+          aria-label={`${side} player ${n}. Left-click: foul. Right-click: made shot.`}
         >
           {n}
         </button>
