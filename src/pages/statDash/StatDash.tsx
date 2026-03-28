@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
-import { IoChevronBack, IoChevronForward } from 'react-icons/io5';
 import MenuBar from './components/MenuBar';
+import EdgeTeamDrawer from './components/EdgeTeamDrawer';
 import StatusStrip from './components/StatusStrip';
 import GameHeader from './components/GameHeader';
 import GameCenter from './components/GameCenter';
@@ -167,22 +167,20 @@ const StatDash: React.FC = () => {
     });
   }, [appendLog, clockLabel, periodLabel]);
 
-  const chevronClass =
-    'flex w-7 shrink-0 cursor-pointer items-center justify-center border-none bg-transparent p-0 hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3B82F6]';
-
   return (
     <div
-      className="flex min-h-[90dvh] flex-col overflow-hidden text-gray-900"
+      className="relative flex min-h-[90dvh] flex-col overflow-hidden text-gray-900"
       style={{ fontFamily: STAT_DASH.fontStack, background: STAT_DASH.pageBg }}
     >
       <MenuBar />
 
-      <div className="flex min-h-0 flex-1 items-stretch">
-        <button type="button" className={chevronClass} aria-label="Previous panel" style={{ color: STAT_DASH.accentBlue }}>
-          <IoChevronBack size={18} />
-        </button>
+      {/* CSS-only hover drawers — no React state; does not affect score/timer/log state */}
+      <EdgeTeamDrawer edge="left" teamName={homeName} />
+      <EdgeTeamDrawer edge="right" teamName={awayName} />
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden px-4 py-4 sm:px-6">
+      <div className="flex min-h-0 flex-1 flex-col">
+        {/* Inset so main UI clears the fixed edge hit strips (same visual gutter as former chevron columns) */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden py-4 pl-12 pr-12 sm:pl-14 sm:pr-14">
           {/* Status column left of scoreboard tray (reference layout) */}
           <div className="flex min-w-0 shrink-0 items-center justify-evenly sm:gap-4">
             <StatusStrip />
@@ -227,10 +225,6 @@ const StatDash: React.FC = () => {
             </div>
           </div>
         </div>
-
-        <button type="button" className={chevronClass} aria-label="Next panel" style={{ color: STAT_DASH.accentBlue }}>
-          <IoChevronForward size={18} />
-        </button>
       </div>
     </div>
   );
