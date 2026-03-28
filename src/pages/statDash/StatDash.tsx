@@ -7,7 +7,7 @@ import ActionButtons from './components/ActionButtons';
 import GameCenter from './components/GameCenter';
 import GameLog from './components/GameLog';
 import { formatClock } from './components/GameTimer';
-import { STAT_DASH } from './statDashTheme';
+import { STAT_DASH, STAT_DASH_MAIN_INNER, STAT_DASH_MAIN_OUTER } from './statDashTheme';
 import type { GameLogEntry, TeamSide } from './types';
 
 const DEFAULT_HOME = 'TEAM 1';
@@ -28,30 +28,21 @@ const SEED_LOG: GameLogEntry[] = [
   },
   {
     id: 'seed-2',
-    period: '',
-    clock: '',
+    period: 'Q1',
+    clock: '09:22',
     team: 'Team 2',
     player: '#10 S. Langas',
-    action: 'rebound',
-    result: 'DF rebound',
+    action: 'shot',
+    result: '3pt made',
   },
   {
     id: 'seed-3',
-    period: '',
-    clock: '',
+    period: 'Q1',
+    clock: '09:22',
     team: 'Team 2',
     player: '#10 S. Langas',
-    action: 'rebound',
-    result: 'DF rebound',
-  },
-  {
-    id: 'seed-4',
-    period: '',
-    clock: '',
-    team: 'Team 2',
-    player: '#10 S. Langas',
-    action: 'rebound',
-    result: 'DF rebound',
+    action: 'shot',
+    result: '3pt made',
   },
 ];
 
@@ -76,7 +67,7 @@ const StatDash: React.FC = () => {
   const periodLabel = `Q${quarter}`;
 
   const appendLog = useCallback((row: Omit<GameLogEntry, 'id'>) => {
-    setGameLog((prev) => [...prev, { id: newLogId(), ...row }]);
+    setGameLog((prev) => [{ id: newLogId(), ...row }, ...prev]);
   }, []);
 
   const onTick = useCallback(() => {
@@ -226,9 +217,13 @@ const StatDash: React.FC = () => {
             onTurnover={onTurnover}
           />
 
-          <div className="flex h-[min(220px,42dvh)] w-full shrink-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm sm:h-[min(140px,36dvh)]">
-            {/* Header is fixed; only GameLog body scrolls */}
-            <GameLog entries={gameLog} />
+          <div className={`${STAT_DASH_MAIN_OUTER} shrink-0`}>
+            <div
+              className={`${STAT_DASH_MAIN_INNER} h-[min(220px,42dvh)] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm sm:h-[min(141px,36dvh)]`}
+            >
+              {/* Header is fixed; only GameLog body scrolls — width matches GameCenter */}
+              <GameLog entries={gameLog} />
+            </div>
           </div>
         </div>
 

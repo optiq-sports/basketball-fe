@@ -26,9 +26,10 @@ const BasketballCourt: React.FC<{ className?: string }> = ({ className = 'block 
     />
     <rect x="16" y="165" width="13" height="50" fill="none" stroke="#888" strokeWidth="2" />
     <circle cx="46" cy="190" r="20" fill="none" stroke="#888" strokeWidth="2" />
-    <line x1="16" y1="58" x2="62" y2="58" stroke="#888" strokeWidth="2" />
-    <line x1="16" y1="322" x2="62" y2="322" stroke="#888" strokeWidth="2" />
-    <path d="M62 58 A148 148 0 0 1 62 322" fill="none" stroke="#888" strokeWidth="2" />
+    {/* 3pt: sideline straights extend past paint edge (key to x=148 / from x=472) */}
+    <line x1="16" y1="58" x2="152" y2="58" stroke="#888" strokeWidth="2" />
+    <line x1="16" y1="322" x2="152" y2="322" stroke="#888" strokeWidth="2" />
+    <path d="M152 58 A148 148 0 0 1 152 322" fill="none" stroke="#888" strokeWidth="2" />
     <rect x="472" y="118" width="132" height="144" fill="none" stroke="#888" strokeWidth="2" />
     <path d="M472 118 A72 72 0 0 0 472 262" fill="none" stroke="#888" strokeWidth="2" />
     <path
@@ -40,9 +41,9 @@ const BasketballCourt: React.FC<{ className?: string }> = ({ className = 'block 
     />
     <rect x="591" y="165" width="13" height="50" fill="none" stroke="#888" strokeWidth="2" />
     <circle cx="574" cy="190" r="20" fill="none" stroke="#888" strokeWidth="2" />
-    <line x1="604" y1="58" x2="558" y2="58" stroke="#888" strokeWidth="2" />
-    <line x1="604" y1="322" x2="558" y2="322" stroke="#888" strokeWidth="2" />
-    <path d="M558 58 A148 148 0 0 0 558 322" fill="none" stroke="#888" strokeWidth="2" />
+    <line x1="604" y1="58" x2="466" y2="58" stroke="#888" strokeWidth="2" />
+    <line x1="604" y1="322" x2="466" y2="322" stroke="#888" strokeWidth="2" />
+    <path d="M466 58 A148 148 0 0 0 466 322" fill="none" stroke="#888" strokeWidth="2" />
   </svg>
 );
 

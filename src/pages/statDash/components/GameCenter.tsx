@@ -3,6 +3,7 @@ import type { TeamSide } from '../types';
 import PlayerPanel from './PlayerPanel';
 import BasketballCourt from './BasketballCourt';
 import { cl } from '../utils/cl';
+import { STAT_DASH_MAIN_INNER, STAT_DASH_MAIN_OUTER } from '../statDashTheme';
 
 export interface GameCenterProps {
   homeColor: string;
@@ -24,34 +25,36 @@ const GameCenter: React.FC<GameCenterProps> = ({
   onTurnover,
 }) => {
   return (
-    <div
-      className="flex min-h-0 flex-1 items-start justify-center font-sans"
-      style={{ gap: cl('6px', '0.8vw', '12px') }}
-    >
-      <PlayerPanel
-        side="home"
-        accentColor={homeColor}
-        playerNumbers={homePlayers}
-        onPlayerClick={onPlayerClick}
-        onFoul={onFoul}
-        onTurnover={onTurnover}
-      />
+    <div className={`${STAT_DASH_MAIN_OUTER} min-h-0 flex-1 items-start font-sans`}>
+      <div
+        className={`${STAT_DASH_MAIN_INNER} items-start`}
+        style={{ gap: cl('6px', '0.8vw', '12px') }}
+      >
+        <PlayerPanel
+          side="home"
+          accentColor={homeColor}
+          playerNumbers={homePlayers}
+          onPlayerClick={onPlayerClick}
+          onFoul={onFoul}
+          onTurnover={onTurnover}
+        />
 
-      {/* Compact court between sidebars (reference: height ~ jersey column, not full viewport) */}
-      <div className="flex min-w-0 flex-1 justify-center px-0 sm:px-1">
-        <div className="aspect-[620/380] w-full max-w-[min(100%,900px)] shrink-0 overflow-hidden rounded-lg border-2 border-gray-500 bg-[#c8cdd2] shadow-sm">
-          <BasketballCourt />
+        {/* Compact court between sidebars (row max 900px; court fills middle column) */}
+        <div className="flex min-w-0 flex-1 justify-center px-0 sm:px-1">
+          <div className="aspect-[620/380] w-full shrink-0 overflow-hidden rounded-lg border-2 border-gray-500 bg-[#c8cdd2] shadow-sm">
+            <BasketballCourt />
+          </div>
         </div>
-      </div>
 
-      <PlayerPanel
-        side="away"
-        accentColor={awayColor}
-        playerNumbers={awayPlayers}
-        onPlayerClick={onPlayerClick}
-        onFoul={onFoul}
-        onTurnover={onTurnover}
-      />
+        <PlayerPanel
+          side="away"
+          accentColor={awayColor}
+          playerNumbers={awayPlayers}
+          onPlayerClick={onPlayerClick}
+          onFoul={onFoul}
+          onTurnover={onTurnover}
+        />
+      </div>
     </div>
   );
 };
