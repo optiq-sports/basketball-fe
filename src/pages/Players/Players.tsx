@@ -4,6 +4,7 @@ import { FiSearch, FiFilter, FiChevronDown, FiEdit2, FiTrash, FiUserMinus, FiUpl
 import { MdCancel } from 'react-icons/md';
 import { usePlayers, useTeams, useCreatePlayerForTeam, useUpdatePlayer, useDeletePlayer, useRemovePlayerFromTeam, useUploadPlayersExcel, useUploadFile, useMergePlayers } from '../../api/hooks';
 import type { Player as ApiPlayer } from '../../types/api';
+import { resolvePlayerPhotoUrl } from '../../utils/playerPhotoPlaceholder';
 
 const POSITION_OPTIONS = [
   { value: 'POINT_GUARD', label: 'Point Guard' },
@@ -72,7 +73,7 @@ const Players: React.FC = () => {
         name: p.firstName,
         surname: p.lastName,
         number: String(p.jerseyNumber ?? ''),
-        image: (p as { photo?: string }).photo ?? '/player1.png',
+        image: resolvePlayerPhotoUrl((p as { photo?: string }).photo, p.id),
         teamId: (p.teamId as string) ?? '',
         teamName: resolvedTeamName,
         position:
@@ -851,7 +852,18 @@ const Players: React.FC = () => {
                       {portraitPreview ? (
                         <img src={portraitPreview} alt="Portrait preview" className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">No photo</div>
+                        <img
+                          src={
+                            editingPlayer
+                              ? editingPlayer.image
+                              : resolvePlayerPhotoUrl(
+                                  undefined,
+                                  `new-${formData.name}-${formData.surname}-${formData.number}`
+                                )
+                          }
+                          alt={editingPlayer ? 'Player portrait' : 'Default portrait preview'}
+                          className="h-full w-full object-cover"
+                        />
                       )}
                     </div>
                     <div className="flex-1">

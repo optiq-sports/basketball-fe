@@ -2,6 +2,7 @@ import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { FiArrowLeft } from 'react-icons/fi';
 import { usePlayer, useTeam } from '../../api/hooks';
+import { resolvePlayerPhotoUrl } from '../../utils/playerPhotoPlaceholder';
 
 const PLACEHOLDER_GAMES = Array(4).fill({
   opponent: 'vs TEAM, DATE',
@@ -117,11 +118,10 @@ const PlayerProfile: React.FC = () => {
             <div className="relative">
               <div className="w-90 h-80 relative mr-20 top-[2.1rem]">
                 <img
-                  src={
-                    (player as { photo?: string }).photo ??
-                    (player as { image?: string }).image ??
-                    '/player1.png'
-                  }
+                  src={resolvePlayerPhotoUrl(
+                    (player as { photo?: string }).photo ?? (player as { image?: string }).image,
+                    player.id
+                  )}
                   alt={`${player.firstName} ${player.lastName}`}
                   className="relative z-10 w-full h-full object-cover rounded-2xl"
                 />

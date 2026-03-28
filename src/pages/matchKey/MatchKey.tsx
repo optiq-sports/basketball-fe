@@ -73,7 +73,7 @@ const MatchKey: React.FC = () => {
     }
     setKeyError(null);
     sessionStorage.setItem('statistician_match_key', trimmed);
-    navigate('/stat-dash');
+    navigate('/starters');
   };
 
   const listLoading = completedQuery.isPending || teamsQuery.isPending;

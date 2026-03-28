@@ -6,6 +6,7 @@ import GameHeader from './components/GameHeader';
 import GameCenter from './components/GameCenter';
 import GameLog from './components/GameLog';
 import { formatClock } from './components/GameTimer';
+import { useStatisticianTeamColors } from '../../contexts/StatisticianTeamColorsContext';
 import { STAT_DASH, STAT_DASH_MAIN_INNER, STAT_DASH_MAIN_OUTER } from './statDashTheme';
 import type { GameLogEntry, TeamSide } from './types';
 
@@ -53,6 +54,7 @@ function newLogId(): string {
 }
 
 const StatDash: React.FC = () => {
+  const { homeTeamColor, awayTeamColor } = useStatisticianTeamColors();
   const [homeName] = useState(DEFAULT_HOME);
   const [awayName] = useState(DEFAULT_AWAY);
   const [homeScore, setHomeScore] = useState(0);
@@ -190,8 +192,8 @@ const StatDash: React.FC = () => {
                 awayName={awayName}
                 homeScore={homeScore}
                 awayScore={awayScore}
-                homeColor={STAT_DASH.homeRed}
-                awayColor={STAT_DASH.awayYellow}
+                homeColor={homeTeamColor}
+                awayColor={awayTeamColor}
                 quarter={quarter}
                 timerSeconds={timerSeconds}
                 isRunning={isRunning}
@@ -207,8 +209,8 @@ const StatDash: React.FC = () => {
           </div>
 
           <GameCenter
-            homeColor={STAT_DASH.homeRed}
-            awayColor={STAT_DASH.awayYellow}
+            homeColor={homeTeamColor}
+            awayColor={awayTeamColor}
             homePlayers={DEFAULT_HOME_PLAYERS}
             awayPlayers={DEFAULT_AWAY_PLAYERS}
             onPlayerClick={onPlayerClick}

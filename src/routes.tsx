@@ -6,10 +6,14 @@ import ForgotPassword from './pages/login/ForgotPassword';
 import Wrapper from './components/wrapper';
 import { useProfile, queryKeys } from './api/hooks';
 import { ROLE_STATISTICIAN } from './constants/roles';
+import { StatisticianTeamColorsProvider } from './contexts/StatisticianTeamColorsContext';
 
 const TOKEN_KEY = 'access_token';
 
 const MatchKey = lazy(() => import('./pages/matchKey/MatchKey'));
+const Starters = lazy(() => import('./pages/starters/Starters'));
+const ChooseSides = lazy(() => import('./pages/choose/ChooseSides'));
+const JumpBall = lazy(() => import('./pages/jump/JumpBall'));
 const StatDash = lazy(() => import('./pages/statDash/StatDash'));
 
 const LoadingScreen: React.FC = () => (
@@ -53,11 +57,16 @@ const AppGate: React.FC = () => {
 };
 
 const StatisticianRoutes: React.FC = () => (
-  <Routes>
-    <Route path="/match-key" element={<MatchKey />} />
-    <Route path="/stat-dash" element={<StatDash />} />
-    <Route path="*" element={<Navigate to="/match-key" replace />} />
-  </Routes>
+  <StatisticianTeamColorsProvider>
+    <Routes>
+      <Route path="/match-key" element={<MatchKey />} />
+      <Route path="/starters" element={<Starters />} />
+      <Route path="/choose-sides" element={<ChooseSides />} />
+      <Route path="/jump-ball" element={<JumpBall />} />
+      <Route path="/stat-dash" element={<StatDash />} />
+      <Route path="*" element={<Navigate to="/match-key" replace />} />
+    </Routes>
+  </StatisticianTeamColorsProvider>
 );
 
 const AppRoutes: React.FC = () => {

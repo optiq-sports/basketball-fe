@@ -10,6 +10,7 @@ import {
   useUploadStatisticianPhoto,
 } from '../../api/hooks';
 import type { Statistician as ApiStatistician } from '../../types/api';
+import { resolvePlayerPhotoUrl } from '../../utils/playerPhotoPlaceholder';
 
 interface StatisticianDisplay {
   id: string;
@@ -82,7 +83,7 @@ const Statisticians: React.FC = () => {
         name: name || '—',
         surname: surname || '',
         location: loc,
-        image: primaryPhoto ?? '/stat.png',
+        image: resolvePlayerPhotoUrl(primaryPhoto, s.id),
         email: (profile?.email as string | undefined) ?? s.email ?? '',
         status: (s.status as string) ?? 'ACTIVE',
       };
@@ -153,7 +154,7 @@ const Statisticians: React.FC = () => {
     e.stopPropagation();
     setEditingStatistician(s);
     setProfilePhotoFile(null);
-    setProfilePhotoPreview(s.image && s.image !== '/stat.png' ? s.image : null);
+    setProfilePhotoPreview(null);
     const apiStat = (statisticiansQuery.data ?? []).find((x) => x.id === s.id) as ApiStatistician | undefined;
     const prof = apiStat?.profile as
       | {
@@ -436,7 +437,18 @@ const Statisticians: React.FC = () => {
                     {profilePhotoPreview ? (
                       <img src={profilePhotoPreview} alt="Profile preview" className="w-full h-full object-cover" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">No photo</div>
+                      <img
+                        src={
+                          editingStatistician
+                            ? editingStatistician.image
+                            : resolvePlayerPhotoUrl(
+                                undefined,
+                                formData.email || `${formData.firstName}-${formData.lastName}-new`
+                              )
+                        }
+                        alt={editingStatistician ? 'Statistician portrait' : 'Default portrait preview'}
+                        className="h-full w-full object-cover"
+                      />
                     )}
                   </div>
                   <div className="flex-1">

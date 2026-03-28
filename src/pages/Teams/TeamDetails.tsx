@@ -4,6 +4,7 @@ import { FiArrowLeft, FiMapPin, FiCalendar, FiUsers, FiAward, FiTrendingUp, FiEd
 import { GiBasketballBall, GiTrophy } from 'react-icons/gi';
 import { useTeam, usePlayers, useCreatePlayerForTeam, useRemovePlayerFromTeam, useDeleteTeam, useAssignPlayerToTeam, useSetTeamCaptain, useUpdatePlayer, useUploadFile, useUpdateTeam } from '../../api/hooks';
 import type { Player as ApiPlayer } from '../../types/api';
+import { resolvePlayerPhotoUrl } from '../../utils/playerPhotoPlaceholder';
 
 const POSITION_OPTIONS = [
   { value: 'POINT_GUARD', label: 'Point Guard' },
@@ -73,7 +74,7 @@ function mapApiPlayerToDisplay(p: ApiPlayer): PlayerDisplay {
     surname: p.lastName,
     number: String(p.jerseyNumber ?? ''),
     position: typeof p.position === 'string' ? p.position : (p.position as string),
-    image: (p as { photo?: string }).photo ?? '/player1.png',
+    image: resolvePlayerPhotoUrl((p as { photo?: string }).photo, p.id),
     country: (p as { country?: string }).country ?? '',
     height: p.height ?? '',
     dob: dobInput,
@@ -969,10 +970,8 @@ const TeamDetails: React.FC = () => {
                       <div className="w-24 h-24 rounded-full overflow-hidden bg-gray-100 border border-gray-300 flex-shrink-0">
                         {editPortraitPreview ? (
                           <img src={editPortraitPreview} alt="Portrait preview" className="w-full h-full object-cover" />
-                        ) : editingPlayer.image && editingPlayer.image !== '/player1.png' ? (
-                          <img src={editingPlayer.image} alt="Current" className="w-full h-full object-cover" />
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">No photo</div>
+                          <img src={editingPlayer.image} alt="Current portrait" className="h-full w-full object-cover" />
                         )}
                       </div>
                       <input

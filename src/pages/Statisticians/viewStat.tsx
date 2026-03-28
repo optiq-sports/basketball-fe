@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { FiArrowLeft } from 'react-icons/fi';
 import { useStatistician } from '../../api/hooks';
 import type { Statistician } from '../../types/api';
+import { resolvePlayerPhotoUrl } from '../../utils/playerPhotoPlaceholder';
 
 interface Game {
   id: number;
@@ -34,7 +35,7 @@ function buildDisplayStatistician(stat: Statistician | undefined): {
       email: '—',
       phone: '—',
       location: '—',
-      image: '/stat.png',
+      image: resolvePlayerPhotoUrl(undefined, 'unknown'),
       gamesRecorded: '—',
       dob: '—',
       status: '—',
@@ -103,7 +104,7 @@ function buildDisplayStatistician(stat: Statistician | undefined): {
     email: (profile?.email as string | undefined) ?? stat.email ?? '—',
     phone: (profile?.phone as string | undefined) ?? (stat.phone as string | undefined) ?? '—',
     location: loc,
-    image: primaryPhoto ?? '/stat.png',
+    image: resolvePlayerPhotoUrl(primaryPhoto, stat.id),
     gamesRecorded,
     dob,
     status,
