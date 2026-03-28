@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { VscChromeClose, VscChromeMaximize, VscChromeMinimize } from 'react-icons/vsc';
 import { cl } from '../utils/cl';
+import { STAT_DASH } from '../statDashTheme';
 
 const MENU = ['FILE', 'GAME', 'REPORTS', 'SETTINGS', 'HELP'] as const;
 
@@ -10,8 +11,8 @@ const MenuBar: React.FC = () => {
 
   return (
     <header
-      className="flex shrink-0 select-none items-center gap-[clamp(10px,2vw,26px)] bg-[#1c1c1c] px-4 text-white"
-      style={{ height: 32 }}
+      className="flex shrink-0 select-none items-center gap-[clamp(10px,2vw,26px)] border-b-2 bg-[#1c1c1c] px-4 text-white"
+      style={{ height: 32, borderBottomColor: STAT_DASH.accentBlue }}
     >
       <nav className="flex items-center gap-[clamp(10px,2vw,26px)]" aria-label="Main menu">
         {MENU.map((m) => (

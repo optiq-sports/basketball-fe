@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { IoChevronDown, IoChevronUp } from 'react-icons/io5';
 import { cl } from '../utils/cl';
+import { STAT_DASH } from '../statDashTheme';
 
 export interface GameTimerProps {
   quarter: number;
@@ -46,30 +47,33 @@ const GameTimer: React.FC<GameTimerProps> = ({
 
   return (
     <div
-      className="flex min-w-0 shrink-0 flex-col font-sans"
-      style={{ minWidth: cl('200px', '26vw', '340px') }}
+      className="flex min-w-0 shrink-0 flex-col items-center font-sans"
+      style={{ minWidth: cl('200px', '26vw', '360px') }}
     >
       <div
-        className="rounded-t text-center font-bold text-white"
+        className="mb-1 w-fit rounded-full px-6 text-center font-bold uppercase text-white"
         style={{
-          background: '#1a3a8a',
+          background: STAT_DASH.accentBlue,
           fontSize: cl('9px', '0.82vw', '12px'),
           letterSpacing: 2,
-          padding: '4px 0',
+          paddingTop: '5px',
+          paddingBottom: '5px',
         }}
       >
         {quarterLabel(quarter)}
       </div>
       <div
-        className="flex flex-1 items-center gap-[clamp(4px,0.5vw,8px)] border-2 border-t-0 border-[#999] bg-white"
+        className="flex w-full flex-1 items-center gap-[clamp(4px,0.5vw,8px)] rounded-lg border bg-white"
         style={{
+          borderColor: STAT_DASH.cardBorder,
+          borderWidth: 1,
           padding: `${cl('6px', '1vh', '14px')} ${cl('6px', '0.8vw', '12px')}`,
         }}
       >
         <div className="flex shrink-0 flex-col gap-1">
           <button
             type="button"
-            className="flex p-0 text-[#555] hover:opacity-70"
+            className="flex p-0 text-gray-700 hover:opacity-70"
             aria-label="Add one minute"
             onClick={() => onAdjustMinutes(60)}
           >
@@ -77,7 +81,7 @@ const GameTimer: React.FC<GameTimerProps> = ({
           </button>
           <button
             type="button"
-            className="flex p-0 text-[#555] hover:opacity-70"
+            className="flex p-0 text-gray-700 hover:opacity-70"
             aria-label="Subtract one minute"
             onClick={() => onAdjustMinutes(-60)}
           >
@@ -86,7 +90,7 @@ const GameTimer: React.FC<GameTimerProps> = ({
         </div>
 
         <span
-          className="min-w-0 flex-1 text-center font-bold tabular-nums leading-none text-black"
+          className="min-w-0 flex-1 text-center font-bold tabular-nums leading-none text-gray-900"
           style={{
             fontSize: cl('26px', '3.5vw', '52px'),
             letterSpacing: 3,
@@ -99,7 +103,7 @@ const GameTimer: React.FC<GameTimerProps> = ({
         <div className="flex shrink-0 flex-col gap-1">
           <button
             type="button"
-            className="flex p-0 text-[#555] hover:opacity-70"
+            className="flex p-0 text-gray-700 hover:opacity-70"
             aria-label="Add one second"
             onClick={() => onAdjustSeconds(1)}
           >
@@ -107,7 +111,7 @@ const GameTimer: React.FC<GameTimerProps> = ({
           </button>
           <button
             type="button"
-            className="flex p-0 text-[#555] hover:opacity-70"
+            className="flex p-0 text-gray-700 hover:opacity-70"
             aria-label="Subtract one second"
             onClick={() => onAdjustSeconds(-1)}
           >
@@ -118,10 +122,9 @@ const GameTimer: React.FC<GameTimerProps> = ({
         <button
           type="button"
           onClick={onStartStop}
-          className="shrink-0 cursor-pointer whitespace-nowrap border-none font-bold text-white hover:opacity-95"
+          className="shrink-0 cursor-pointer whitespace-nowrap rounded-md border-none font-bold text-white hover:opacity-95"
           style={{
-            background: isRunning ? '#cc2222' : '#00bb44',
-            borderRadius: 5,
+            background: isRunning ? STAT_DASH.stopRed : STAT_DASH.startGreen,
             padding: `${btnPadY} ${btnPadX}`,
             fontSize: cl('12px', '1.25vw', '18px'),
             letterSpacing: 1,

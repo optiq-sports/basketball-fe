@@ -41,7 +41,12 @@ const GameHeader: React.FC<GameHeaderProps> = (props) => {
       className="flex items-stretch font-sans"
       style={{ gap: cl('6px', '1vw', '14px') }}
     >
-      <TeamScorecard teamName={homeName} score={homeScore} borderColor={homeColor} />
+      <TeamScorecard
+        teamName={homeName}
+        score={homeScore}
+        accentColor={homeColor}
+        accentSide="left"
+      />
       <GameTimer
         quarter={quarter}
         timerSeconds={timerSeconds}
@@ -51,7 +56,12 @@ const GameHeader: React.FC<GameHeaderProps> = (props) => {
         onAdjustMinutes={onAdjustMinutes}
         onAdjustSeconds={onAdjustSeconds}
       />
-      <TeamScorecard teamName={awayName} score={awayScore} borderColor={awayColor} />
+      <TeamScorecard
+        teamName={awayName}
+        score={awayScore}
+        accentColor={awayColor}
+        accentSide="right"
+      />
     </div>
   );
 };

@@ -19,7 +19,7 @@ const ActionButtons: React.FC<ActionButtonsProps> = ({ onTimeout, onJumpBall, on
           key={btn}
           type="button"
           onClick={handlers[i]}
-          className="cursor-pointer border border-[#aaa] bg-white font-bold hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1a3a8a]/40"
+          className="cursor-pointer border border-gray-300 bg-white font-bold text-gray-800 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3B82F6] focus-visible:ring-offset-1"
           style={{
             padding: `${cl('4px', '0.5vh', '7px')} ${cl('10px', '1.8vw', '24px')}`,
             fontSize: cl('10px', '1vw', '13px'),

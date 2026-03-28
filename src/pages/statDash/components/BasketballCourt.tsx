@@ -1,11 +1,12 @@
 import React from 'react';
 
 /** Reference court: viewBox 0 0 620 380, grayscale markings. */
-const BasketballCourt: React.FC = () => (
+const BasketballCourt: React.FC<{ className?: string }> = ({ className = 'block h-full w-full' }) => (
   <svg
     viewBox="0 0 620 380"
     xmlns="http://www.w3.org/2000/svg"
-    className="block w-full"
+    className={className}
+    preserveAspectRatio="xMidYMid meet"
     role="img"
     aria-label="Basketball court diagram"
   >

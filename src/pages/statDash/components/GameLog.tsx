@@ -1,6 +1,7 @@
 import React from 'react';
 import type { GameLogEntry } from '../types';
 import { cl } from '../utils/cl';
+import { STAT_DASH } from '../statDashTheme';
 
 export interface GameLogProps {
   entries: GameLogEntry[];
@@ -18,7 +19,7 @@ const GameLog: React.FC<GameLogProps> = ({ entries }) => {
       }}
     >
       <thead>
-        <tr style={{ background: '#1a3a8a', color: 'white' }}>
+        <tr style={{ background: STAT_DASH.accentBlue, color: 'white' }}>
           {(['Period', 'Clock', 'Team', 'Player', 'Action', 'Result'] as const).map((h) => (
             <th
               key={h}
@@ -45,12 +46,12 @@ const GameLog: React.FC<GameLogProps> = ({ entries }) => {
             <tr
               key={row.id}
               style={{
-                background: i % 2 === 0 ? 'white' : '#f4f4f4',
-                borderBottom: '1px solid #ddd',
+                background: i % 2 === 0 ? 'white' : STAT_DASH.logZebra,
+                borderBottom: `1px solid ${STAT_DASH.cardBorder}`,
               }}
             >
               {[row.period, row.clock, row.team, row.player, row.action, row.result].map((v, j) => (
-                <td key={j} style={{ padding: cellPad }}>
+                <td key={j} className="text-left text-gray-800" style={{ padding: cellPad }}>
                   {v}
                 </td>
               ))}

@@ -1,23 +1,36 @@
 import React from 'react';
 import { cl } from '../utils/cl';
+import { STAT_DASH } from '../statDashTheme';
 
 export interface TeamScorecardProps {
   teamName: string;
   score: number;
-  borderColor: string;
+  accentColor: string;
+  accentSide: 'left' | 'right';
 }
 
-const TeamScorecard: React.FC<TeamScorecardProps> = ({ teamName, score, borderColor }) => {
+const TeamScorecard: React.FC<TeamScorecardProps> = ({
+  teamName,
+  score,
+  accentColor,
+  accentSide,
+}) => {
+  const accentBorder =
+    accentSide === 'left'
+      ? { borderLeft: `8px solid ${accentColor}` as const }
+      : { borderRight: `8px solid ${accentColor}` as const };
+
   return (
     <div
-      className="flex flex-1 flex-col items-center justify-center rounded-md bg-white font-sans"
+      className="flex flex-1 flex-col items-center justify-center rounded-lg bg-white font-sans shadow-none"
       style={{
-        border: `3px solid ${borderColor}`,
-        padding: `${cl('10px', '1.8vh', '22px')} 0`,
+        border: `1px solid ${STAT_DASH.cardBorder}`,
+        ...accentBorder,
+        padding: `${cl('10px', '1.8vh', '22px')} ${cl('8px', '1vw', '16px')}`,
       }}
     >
       <div
-        className="font-bold uppercase"
+        className="font-bold uppercase text-gray-800"
         style={{
           fontSize: cl('13px', '1.4vw', '22px'),
           letterSpacing: 2,
@@ -26,7 +39,7 @@ const TeamScorecard: React.FC<TeamScorecardProps> = ({ teamName, score, borderCo
         {teamName}
       </div>
       <div
-        className="font-bold leading-tight tabular-nums"
+        className="font-bold leading-tight tabular-nums text-gray-900"
         style={{
           fontSize: cl('32px', '4.2vw', '60px'),
         }}
