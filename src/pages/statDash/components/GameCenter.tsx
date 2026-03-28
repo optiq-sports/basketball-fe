@@ -3,7 +3,7 @@ import type { TeamSide } from '../types';
 import type { ActiveShotFlow, ShotTypeId } from '../shotRecordingUtils';
 import type { ActiveFoulFlow, FoulTypeId } from '../foulRecordingUtils';
 import PlayerPanel from './PlayerPanel';
-import BasketballCourt from './BasketballCourt';
+import BasketballCourt, { type CourtMarker } from './BasketballCourt';
 import ShotRecordingCourtPanel from './ShotRecordingCourtPanel';
 import FoulRecordingCourtPanel from './FoulRecordingCourtPanel';
 import { cl } from '../utils/cl';
@@ -22,7 +22,7 @@ export interface GameCenterProps {
   onFoul: (side: TeamSide) => void;
   onTurnover: (side: TeamSide) => void;
   /** Left-click court: foul flow */
-  onCourtFoulClick: () => void;
+  onCourtFoulClick: (e: React.MouseEvent) => void;
   /** Right-click court: shot flow */
   onCourtShotContextMenu: (e: React.MouseEvent) => void;
   shotFlow: ShotFlowState;
@@ -44,6 +44,8 @@ export interface GameCenterProps {
   onFoulFtShooterSame: () => void;
   onFoulFtResult: (result: 'made' | 'miss') => void;
   onFoulPickRebounder: (side: TeamSide, jersey: number) => void;
+  courtShotMarkers: CourtMarker[];
+  courtFoulMarkers: CourtMarker[];
 }
 
 const GameCenter: React.FC<GameCenterProps> = ({
@@ -76,6 +78,8 @@ const GameCenter: React.FC<GameCenterProps> = ({
   onFoulFtShooterSame,
   onFoulFtResult,
   onFoulPickRebounder,
+  courtShotMarkers,
+  courtFoulMarkers,
 }) => {
   const shotActive = shotFlow !== 'idle';
   const foulActive = foulFlow !== 'idle';
@@ -107,15 +111,15 @@ const GameCenter: React.FC<GameCenterProps> = ({
             >
               <button
                 type="button"
-                onClick={onCourtFoulClick}
+                onClick={(e) => onCourtFoulClick(e)}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   onCourtShotContextMenu(e);
                 }}
-                className="h-full w-full cursor-pointer overflow-hidden rounded-lg border-[3px] border-gray-500 bg-[#d8dce1] p-0 text-left shadow-sm hover:brightness-[1.02] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3B82F6] focus-visible:ring-offset-2"
+                className="h-full w-full cursor-pointer overflow-hidden rounded-lg border-[3px] border-gray-500 bg-transparent p-0 text-left shadow-sm hover:brightness-[1.02] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3B82F6] focus-visible:ring-offset-2"
                 aria-label="Court. Left-click: foul. Right-click: made shot."
               >
-                <BasketballCourt />
+                <BasketballCourt shotMarkers={courtShotMarkers} foulMarkers={courtFoulMarkers} />
               </button>
             </div>
             <div

@@ -4,6 +4,7 @@ import EdgeTeamDrawer from './components/EdgeTeamDrawer';
 import StatusStrip from './components/StatusStrip';
 import GameHeader from './components/GameHeader';
 import GameCenter from './components/GameCenter';
+import type { CourtMarker } from './components/BasketballCourt';
 import GameLog from './components/GameLog';
 import { formatClock } from './components/GameTimer';
 import { useStatisticianTeamColors } from '../../contexts/StatisticianTeamColorsContext';
@@ -25,6 +26,14 @@ const DEFAULT_AWAY = 'TEAM 2';
 const QUARTER_DURATION_SEC = 10 * 60;
 const DEFAULT_HOME_PLAYERS = [1, 2, 3, 4, 5];
 const DEFAULT_AWAY_PLAYERS = [1, 2, 3, 4, 5];
+
+const COURT_FOUL_MARKER_COLOR = '#dc2626';
+const SHOT_MARKER_COLORS: Record<ShotTypeId, string> = {
+  jump: '#3b82f6',
+  layup: '#8b5cf6',
+  dunk: '#ef4444',
+  post: '#10b981',
+};
 
 type ShotFlowState = 'idle' | ActiveShotFlow;
 type FoulFlowState = 'idle' | ActiveFoulFlow;
@@ -83,6 +92,24 @@ const StatDash: React.FC = () => {
   const [foulFlow, setFoulFlow] = useState<FoulFlowState>('idle');
   const foulFlowRef = useRef<FoulFlowState>('idle');
   foulFlowRef.current = foulFlow;
+
+  const pendingCourtClickRef = useRef<{ nx: number; ny: number } | null>(null);
+  const [courtShotMarkers, setCourtShotMarkers] = useState<CourtMarker[]>([]);
+  const [courtFoulMarkers, setCourtFoulMarkers] = useState<CourtMarker[]>([]);
+
+  const captureCourtPoint = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    const el = e.currentTarget;
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return;
+    pendingCourtClickRef.current = {
+      nx: (e.clientX - r.left) / r.width,
+      ny: (e.clientY - r.top) / r.height,
+    };
+  }, []);
+
+  const clearPendingCourtPoint = useCallback(() => {
+    pendingCourtClickRef.current = null;
+  }, []);
 
   const clockLabel = formatClock(timerSeconds);
   const periodLabel = `Q${quarter}`;
@@ -167,6 +194,7 @@ const StatDash: React.FC = () => {
   );
 
   const openShotFlowFromPlayer = useCallback((side: TeamSide, jersey: number) => {
+    pendingCourtClickRef.current = null;
     setFoulFlow('idle');
     setShotFlow({
       entry: 'player',
@@ -175,21 +203,24 @@ const StatDash: React.FC = () => {
     });
   }, []);
 
-  const openShotFlowFromCourt = useCallback(() => {
+  const openShotFlowFromCourt = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    captureCourtPoint(e);
     setFoulFlow('idle');
     setShotFlow({
       entry: 'court',
       step: 'pickShooter',
       draft: emptyShotDraft(),
     });
-  }, []);
+  }, [captureCourtPoint]);
 
-  const openFoulFlowFromCourt = useCallback(() => {
+  const openFoulFlowFromCourt = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    captureCourtPoint(e);
     setShotFlow('idle');
     setFoulFlow(initialFoulFlowFromCourt());
-  }, []);
+  }, [captureCourtPoint]);
 
   const openFoulFlowFromPlayer = useCallback((side: TeamSide, jersey: number) => {
+    pendingCourtClickRef.current = null;
     setShotFlow('idle');
     setFoulFlow(initialFoulFlowFromPlayer(side, jersey));
   }, []);
@@ -202,7 +233,10 @@ const StatDash: React.FC = () => {
     });
   }, []);
 
-  const handleFoulFlowCancel = useCallback(() => setFoulFlow('idle'), []);
+  const handleFoulFlowCancel = useCallback(() => {
+    clearPendingCourtPoint();
+    setFoulFlow('idle');
+  }, [clearPendingCourtPoint]);
 
   const handleFoulPickFouler = useCallback((side: TeamSide, jersey: number) => {
     setFoulFlow((cur) => {
@@ -244,6 +278,15 @@ const StatDash: React.FC = () => {
       }
       if (count === 0) {
         commitFoulNoFt(draft);
+        if (cur.entry === 'court') {
+          const pt = pendingCourtClickRef.current;
+          if (pt) {
+            setCourtFoulMarkers((prev) => [...prev, { ...pt, color: COURT_FOUL_MARKER_COLOR }]);
+            pendingCourtClickRef.current = null;
+          }
+        } else {
+          pendingCourtClickRef.current = null;
+        }
         setFoulFlow('idle');
         return;
       }
@@ -297,7 +340,17 @@ const StatDash: React.FC = () => {
       const cur = foulFlowRef.current;
       if (cur === 'idle' || cur.step !== 'rebounder') return;
       const draft = { ...cur.draft, reboundSide: side, reboundJersey: jersey };
+      const fromCourt = cur.entry === 'court';
       commitFoulWithFtSequence(draft);
+      if (fromCourt) {
+        const pt = pendingCourtClickRef.current;
+        if (pt) {
+          setCourtFoulMarkers((prev) => [...prev, { ...pt, color: COURT_FOUL_MARKER_COLOR }]);
+          pendingCourtClickRef.current = null;
+        }
+      } else {
+        pendingCourtClickRef.current = null;
+      }
       setFoulFlow('idle');
     },
     [commitFoulWithFtSequence]
@@ -319,7 +372,10 @@ const StatDash: React.FC = () => {
     });
   }, []);
 
-  const handleModalCancel = useCallback(() => setShotFlow('idle'), []);
+  const handleModalCancel = useCallback(() => {
+    clearPendingCourtPoint();
+    setShotFlow('idle');
+  }, [clearPendingCourtPoint]);
 
   const handlePickShooter = useCallback((side: TeamSide, jersey: number) => {
     setShotFlow((cur) => {
@@ -375,6 +431,17 @@ const StatDash: React.FC = () => {
         action: 'shot',
         result: parts.join(' · '),
       });
+
+      if (cur.entry === 'court') {
+        const pt = pendingCourtClickRef.current;
+        if (pt) {
+          const color = SHOT_MARKER_COLORS[draft.shotType];
+          setCourtShotMarkers((prev) => [...prev, { ...pt, color }]);
+          pendingCourtClickRef.current = null;
+        }
+      } else {
+        pendingCourtClickRef.current = null;
+      }
 
       setShotFlow('idle');
     },
@@ -490,7 +557,7 @@ const StatDash: React.FC = () => {
             onFoul={onFoul}
             onTurnover={onTurnover}
             onCourtFoulClick={openFoulFlowFromCourt}
-            onCourtShotContextMenu={() => openShotFlowFromCourt()}
+            onCourtShotContextMenu={(e) => openShotFlowFromCourt(e)}
             shotFlow={shotFlow}
             foulFlow={foulFlow}
             homeName={homeName}
@@ -510,6 +577,8 @@ const StatDash: React.FC = () => {
             onFoulFtShooterSame={handleFoulFtShooterSame}
             onFoulFtResult={handleFoulFtResult}
             onFoulPickRebounder={handleFoulPickRebounder}
+            courtShotMarkers={courtShotMarkers}
+            courtFoulMarkers={courtFoulMarkers}
           />
 
           <div className={`${STAT_DASH_MAIN_OUTER} shrink-0`}>
