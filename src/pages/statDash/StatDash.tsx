@@ -1,13 +1,12 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import StatisticianFullscreenGate from '../../components/StatisticianFullscreenGate';
 import MenuBar from './components/MenuBar';
 import EdgeTeamDrawer from './components/EdgeTeamDrawer';
 import StatusStrip from './components/StatusStrip';
 import GameHeader from './components/GameHeader';
 import GameCenter from './components/GameCenter';
-import SubstitutionModal from './components/SubstitutionModal';
-import TimeoutSelectModal, { type TimeoutChoice } from './components/TimeoutSelectModal';
-import JumpBallModal, { type JumpBallChoice } from './components/JumpBallModal';
+import { type TimeoutChoice } from './components/TimeoutSelectModal';
+import type { JumpBallChoice } from './components/JumpBallModal';
 import type { CourtMarker } from './components/BasketballCourt';
 import GameLog from './components/GameLog';
 import { formatClock } from './components/GameTimer';
@@ -50,6 +49,7 @@ import {
   DEFAULT_TEAM_LINEUP,
   diffLineupOnCourt,
   formatSubstitutionDiff,
+  fullRoster,
   lineupIsComplete,
 } from './substitutionLineupUtils';
 
@@ -104,7 +104,7 @@ const StatDash: React.FC = () => {
   const [awayName] = useState(DEFAULT_AWAY);
   const [homeScore, setHomeScore] = useState(0);
   const [awayScore, setAwayScore] = useState(0);
-  const [quarter] = useState(1);
+  const [quarter, setQuarter] = useState(1);
   const [timerSeconds, setTimerSeconds] = useState(QUARTER_DURATION_SEC);
   const [isRunning, setIsRunning] = useState(false);
   const [gameLog, setGameLog] = useState<GameLogEntry[]>(SEED_LOG);
@@ -143,6 +143,8 @@ const StatDash: React.FC = () => {
 
   const homeActiveList = useMemo(() => compactOnCourt(homeLineup), [homeLineup]);
   const awayActiveList = useMemo(() => compactOnCourt(awayLineup), [awayLineup]);
+  const homeRosterList = useMemo(() => fullRoster(homeLineup), [homeLineup]);
+  const awayRosterList = useMemo(() => fullRoster(awayLineup), [awayLineup]);
   const activeRosterRef = useRef<{ home: number[]; away: number[] }>({
     home: compactOnCourt(cloneLineup(DEFAULT_TEAM_LINEUP)),
     away: compactOnCourt(cloneLineup(DEFAULT_TEAM_LINEUP)),
@@ -177,6 +179,20 @@ const StatDash: React.FC = () => {
   const onTick = useCallback(() => {
     setTimerSeconds((s) => Math.max(0, s - 1));
   }, []);
+
+  // When the game clock hits 0, advance the quarter (up to Q4) and reset the timer.
+  useEffect(() => {
+    if (!isRunning) return;
+    if (timerSeconds !== 0) return;
+    setIsRunning(false);
+    setQuarter((q) => {
+      const next = q < 4 ? q + 1 : 4;
+      // If we reached Q4 already, stop the game at 0.
+      if (q === 4) setTimerSeconds(0);
+      else setTimerSeconds(QUARTER_DURATION_SEC);
+      return next;
+    });
+  }, [isRunning, timerSeconds]);
 
   const onAdjustMinutes = useCallback((delta: number) => {
     setTimerSeconds((s) => Math.max(0, Math.min(QUARTER_DURATION_SEC, s + delta)));
@@ -494,8 +510,9 @@ const StatDash: React.FC = () => {
         });
         return;
       }
-      const allMade = nextResults.every((r) => r === 'made');
-      if (allMade) {
+      // Rebound only happens if the *last* free throw was missed.
+      const lastMade = nextResults[n - 1] === 'made';
+      if (lastMade) {
         const finished = { ...draft, ftResults: nextResults };
         const fromCourt = cur.entry === 'court';
         commitFoulWithFtSequence(finished, { skipRebound: true });
@@ -880,8 +897,20 @@ const StatDash: React.FC = () => {
       <StatisticianFullscreenGate />
       <MenuBar />
 
-      <EdgeTeamDrawer edge="left" teamName={homeName} />
-      <EdgeTeamDrawer edge="right" teamName={awayName} />
+      <EdgeTeamDrawer
+        edge="left"
+        teamName={homeName}
+        teamColor={homeTeamColor}
+        roster={homeRosterList}
+        entries={gameLog}
+      />
+      <EdgeTeamDrawer
+        edge="right"
+        teamName={awayName}
+        teamColor={awayTeamColor}
+        roster={awayRosterList}
+        entries={gameLog}
+      />
 
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden py-4 pl-12 pr-12 sm:pl-14 sm:pr-14">
@@ -953,6 +982,19 @@ const StatDash: React.FC = () => {
             awayBench={awayLineup.bench}
             onFoulPanelPick={handleFoulPanelPickerSelect}
             onFoulPanelCancel={handleFoulPanelPickerCancel}
+            timeoutModalOpen={timeoutModalOpen}
+            onTimeoutSelect={handleTimeoutSelect}
+            onTimeoutCancel={handleTimeoutModalCancel}
+            jumpBallModalOpen={jumpBallModalOpen}
+            onJumpBallSelect={handleJumpBallSelect}
+            onJumpBallCancel={handleJumpBallCancel}
+            subModalOpen={subModalOpen}
+            draftHome={subDraftHome}
+            draftAway={subDraftAway}
+            onChangeHome={setSubDraftHome}
+            onChangeAway={setSubDraftAway}
+            onSubstitutionFinish={handleSubstitutionFinish}
+            onSubstitutionCancel={handleSubstitutionCancel}
           />
 
           <div className={`${STAT_DASH_MAIN_OUTER} shrink-0`}>
@@ -965,39 +1007,6 @@ const StatDash: React.FC = () => {
         </div>
       </div>
 
-      <TimeoutSelectModal
-        open={timeoutModalOpen}
-        homeName={homeName}
-        awayName={awayName}
-        homeColor={homeTeamColor}
-        awayColor={awayTeamColor}
-        onSelect={handleTimeoutSelect}
-        onCancel={handleTimeoutModalCancel}
-      />
-
-      <JumpBallModal
-        open={jumpBallModalOpen}
-        homeName={homeName}
-        awayName={awayName}
-        homeColor={homeTeamColor}
-        awayColor={awayTeamColor}
-        onSelect={handleJumpBallSelect}
-        onCancel={handleJumpBallCancel}
-      />
-
-      <SubstitutionModal
-        open={subModalOpen}
-        homeName={homeName}
-        awayName={awayName}
-        homeColor={homeTeamColor}
-        awayColor={awayTeamColor}
-        draftHome={subDraftHome}
-        draftAway={subDraftAway}
-        onChangeHome={setSubDraftHome}
-        onChangeAway={setSubDraftAway}
-        onFinish={handleSubstitutionFinish}
-        onCancel={handleSubstitutionCancel}
-      />
     </div>
   );
 };

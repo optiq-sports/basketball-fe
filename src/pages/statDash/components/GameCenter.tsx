@@ -9,8 +9,13 @@ import ShotRecordingCourtPanel from './ShotRecordingCourtPanel';
 import FoulRecordingCourtPanel from './FoulRecordingCourtPanel';
 import TurnoverRecordingCourtPanel from './TurnoverRecordingCourtPanel';
 import FoulPanelPickerModal from './FoulPanelPickerModal';
+import TimeoutSelectModal, { type TimeoutChoice } from './TimeoutSelectModal';
+import JumpBallModal, { type JumpBallChoice } from './JumpBallModal';
 import { cl } from '../utils/cl';
 import { STAT_DASH_MAIN_INNER, STAT_DASH_MAIN_OUTER } from '../statDashTheme';
+import SubstitutionModal from './SubstitutionModal';
+import type { TeamLineup } from '../substitutionLineupUtils';
+import type { SubstitutionModalProps } from './SubstitutionModal';
 
 export type ShotFlowState = 'idle' | ActiveShotFlow;
 export type FoulFlowState = 'idle' | ActiveFoulFlow;
@@ -64,6 +69,25 @@ export interface GameCenterProps {
   awayBench: number[];
   onFoulPanelPick: (side: TeamSide, pick: PanelFoulPick) => void;
   onFoulPanelCancel: () => void;
+
+  /** Timeout selector panel inside court */
+  timeoutModalOpen: boolean;
+  onTimeoutSelect: (choice: TimeoutChoice) => void;
+  onTimeoutCancel: () => void;
+
+  /** Jump ball panel inside court */
+  jumpBallModalOpen: boolean;
+  onJumpBallSelect: (choice: JumpBallChoice) => void;
+  onJumpBallCancel: () => void;
+
+  /** Substitution panel inside court */
+  subModalOpen: boolean;
+  draftHome: TeamLineup;
+  draftAway: TeamLineup;
+  onChangeHome: SubstitutionModalProps['onChangeHome'];
+  onChangeAway: SubstitutionModalProps['onChangeAway'];
+  onSubstitutionFinish: SubstitutionModalProps['onFinish'];
+  onSubstitutionCancel: SubstitutionModalProps['onCancel'];
 }
 
 const GameCenter: React.FC<GameCenterProps> = ({
@@ -110,12 +134,26 @@ const GameCenter: React.FC<GameCenterProps> = ({
   awayBench,
   onFoulPanelPick,
   onFoulPanelCancel,
+  timeoutModalOpen,
+  onTimeoutSelect,
+  onTimeoutCancel,
+  jumpBallModalOpen,
+  onJumpBallSelect,
+  onJumpBallCancel,
+  subModalOpen,
+  draftHome,
+  draftAway,
+  onChangeHome,
+  onChangeAway,
+  onSubstitutionFinish,
+  onSubstitutionCancel,
 }) => {
   const shotActive = shotFlow !== 'idle';
   const foulActive = foulFlow !== 'idle';
   const turnoverActive = turnoverFlow !== 'idle';
   const flowActive = shotActive || foulActive || turnoverActive;
-  const courtOverlayActive = flowActive || foulPickerOpen;
+  const courtOverlayActive =
+    flowActive || foulPickerOpen || timeoutModalOpen || jumpBallModalOpen || subModalOpen;
 
   return (
     <div className={`${STAT_DASH_MAIN_OUTER} min-h-0 flex-1 items-start font-sans`}>
@@ -140,7 +178,6 @@ const GameCenter: React.FC<GameCenterProps> = ({
               className={`absolute inset-0 transition-opacity duration-300 ease-out ${
                 courtOverlayActive ? 'pointer-events-none opacity-0' : 'opacity-100'
               }`}
-              aria-hidden={courtOverlayActive}
             >
               <button
                 type="button"
@@ -159,7 +196,6 @@ const GameCenter: React.FC<GameCenterProps> = ({
               className={`absolute inset-0 transition-opacity duration-300 ease-out ${
                 shotActive ? 'opacity-100' : 'pointer-events-none opacity-0'
               }`}
-              aria-hidden={!shotActive}
             >
               {shotActive && (
                 <ShotRecordingCourtPanel
@@ -183,7 +219,6 @@ const GameCenter: React.FC<GameCenterProps> = ({
               className={`absolute inset-0 transition-opacity duration-300 ease-out ${
                 foulActive ? 'opacity-100' : 'pointer-events-none opacity-0'
               }`}
-              aria-hidden={!foulActive}
             >
               {foulActive && (
                 <FoulRecordingCourtPanel
@@ -210,7 +245,6 @@ const GameCenter: React.FC<GameCenterProps> = ({
               className={`absolute inset-0 transition-opacity duration-300 ease-out ${
                 turnoverActive ? 'opacity-100' : 'pointer-events-none opacity-0'
               }`}
-              aria-hidden={!turnoverActive}
             >
               {turnoverActive && (
                 <TurnoverRecordingCourtPanel
@@ -230,11 +264,69 @@ const GameCenter: React.FC<GameCenterProps> = ({
                 />
               )}
             </div>
+
+            <div
+              className={`absolute inset-0 transition-opacity duration-300 ease-out ${
+                timeoutModalOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
+              }`}
+            >
+              {timeoutModalOpen && (
+                <TimeoutSelectModal
+                  open={timeoutModalOpen}
+                  homeName={homeName}
+                  awayName={awayName}
+                  homeColor={homeColor}
+                  awayColor={awayColor}
+                  onSelect={onTimeoutSelect}
+                  onCancel={onTimeoutCancel}
+                />
+              )}
+            </div>
+
+            <div
+              className={`absolute inset-0 transition-opacity duration-300 ease-out ${
+                jumpBallModalOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
+              }`}
+            >
+              {jumpBallModalOpen && (
+                <JumpBallModal
+                  open={jumpBallModalOpen}
+                  homeName={homeName}
+                  awayName={awayName}
+                  homeColor={homeColor}
+                  awayColor={awayColor}
+                  onSelect={onJumpBallSelect}
+                  onCancel={onJumpBallCancel}
+                />
+              )}
+            </div>
+
+            <div
+              className={`absolute inset-0 transition-opacity duration-300 ease-out ${
+                subModalOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
+              }`}
+            >
+              {subModalOpen && (
+                <SubstitutionModal
+                  open={subModalOpen}
+                  homeName={homeName}
+                  awayName={awayName}
+                  homeColor={homeColor}
+                  awayColor={awayColor}
+                  draftHome={draftHome}
+                  draftAway={draftAway}
+                  onChangeHome={onChangeHome}
+                  onChangeAway={onChangeAway}
+                  onFinish={onSubstitutionFinish}
+                  onCancel={onSubstitutionCancel}
+                />
+              )}
+            </div>
+
             <div
               className={`absolute inset-0 transition-opacity duration-300 ease-out ${
                 foulPickerOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
               }`}
-              aria-hidden={!foulPickerOpen}
             >
               {foulPickerOpen && (
                 <FoulPanelPickerModal

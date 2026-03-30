@@ -32,61 +32,63 @@ const TimeoutSelectModal: React.FC<TimeoutSelectModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4 font-sans"
+      className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border-[3px] border-gray-500 bg-white shadow-sm"
       role="dialog"
       aria-modal="true"
       aria-labelledby="timeout-modal-title"
     >
-      <div className="flex w-full max-w-md flex-col overflow-hidden rounded-xl border-[3px] border-gray-500 bg-white shadow-xl">
-        <div className="px-4 pb-3 pt-5 sm:px-6 sm:pb-4 sm:pt-6">
-          <h2
-            id="timeout-modal-title"
-            className="text-center text-sm font-bold uppercase tracking-wider sm:text-base"
-            style={titleStyle}
-          >
-            TIMEOUT
-          </h2>
-          <p className="mt-2 text-center text-sm font-medium text-gray-900 sm:text-base">
-            Who Took Time Out?
-          </p>
+      <div className="flex-none px-4 pt-3 sm:px-6">
+        <h2
+          id="timeout-modal-title"
+          className="text-center text-[11px] font-bold uppercase leading-tight tracking-wide sm:text-[12px]"
+          style={titleStyle}
+        >
+          TIMEOUT
+        </h2>
+        <p className="mt-[14px] text-center text-[11px] font-medium text-gray-900 sm:text-[12px]">
+          Who Took Time Out?
+        </p>
+      </div>
 
-          <div className="mt-5 flex flex-col gap-2 sm:mt-6 sm:flex-row sm:justify-center sm:gap-3">
-            <button
-              type="button"
-              onClick={() => onSelect('home')}
-              className="min-h-[48px] flex-1 rounded-lg px-3 py-3 text-center text-xs font-bold uppercase tracking-wide text-white shadow-sm hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 sm:min-h-[52px] sm:text-sm"
-              style={{ background: homeColor }}
-            >
-              {homeName}
-            </button>
-            <button
-              type="button"
-              onClick={() => onSelect('officials')}
-              className="min-h-[48px] flex-1 rounded-lg border-2 border-gray-900 bg-white px-3 py-3 text-center text-xs font-bold uppercase tracking-wide text-gray-900 shadow-sm hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2 sm:min-h-[52px] sm:text-sm"
-            >
-              Officials
-            </button>
-            <button
-              type="button"
-              onClick={() => onSelect('away')}
-              className="min-h-[48px] flex-1 rounded-lg px-3 py-3 text-center text-xs font-bold uppercase tracking-wide text-white shadow-sm hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 sm:min-h-[52px] sm:text-sm"
-              style={{ background: awayColor }}
-            >
-              {awayName}
-            </button>
-          </div>
-        </div>
-
-        <div className="flex shrink-0 justify-center border-t border-gray-200 bg-sky-100/80 px-3 py-2.5">
+      <div className="flex-1 flex items-center justify-center">
+        <div className="w-full max-w-[520px] px-8 flex items-center justify-between gap-4">
           <button
             type="button"
-            onClick={onCancel}
-            className="flex flex-col items-center gap-0.5 rounded px-3 py-0.5 text-gray-900 hover:bg-sky-200/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+            onClick={() => onSelect('home')}
+            className="h-[48px] w-[116px] rounded-[4px] text-[14px] font-bold uppercase tracking-wide text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            style={{ background: homeColor }}
           >
-            <FiX size={16} strokeWidth={2.2} aria-hidden />
-            <span className="text-[11px] font-medium">Cancel</span>
+            {homeName}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onSelect('officials')}
+            className="h-[48px] w-[116px] rounded-[4px] border-2 border-gray-900 bg-white text-[14px] font-bold uppercase tracking-wide text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2"
+          >
+            OFFICIALS
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onSelect('away')}
+            className="h-[48px] w-[116px] rounded-[4px] text-[14px] font-bold uppercase tracking-wide text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            style={{ background: awayColor }}
+          >
+            {awayName}
           </button>
         </div>
+      </div>
+
+      <div className="flex-none border-t border-gray-200 bg-sky-100/80 h-[64px] flex items-center justify-center">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex flex-col items-center gap-[2px] px-0 py-[6px] text-gray-900 hover:bg-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+        >
+          <FiX size={18} strokeWidth={2.2} aria-hidden />
+          <span className="text-[12px] font-medium">Cancel</span>
+        </button>
       </div>
     </div>
   );

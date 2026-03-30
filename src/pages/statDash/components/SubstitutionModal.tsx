@@ -130,64 +130,62 @@ const SubstitutionModal: React.FC<SubstitutionModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-2 font-sans sm:p-4"
+      className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border-[3px] border-gray-500 bg-white shadow-sm"
       role="dialog"
       aria-modal="true"
       aria-labelledby="sub-modal-title"
     >
-      <div className="flex max-h-[min(92dvh,720px)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border-[3px] border-gray-500 bg-white shadow-xl">
-        <div className="shrink-0 border-b border-gray-200 px-3 py-2 sm:px-4 sm:py-3">
-          <h2
-            id="sub-modal-title"
-            className="text-left text-xs font-bold uppercase tracking-wider text-gray-400 sm:text-sm"
-          >
-            Substitution
-          </h2>
-        </div>
+      <div className="shrink-0 border-b border-gray-200 px-3 py-2 sm:px-4 sm:py-3">
+        <h2
+          id="sub-modal-title"
+          className="text-left text-xs font-bold uppercase tracking-wider text-gray-400 sm:text-sm"
+        >
+          Substitution
+        </h2>
+      </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-3 sm:py-4">
-          <div className="flex divide-x divide-gray-300">
-            <TeamColumn
-              teamName={homeName}
-              badgeColor={homeColor}
-              lineup={draftHome}
-              onChange={onChangeHome}
-              labelsOnLeft
-            />
-            <TeamColumn
-              teamName={awayName}
-              badgeColor={awayColor}
-              lineup={draftAway}
-              onChange={onChangeAway}
-              labelsOnLeft={false}
-            />
-          </div>
-          {!canFinish && (
-            <p className="mt-2 px-3 text-center text-[10px] text-amber-800 sm:text-[11px]">
-              Each team needs 5 players on the court to finish.
-            </p>
-          )}
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-2 sm:py-3">
+        <div className="flex divide-x divide-gray-300">
+          <TeamColumn
+            teamName={homeName}
+            badgeColor={homeColor}
+            lineup={draftHome}
+            onChange={onChangeHome}
+            labelsOnLeft
+          />
+          <TeamColumn
+            teamName={awayName}
+            badgeColor={awayColor}
+            lineup={draftAway}
+            onChange={onChangeAway}
+            labelsOnLeft={false}
+          />
         </div>
+        {!canFinish && (
+          <p className="mt-2 px-3 text-center text-[10px] text-amber-800 sm:text-[11px]">
+            Each team needs 5 players on the court to finish.
+          </p>
+        )}
+      </div>
 
-        <div className="flex shrink-0 items-stretch justify-between border-t border-gray-200 bg-sky-100/80 px-2 py-2.5 sm:px-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="flex flex-col items-center gap-0.5 rounded px-2 py-0.5 text-gray-900 hover:bg-sky-200/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-          >
-            <FiX size={16} strokeWidth={2.2} aria-hidden />
-            <span className="text-[11px] font-medium">Cancel</span>
-          </button>
-          <button
-            type="button"
-            disabled={!canFinish}
-            onClick={onFinish}
-            className="flex flex-col items-center gap-0.5 rounded px-2 py-0.5 text-gray-900 hover:bg-sky-200/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <FiArrowRight size={16} strokeWidth={2.2} aria-hidden />
-            <span className="text-[11px] font-medium">Finish</span>
-          </button>
-        </div>
+      <div className="flex shrink-0 items-stretch justify-between border-t border-gray-200 bg-sky-100/80 px-2 py-2.5 sm:px-3">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex flex-col items-center gap-0.5 rounded px-2 py-0.5 text-gray-900 hover:bg-sky-200/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+        >
+          <FiX size={16} strokeWidth={2.2} aria-hidden />
+          <span className="text-[11px] font-medium">Cancel</span>
+        </button>
+        <button
+          type="button"
+          disabled={!canFinish}
+          onClick={onFinish}
+          className="flex flex-col items-center gap-0.5 rounded px-2 py-0.5 text-gray-900 hover:bg-sky-200/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <FiArrowRight size={16} strokeWidth={2.2} aria-hidden />
+          <span className="text-[11px] font-medium">Finish</span>
+        </button>
       </div>
     </div>
   );
