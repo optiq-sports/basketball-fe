@@ -141,6 +141,7 @@ const StatDash: React.FC = () => {
   const [foulPickerOpen, setFoulPickerOpen] = useState(false);
   const foulPickerOpenRef = useRef(false);
   foulPickerOpenRef.current = foulPickerOpen;
+  const [activeDrawer, setActiveDrawer] = useState<'left' | 'right' | null>(null);
 
   const homeActiveList = useMemo(() => compactOnCourt(homeLineup), [homeLineup]);
   const awayActiveList = useMemo(() => compactOnCourt(awayLineup), [awayLineup]);
@@ -904,6 +905,8 @@ const StatDash: React.FC = () => {
         teamColor={homeTeamColor}
         roster={homeRosterList}
         entries={gameLog}
+        open={activeDrawer === 'left'}
+        onToggle={() => setActiveDrawer((cur) => (cur === 'left' ? null : 'left'))}
       />
       <EdgeTeamDrawer
         edge="right"
@@ -911,6 +914,8 @@ const StatDash: React.FC = () => {
         teamColor={awayTeamColor}
         roster={awayRosterList}
         entries={gameLog}
+        open={activeDrawer === 'right'}
+        onToggle={() => setActiveDrawer((cur) => (cur === 'right' ? null : 'right'))}
       />
 
       <div className="flex min-h-0 flex-1 flex-col">

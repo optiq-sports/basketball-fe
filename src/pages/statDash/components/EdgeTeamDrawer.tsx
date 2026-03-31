@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { IoChevronBack, IoChevronForward } from 'react-icons/io5';
 import type { GameLogEntry } from '../types';
 import { getContrastTextColor } from '../../../contexts/StatisticianTeamColorsContext';
@@ -123,6 +123,8 @@ export interface EdgeTeamDrawerProps {
   teamColor: string;
   roster: number[];
   entries: GameLogEntry[];
+  open: boolean;
+  onToggle: () => void;
 }
 
 /**
@@ -134,8 +136,9 @@ const EdgeTeamDrawer: React.FC<EdgeTeamDrawerProps> = ({
   teamColor,
   roster,
   entries,
+  open,
+  onToggle,
 }) => {
-  const [open, setOpen] = useState(false);
   const isLeft = edge === 'left';
   const Chevron = isLeft ? IoChevronBack : IoChevronForward;
   const label = isLeft ? 'Home team roster and stats' : 'Away team roster and stats';
@@ -143,7 +146,7 @@ const EdgeTeamDrawer: React.FC<EdgeTeamDrawerProps> = ({
   const strip = (
     <button
       type="button"
-      onClick={() => setOpen((v) => !v)}
+      onClick={onToggle}
       className="flex w-9 shrink-0 cursor-pointer items-center justify-center bg-[#f3f4f6]/90 sm:w-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
       aria-label={label}
     >
