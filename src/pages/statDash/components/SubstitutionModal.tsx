@@ -41,6 +41,15 @@ function TeamColumn({
     onChange(moveBenchToFirstEmptySlot(lineup, benchIndex));
   };
 
+  const onClearOnCourt = () => {
+    const currentOnCourt = lineup.onCourt.filter((j): j is number => j !== null);
+    if (currentOnCourt.length === 0) return;
+    onChange({
+      onCourt: [null, null, null, null, null],
+      bench: [...lineup.bench, ...currentOnCourt],
+    });
+  };
+
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-3 border-gray-200 px-2 sm:px-3">
       <div
@@ -51,7 +60,17 @@ function TeamColumn({
       </div>
 
       <div className="flex flex-col items-start gap-1">
-        <span className="text-[9px] font-semibold uppercase text-gray-600">Players On</span>
+        <div className="flex w-full items-center justify-between gap-2">
+          <span className="text-[9px] font-semibold uppercase text-gray-600">Players On</span>
+          <button
+            type="button"
+            onClick={onClearOnCourt}
+            disabled={lineup.onCourt.every((j) => j === null)}
+            className="rounded border border-gray-300 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Clear
+          </button>
+        </div>
         <div className="flex w-full flex-wrap justify-center gap-1">
           {Array.from({ length: LINEUP_SLOTS }, (_, i) => {
             const j = lineup.onCourt[i];
