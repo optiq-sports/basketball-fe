@@ -153,13 +153,13 @@ const TurnoverRecordingCourtPanel: React.FC<TurnoverRecordingCourtPanelProps> = 
             <h2 id="turnover-flow-title" className={titleClass} style={titleStyle}>
               Select turnover type
             </h2>
-            <div className="mx-auto grid max-w-[300px] grid-cols-3 gap-1.5 sm:gap-2">
+            <div className="mx-auto grid max-w-[340px] grid-cols-3 gap-2 sm:gap-2.5">
               {TURNOVER_TYPE_OPTIONS.map(({ id, label }) => (
                 <button
                   key={id}
                   type="button"
                   onClick={() => onSelectTurnoverType(id)}
-                  className="rounded-lg bg-gray-200 px-1.5 py-2 text-center text-[9px] font-medium leading-tight text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:px-2 sm:text-[10px]"
+                  className="rounded-lg bg-gray-200 px-2 py-2.5 text-center text-[10px] font-medium leading-tight text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:px-2.5 sm:text-[11px]"
                 >
                   {label}
                 </button>

@@ -18,6 +18,26 @@ export function isValidHexColor(value: string): boolean {
   return normalizeHex(value) !== null;
 }
 
+export function isLightColor(value: string): boolean {
+  const n = normalizeHex(value);
+  if (!n) return false;
+  const r = parseInt(n.slice(1, 3), 16);
+  const g = parseInt(n.slice(3, 5), 16);
+  const b = parseInt(n.slice(5, 7), 16);
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+  return yiq >= 180;
+}
+
+export function getContrastTextColor(value: string): '#111827' | '#ffffff' {
+  const n = normalizeHex(value);
+  if (!n) return '#ffffff';
+  const r = parseInt(n.slice(1, 3), 16);
+  const g = parseInt(n.slice(3, 5), 16);
+  const b = parseInt(n.slice(5, 7), 16);
+  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
+  return yiq >= 140 ? '#111827' : '#ffffff';
+}
+
 /** Returns `#RRGGBB` or null if invalid */
 export function normalizeHex(value: string): string | null {
   let s = value.trim();

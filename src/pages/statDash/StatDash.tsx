@@ -5,6 +5,7 @@ import EdgeTeamDrawer from './components/EdgeTeamDrawer';
 import StatusStrip from './components/StatusStrip';
 import GameHeader from './components/GameHeader';
 import GameCenter from './components/GameCenter';
+import SubstitutionModal from './components/SubstitutionModal';
 import { type TimeoutChoice } from './components/TimeoutSelectModal';
 import type { JumpBallChoice } from './components/JumpBallModal';
 import type { CourtMarker } from './components/BasketballCourt';
@@ -938,64 +939,78 @@ const StatDash: React.FC = () => {
             </div>
           </div>
 
-          <GameCenter
-            homeColor={homeTeamColor}
-            awayColor={awayTeamColor}
-            homeActivePlayers={homeActiveList}
-            awayActivePlayers={awayActiveList}
-            onPlayerFoulClick={openFoulFlowFromPlayer}
-            onPlayerShotContextMenu={(side, jersey) => openShotFlowFromPlayer(side, jersey)}
-            onFoul={openFoulFlowFromPanelFoulButton}
-            onTurnover={openTurnoverFlowFromPanel}
-            onCourtFoulClick={openFoulFlowFromCourt}
-            onCourtShotContextMenu={(e) => openShotFlowFromCourt(e)}
-            shotFlow={shotFlow}
-            foulFlow={foulFlow}
-            turnoverFlow={turnoverFlow}
-            homeName={homeName}
-            awayName={awayName}
-            onShotFlowBack={handleModalBack}
-            onShotFlowCancel={handleModalCancel}
-            onPickShooter={handlePickShooter}
-            onSelectShotType={handleSelectShotType}
-            onSetFastBreak={handleSetFastBreak}
-            onSelectAssist={handleSelectAssist}
-            onFoulFlowBack={handleFoulFlowBack}
-            onFoulFlowCancel={handleFoulFlowCancel}
-            onFoulPickFouler={handleFoulPickFouler}
-            onFoulSelectType={handleFoulSelectType}
-            onFoulPickFouled={handleFoulPickFouled}
-            onFoulSelectFtCount={handleFoulSelectFtCount}
-            onFoulFtShooterSame={handleFoulFtShooterSame}
-            onFoulFtResult={handleFoulFtResult}
-            onFoulPickRebounder={handleFoulPickRebounder}
-            onTurnoverFlowBack={handleTurnoverFlowBack}
-            onTurnoverFlowCancel={handleTurnoverFlowCancel}
-            onTurnoverPickCommittingPlayer={handleTurnoverPickCommittingPlayer}
-            onTurnoverSelectType={handleTurnoverSelectType}
-            onTurnoverNoSteal={handleTurnoverNoSteal}
-            onTurnoverPickStealer={handleTurnoverPickStealer}
-            courtShotMarkers={courtShotMarkers}
-            courtFoulMarkers={courtFoulMarkers}
-            foulPickerOpen={foulPickerOpen}
-            homeBench={homeLineup.bench}
-            awayBench={awayLineup.bench}
-            onFoulPanelPick={handleFoulPanelPickerSelect}
-            onFoulPanelCancel={handleFoulPanelPickerCancel}
-            timeoutModalOpen={timeoutModalOpen}
-            onTimeoutSelect={handleTimeoutSelect}
-            onTimeoutCancel={handleTimeoutModalCancel}
-            jumpBallModalOpen={jumpBallModalOpen}
-            onJumpBallSelect={handleJumpBallSelect}
-            onJumpBallCancel={handleJumpBallCancel}
-            subModalOpen={subModalOpen}
-            draftHome={subDraftHome}
-            draftAway={subDraftAway}
-            onChangeHome={setSubDraftHome}
-            onChangeAway={setSubDraftAway}
-            onSubstitutionFinish={handleSubstitutionFinish}
-            onSubstitutionCancel={handleSubstitutionCancel}
-          />
+          <div className="relative">
+            <GameCenter
+              homeColor={homeTeamColor}
+              awayColor={awayTeamColor}
+              homeActivePlayers={homeActiveList}
+              awayActivePlayers={awayActiveList}
+              onPlayerFoulClick={openFoulFlowFromPlayer}
+              onPlayerShotContextMenu={(side, jersey) => openShotFlowFromPlayer(side, jersey)}
+              onFoul={openFoulFlowFromPanelFoulButton}
+              onTurnover={openTurnoverFlowFromPanel}
+              onCourtFoulClick={openFoulFlowFromCourt}
+              onCourtShotContextMenu={(e) => openShotFlowFromCourt(e)}
+              shotFlow={shotFlow}
+              foulFlow={foulFlow}
+              turnoverFlow={turnoverFlow}
+              homeName={homeName}
+              awayName={awayName}
+              onShotFlowBack={handleModalBack}
+              onShotFlowCancel={handleModalCancel}
+              onPickShooter={handlePickShooter}
+              onSelectShotType={handleSelectShotType}
+              onSetFastBreak={handleSetFastBreak}
+              onSelectAssist={handleSelectAssist}
+              onFoulFlowBack={handleFoulFlowBack}
+              onFoulFlowCancel={handleFoulFlowCancel}
+              onFoulPickFouler={handleFoulPickFouler}
+              onFoulSelectType={handleFoulSelectType}
+              onFoulPickFouled={handleFoulPickFouled}
+              onFoulSelectFtCount={handleFoulSelectFtCount}
+              onFoulFtShooterSame={handleFoulFtShooterSame}
+              onFoulFtResult={handleFoulFtResult}
+              onFoulPickRebounder={handleFoulPickRebounder}
+              onTurnoverFlowBack={handleTurnoverFlowBack}
+              onTurnoverFlowCancel={handleTurnoverFlowCancel}
+              onTurnoverPickCommittingPlayer={handleTurnoverPickCommittingPlayer}
+              onTurnoverSelectType={handleTurnoverSelectType}
+              onTurnoverNoSteal={handleTurnoverNoSteal}
+              onTurnoverPickStealer={handleTurnoverPickStealer}
+              courtShotMarkers={courtShotMarkers}
+              courtFoulMarkers={courtFoulMarkers}
+              foulPickerOpen={foulPickerOpen}
+              homeBench={homeLineup.bench}
+              awayBench={awayLineup.bench}
+              onFoulPanelPick={handleFoulPanelPickerSelect}
+              onFoulPanelCancel={handleFoulPanelPickerCancel}
+              timeoutModalOpen={timeoutModalOpen}
+              onTimeoutSelect={handleTimeoutSelect}
+              onTimeoutCancel={handleTimeoutModalCancel}
+              jumpBallModalOpen={jumpBallModalOpen}
+              onJumpBallSelect={handleJumpBallSelect}
+              onJumpBallCancel={handleJumpBallCancel}
+            />
+            {subModalOpen && (
+              <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/40">
+                <div className="w-full max-w-[min(100%,980px)] px-3 sm:px-4">
+                  <SubstitutionModal
+                    open={subModalOpen}
+                    homeName={homeName}
+                    awayName={awayName}
+                    homeColor={homeTeamColor}
+                    awayColor={awayTeamColor}
+                    draftHome={subDraftHome}
+                    draftAway={subDraftAway}
+                    onChangeHome={setSubDraftHome}
+                    onChangeAway={setSubDraftAway}
+                    onFinish={handleSubstitutionFinish}
+                    onCancel={handleSubstitutionCancel}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
 
           <div className={`${STAT_DASH_MAIN_OUTER} shrink-0`}>
             <div

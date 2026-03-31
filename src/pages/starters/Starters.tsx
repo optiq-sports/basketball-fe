@@ -5,6 +5,7 @@ import { FiArrowRight } from 'react-icons/fi';
 import { queryKeys } from '../../api/hooks';
 import StatisticianLayout from '../../components/StatisticianLayout';
 import {
+  getContrastTextColor,
   normalizeHex,
   useStatisticianTeamColors,
 } from '../../contexts/StatisticianTeamColorsContext';
@@ -19,14 +20,23 @@ const DEFAULT_STARTER_ROWS = new Set([0, 1, 2, 3, 6]);
 type TeamSide = 'home' | 'away';
 
 function contrastTextOnBg(hex: string): string {
-  const n = normalizeHex(hex);
-  if (!n) return '#ffffff';
-  const r = parseInt(n.slice(1, 3), 16);
-  const g = parseInt(n.slice(3, 5), 16);
-  const b = parseInt(n.slice(5, 7), 16);
-  const yiq = (r * 299 + g * 587 + b * 114) / 1000;
-  return yiq >= 140 ? '#111827' : '#ffffff';
+  return getContrastTextColor(hex);
 }
+
+const TEAM_SWATCHES = [
+  '#EF4444',
+  '#DC2626',
+  '#2563EB',
+  '#1D4ED8',
+  '#0EA5E9',
+  '#16A34A',
+  '#EAB308',
+  '#F97316',
+  '#A855F7',
+  '#DB2777',
+  '#111827',
+  '#4B5563',
+] as const;
 
 /** Team color swatch + native color picker (main shows static “00”; we keep selection) */
 function TeamColorBlock({
@@ -38,30 +48,35 @@ function TeamColorBlock({
   color: string;
   onChange: (hex: string) => void;
 }) {
-  const inputId = `team-color-input-${side}`;
   const fg = useMemo(() => contrastTextOnBg(color), [color]);
+  const normalized = normalizeHex(color) ?? color;
 
   return (
     <div className="mt-3 flex justify-end">
-      <div className="flex min-w-[110px] flex-col items-center gap-1 rounded-lg border border-gray-300 bg-white p-2">
+      <div className="flex min-w-[170px] flex-col items-center gap-2 rounded-lg border border-gray-300 bg-white p-2">
         <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Team Color</span>
-        <label
-          htmlFor={inputId}
-          className="relative flex w-full cursor-pointer items-center justify-center rounded-md px-4 py-1.5"
-          style={{ backgroundColor: color }}
+        <div
+          className="relative flex w-full items-center justify-center rounded-md border border-gray-300 px-4 py-1.5"
+          style={{ backgroundColor: normalized }}
         >
           <span className="pointer-events-none text-sm font-bold tracking-widest" style={{ color: fg }}>
             00
           </span>
-          <input
-            id={inputId}
-            type="color"
-            value={normalizeHex(color) ?? color}
-            onChange={(e) => onChange(e.target.value)}
-            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-            aria-label={side === 'home' ? 'Home team color' : 'Away team color'}
-          />
-        </label>
+        </div>
+        <div className="grid w-full grid-cols-6 gap-1">
+          {TEAM_SWATCHES.map((swatch) => (
+            <button
+              key={`${side}-${swatch}`}
+              type="button"
+              onClick={() => onChange(swatch)}
+              className={`h-6 rounded border focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
+                normalizeHex(color) === swatch ? 'border-gray-900 ring-1 ring-gray-900' : 'border-gray-300'
+              }`}
+              style={{ backgroundColor: swatch }}
+              aria-label={`${side === 'home' ? 'Home' : 'Away'} team color ${swatch}`}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );

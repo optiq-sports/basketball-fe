@@ -162,20 +162,20 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
             <h2 id="shot-flow-title" className={titleClass} style={titleStyle}>
               Shot type
             </h2>
-            <div className="mx-auto grid max-w-[280px] grid-cols-2 gap-2 sm:gap-2.5">
+            <div className="mx-auto grid max-w-[320px] grid-cols-2 gap-2.5 sm:gap-3">
               {SHOT_TYPE_OPTIONS.map(({ id, label }) => (
                 <button
                   key={id}
                   type="button"
                   onClick={() => onSelectShotType(id)}
-                  className="rounded-lg bg-gray-200 px-2 py-2 text-center text-[11px] font-medium text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:py-2.5 sm:text-xs"
+                  className="rounded-lg bg-gray-200 px-3 py-3 text-center text-[12px] font-medium text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:py-3 sm:text-[13px]"
                 >
                   {label}
                 </button>
               ))}
             </div>
-            <div className="mx-auto mt-3 flex max-w-[280px] items-center justify-between gap-2 rounded-lg bg-gray-200 px-3 py-2 sm:mt-4">
-              <span className="text-[11px] font-medium text-black sm:text-xs">Fast break</span>
+            <div className="mx-auto mt-4 flex max-w-[320px] items-center justify-between gap-3 rounded-lg bg-gray-200 px-4 py-3 sm:mt-5">
+              <span className="text-[12px] font-medium text-black sm:text-[13px]">Fast break</span>
               <button
                 type="button"
                 role="switch"

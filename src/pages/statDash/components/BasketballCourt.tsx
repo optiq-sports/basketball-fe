@@ -38,8 +38,14 @@ const BasketballCourt: React.FC<BasketballCourtProps> = ({
           strokeWidth="2"
           strokeDasharray="7 5"
         />
-        <rect x="16" y="165" width="13" height="50" fill="none" stroke="#4b5563" strokeWidth="2" />
-        <circle cx="46" cy="190" r="20" fill="none" stroke="#4b5563" strokeWidth="2" />
+        {/* Left hoop + restricted area semicircle */}
+        <circle cx="46" cy="190" r="6" fill="#4b5563" />
+        <path
+          d="M66 190 A20 20 0 0 0 66 190.0001"
+          fill="none"
+          stroke="#4b5563"
+          strokeWidth="2"
+        />
         <line x1="16" y1="58" x2="152" y2="58" stroke="#4b5563" strokeWidth="2" />
         <line x1="16" y1="322" x2="152" y2="322" stroke="#4b5563" strokeWidth="2" />
         <path d="M152 58 A148 148 0 0 1 152 322" fill="none" stroke="#4b5563" strokeWidth="2" />
@@ -52,8 +58,14 @@ const BasketballCourt: React.FC<BasketballCourtProps> = ({
           strokeWidth="2"
           strokeDasharray="7 5"
         />
-        <rect x="591" y="165" width="13" height="50" fill="none" stroke="#4b5563" strokeWidth="2" />
-        <circle cx="574" cy="190" r="20" fill="none" stroke="#4b5563" strokeWidth="2" />
+        {/* Right hoop + restricted area semicircle */}
+        <circle cx="574" cy="190" r="6" fill="#4b5563" />
+        <path
+          d="M554 190 A20 20 0 0 1 554 190.0001"
+          fill="none"
+          stroke="#4b5563"
+          strokeWidth="2"
+        />
         <line x1="604" y1="58" x2="466" y2="58" stroke="#4b5563" strokeWidth="2" />
         <line x1="604" y1="322" x2="466" y2="322" stroke="#4b5563" strokeWidth="2" />
         <path d="M466 58 A148 148 0 0 0 466 322" fill="none" stroke="#4b5563" strokeWidth="2" />

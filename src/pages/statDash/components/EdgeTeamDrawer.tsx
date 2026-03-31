@@ -1,6 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { IoChevronBack, IoChevronForward } from 'react-icons/io5';
 import type { GameLogEntry } from '../types';
+import { getContrastTextColor } from '../../../contexts/StatisticianTeamColorsContext';
 
 /** MenuBar height — keep in sync with `MenuBar.tsx` */
 const MENU_BAR_PX = 36;
@@ -71,14 +72,29 @@ function TeamStatsTable({
           <caption className="sr-only">
             {teamName} — roster and stats
           </caption>
-          <thead>
-            <tr style={{ backgroundColor: teamColor }}>
-              <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide text-white">#</th>
-              <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide text-white">
+      <thead>
+        <tr style={{ backgroundColor: teamColor }}>
+          <th className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide" style={{ color: getContrastTextColor(teamColor) }}>
+            #
+          </th>
+          <th
+            className="px-4 py-3.5 text-left text-xs font-bold uppercase tracking-wide"
+            style={{ color: getContrastTextColor(teamColor) }}
+          >
                 Player name
               </th>
-              <th className="px-4 py-3.5 text-right text-xs font-bold uppercase tracking-wide text-white">PF</th>
-              <th className="px-4 py-3.5 text-right text-xs font-bold uppercase tracking-wide text-white">PTS</th>
+          <th
+            className="px-4 py-3.5 text-right text-xs font-bold uppercase tracking-wide"
+            style={{ color: getContrastTextColor(teamColor) }}
+          >
+            PF
+          </th>
+          <th
+            className="px-4 py-3.5 text-right text-xs font-bold uppercase tracking-wide"
+            style={{ color: getContrastTextColor(teamColor) }}
+          >
+            PTS
+          </th>
             </tr>
           </thead>
           <tbody>
@@ -110,8 +126,7 @@ export interface EdgeTeamDrawerProps {
 }
 
 /**
- * Hover the edge chevron to slide in a centered card (not full-height).
- * CSS-only (`group-hover`) — no React state in StatDash.
+ * Click chevron to toggle side stats drawer.
  */
 const EdgeTeamDrawer: React.FC<EdgeTeamDrawerProps> = ({
   edge,
@@ -120,20 +135,30 @@ const EdgeTeamDrawer: React.FC<EdgeTeamDrawerProps> = ({
   roster,
   entries,
 }) => {
+  const [open, setOpen] = useState(false);
   const isLeft = edge === 'left';
   const Chevron = isLeft ? IoChevronBack : IoChevronForward;
   const label = isLeft ? 'Home team roster and stats' : 'Away team roster and stats';
 
   const strip = (
-    <div className="flex w-9 shrink-0 items-center justify-center bg-[#f3f4f6]/90 sm:w-10">
+    <button
+      type="button"
+      onClick={() => setOpen((v) => !v)}
+      className="flex w-9 shrink-0 cursor-pointer items-center justify-center bg-[#f3f4f6]/90 sm:w-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+      aria-label={label}
+    >
       <span className="pointer-events-none flex" style={{ color: teamColor }} aria-hidden>
         <Chevron size={18} />
       </span>
-    </div>
+    </button>
   );
 
   const rail = (
-    <div className="flex h-full min-h-0 min-w-0 w-0 items-center overflow-hidden transition-[width] duration-300 ease-out group-hover:w-[min(100vw-2.5rem,22rem)]">
+    <div
+      className={`flex h-full min-h-0 min-w-0 items-center overflow-hidden transition-[width] duration-300 ease-out ${
+        open ? 'w-[min(100vw-2.5rem,22rem)]' : 'w-0'
+      }`}
+    >
       <div className="flex h-auto min-w-0 w-[min(100vw-2.5rem,22rem)] shrink-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg ring-1 ring-black/5">
         <TeamStatsTable teamName={teamName} teamColor={teamColor} roster={roster} entries={entries} />
       </div>
@@ -142,23 +167,13 @@ const EdgeTeamDrawer: React.FC<EdgeTeamDrawerProps> = ({
 
   return (
     <div
-      className={`group pointer-events-auto fixed bottom-0 z-40 flex flex-row-reverse items-stretch ${
-        isLeft ? 'left-0' : 'right-0'
+      className={`pointer-events-auto fixed bottom-0 z-40 flex items-stretch ${
+        isLeft ? 'left-0 flex-row' : 'right-0 flex-row-reverse'
       }`}
       style={{ top: MENU_BAR_PX }}
-      aria-label={label}
     >
-      {isLeft ? (
-        <>
-          {rail}
-          {strip}
-        </>
-      ) : (
-        <>
-          {strip}
-          {rail}
-        </>
-      )}
+      {strip}
+      {rail}
     </div>
   );
 };

@@ -62,7 +62,7 @@ function JerseyButton({
 }
 
 const grayPill =
-  'w-full rounded-lg bg-gray-200 px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wide text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:text-[11px]';
+  'w-full rounded-lg bg-gray-200 px-3 py-3 text-center text-[11px] font-bold uppercase tracking-wide text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:text-[12px]';
 
 function SideColumn({
   side,

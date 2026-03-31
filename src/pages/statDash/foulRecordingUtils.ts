@@ -4,16 +4,12 @@ export type FoulTypeId =
   | 'personal'
   | 'technical'
   | 'intentional'
-  | 'flagrant1'
-  | 'flagrant2'
   | 'charging';
 
 export const FOUL_TYPE_OPTIONS: { id: FoulTypeId; label: string }[] = [
   { id: 'personal', label: 'Personal' },
   { id: 'technical', label: 'Technical' },
   { id: 'intentional', label: 'Intentional' },
-  { id: 'flagrant1', label: 'Flagrant 1' },
-  { id: 'flagrant2', label: 'Flagrant 2' },
   { id: 'charging', label: 'Charging' },
 ];
 

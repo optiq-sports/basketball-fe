@@ -172,13 +172,13 @@ const FoulRecordingCourtPanel: React.FC<FoulRecordingCourtPanelProps> = ({
             <h2 id="foul-flow-title" className={titleClass} style={titleStyle}>
               Select foul type
             </h2>
-            <div className="mx-auto grid max-w-[280px] grid-cols-2 gap-1.5 sm:gap-2">
+            <div className="mx-auto grid max-w-[320px] grid-cols-2 gap-2 sm:gap-2.5">
               {FOUL_TYPE_OPTIONS.map(({ id, label }) => (
                 <button
                   key={id}
                   type="button"
                   onClick={() => onSelectFoulType(id)}
-                  className="rounded-lg bg-gray-200 px-2 py-2 text-center text-[10px] font-medium text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:text-[11px]"
+                  className="rounded-lg bg-gray-200 px-3 py-3 text-center text-[11px] font-medium text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:text-[12px]"
                 >
                   {label}
                 </button>
@@ -215,13 +215,13 @@ const FoulRecordingCourtPanel: React.FC<FoulRecordingCourtPanelProps> = ({
             <h2 id="foul-flow-title" className={titleClass} style={titleStyle}>
               Select number of free throws awarded
             </h2>
-            <div className="mx-auto flex max-w-[260px] flex-col gap-1.5">
+            <div className="mx-auto flex max-w-[300px] flex-col gap-2">
               {([1, 2, 3] as const).map((n) => (
                 <button
                   key={n}
                   type="button"
                   onClick={() => onSelectFtCount(n)}
-                  className="rounded-lg bg-gray-200 px-3 py-2 text-center text-[11px] font-medium text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                  className="rounded-lg bg-gray-200 px-4 py-3 text-center text-[12px] font-medium text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
                 >
                   {n} Free Throw{n > 1 ? 's' : ''}
                 </button>
@@ -229,7 +229,7 @@ const FoulRecordingCourtPanel: React.FC<FoulRecordingCourtPanelProps> = ({
               <button
                 type="button"
                 onClick={() => onSelectFtCount(0)}
-                className="rounded-lg bg-gray-200 px-3 py-2 text-center text-[11px] font-medium text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                className="rounded-lg bg-gray-200 px-4 py-3 text-center text-[12px] font-medium text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
               >
                 No free throws
               </button>

@@ -27,13 +27,11 @@ function TeamColumn({
   badgeColor,
   lineup,
   onChange,
-  labelsOnLeft,
 }: {
   teamName: string;
   badgeColor: string;
   lineup: TeamLineup;
   onChange: (next: TeamLineup) => void;
-  labelsOnLeft: boolean;
 }) {
   const onSlotClick = (slotIndex: number) => {
     onChange(moveSlotToBench(lineup, slotIndex));
@@ -52,12 +50,8 @@ function TeamColumn({
         {teamName}
       </div>
 
-      <div
-        className={`flex flex-col gap-1 ${labelsOnLeft ? 'items-start' : 'items-end'}`}
-      >
-        {labelsOnLeft && (
-          <span className="text-[9px] font-semibold uppercase text-gray-600">Players On</span>
-        )}
+      <div className="flex flex-col items-start gap-1">
+        <span className="text-[9px] font-semibold uppercase text-gray-600">Players On</span>
         <div className="flex w-full flex-wrap justify-center gap-1">
           {Array.from({ length: LINEUP_SLOTS }, (_, i) => {
             const j = lineup.onCourt[i];
@@ -78,17 +72,10 @@ function TeamColumn({
             );
           })}
         </div>
-        {!labelsOnLeft && (
-          <span className="text-[9px] font-semibold uppercase text-gray-600">Players On</span>
-        )}
       </div>
 
-      <div
-        className={`flex flex-col gap-1 ${labelsOnLeft ? 'items-start' : 'items-end'}`}
-      >
-        {labelsOnLeft && (
-          <span className="text-[9px] font-semibold uppercase text-gray-600">Bench</span>
-        )}
+      <div className="flex flex-col items-start gap-1">
+        <span className="text-[9px] font-semibold uppercase text-gray-600">Bench</span>
         <div className="flex w-full flex-wrap justify-center gap-1">
           {lineup.bench.map((j, benchIdx) => (
             <button
@@ -103,9 +90,6 @@ function TeamColumn({
             </button>
           ))}
         </div>
-        {!labelsOnLeft && (
-          <span className="text-[9px] font-semibold uppercase text-gray-600">Bench</span>
-        )}
       </div>
     </div>
   );
@@ -151,14 +135,12 @@ const SubstitutionModal: React.FC<SubstitutionModalProps> = ({
             badgeColor={homeColor}
             lineup={draftHome}
             onChange={onChangeHome}
-            labelsOnLeft
           />
           <TeamColumn
             teamName={awayName}
             badgeColor={awayColor}
             lineup={draftAway}
             onChange={onChangeAway}
-            labelsOnLeft={false}
           />
         </div>
         {!canFinish && (
