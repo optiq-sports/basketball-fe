@@ -66,27 +66,6 @@ function PanelFooter({
   );
 }
 
-function JerseyButton({
-  jersey,
-  accentColor,
-  onClick,
-}: {
-  jersey: number;
-  accentColor: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex aspect-square w-9 shrink-0 cursor-pointer select-none items-center justify-center rounded-md border-none text-xs font-bold text-white hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 sm:w-10 sm:text-sm"
-      style={{ background: accentColor }}
-    >
-      {jersey}
-    </button>
-  );
-}
-
 const titleClass =
   'mb-2 text-center text-[10px] font-bold uppercase leading-tight tracking-wide sm:mb-3 sm:text-[11px]';
 const titleStyle = { color: STAT_DASH.accentBlue };
@@ -110,13 +89,9 @@ const TurnoverRecordingCourtPanel: React.FC<TurnoverRecordingCourtPanelProps> = 
   const { committingSide } = draft;
   const committingName = committingSide === 'home' ? homeName : awayName;
   const committingPlayers = committingSide === 'home' ? homePlayers : awayPlayers;
-  const committingColor = committingSide === 'home' ? homeColor : awayColor;
 
   const stealSide = opponentOf(committingSide);
   const stealName = stealSide === 'home' ? homeName : awayName;
-  const stealPlayers = stealSide === 'home' ? homePlayers : awayPlayers;
-  const stealColor = stealSide === 'home' ? homeColor : awayColor;
-
   const showFooterBack = step !== 'pickPlayer';
 
   return (
@@ -132,18 +107,9 @@ const TurnoverRecordingCourtPanel: React.FC<TurnoverRecordingCourtPanelProps> = 
             <h2 id="turnover-flow-title" className={titleClass} style={titleStyle}>
               Select player for turnover
             </h2>
-            <div className="flex flex-col items-center gap-1">
-              <span className="text-[10px] font-semibold text-gray-600">{committingName}</span>
-              <div className="flex flex-col gap-1">
-                {committingPlayers.map((n) => (
-                  <JerseyButton
-                    key={n}
-                    jersey={n}
-                    accentColor={committingColor}
-                    onClick={() => onPickCommittingPlayer(n)}
-                  />
-                ))}
-              </div>
+            <div className="mx-auto max-w-[360px] rounded-lg bg-gray-100 px-4 py-4 text-center">
+              <p className="text-sm font-semibold text-gray-700">Select player from side jersey lists</p>
+              <p className="mt-1 text-xs text-gray-500">{committingName} players are selectable by the court sides.</p>
             </div>
           </>
         )}
@@ -183,16 +149,7 @@ const TurnoverRecordingCourtPanel: React.FC<TurnoverRecordingCourtPanelProps> = 
               </button>
               <div className="flex flex-col items-center gap-1">
                 <span className="text-[10px] font-semibold text-gray-600">{stealName}</span>
-                <div className="flex flex-col gap-1">
-                  {stealPlayers.map((n) => (
-                    <JerseyButton
-                      key={n}
-                      jersey={n}
-                      accentColor={stealColor}
-                      onClick={() => onPickStealer(stealSide, n)}
-                    />
-                  ))}
-                </div>
+                <p className="text-center text-xs text-gray-500">Select stealer from side jersey lists.</p>
               </div>
             </div>
           </>

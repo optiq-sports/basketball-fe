@@ -22,6 +22,7 @@ export interface GameHeaderProps {
   onTimeout?: () => void;
   onJumpBall?: () => void;
   onSub?: () => void;
+  reverseSides?: boolean;
 }
 
 const GameHeader: React.FC<GameHeaderProps> = (props) => {
@@ -42,6 +43,7 @@ const GameHeader: React.FC<GameHeaderProps> = (props) => {
     onTimeout,
     onJumpBall,
     onSub,
+    reverseSides = false,
   } = props;
 
   const gap = cl('6px', '1vw', '14px');
@@ -55,12 +57,12 @@ const GameHeader: React.FC<GameHeaderProps> = (props) => {
         padding: cl('8px', '1vw', '14px'),
       }}
     >
-      <div className="flex items-stretch" style={{ gap }}>
+      <div className={`flex items-stretch ${reverseSides ? 'flex-row-reverse' : ''}`} style={{ gap }}>
         <TeamScorecard
           teamName={homeName}
           score={homeScore}
           accentColor={homeColor}
-          accentSide="left"
+          accentSide={reverseSides ? 'right' : 'left'}
         />
         <div
           className="flex min-w-0 shrink-0 flex-col items-stretch gap-2"
@@ -89,7 +91,7 @@ const GameHeader: React.FC<GameHeaderProps> = (props) => {
           teamName={awayName}
           score={awayScore}
           accentColor={awayColor}
-          accentSide="right"
+          accentSide={reverseSides ? 'left' : 'right'}
         />
       </div>
     </div>

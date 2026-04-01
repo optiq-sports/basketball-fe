@@ -137,8 +137,15 @@ const GameCenter: React.FC<GameCenterProps> = ({
   const flowActive = shotActive || foulActive || turnoverActive;
   const courtOverlayActive =
     flowActive || foulPickerOpen || timeoutModalOpen || jumpBallModalOpen;
-  const allowSideJerseySelection = shotActive && shotFlow.step === 'pickShooter';
-  const playerInteractionsLocked = courtOverlayActive && !allowSideJerseySelection;
+  const allowSideJerseySelection =
+    (shotActive && (shotFlow.step === 'pickShooter' || shotFlow.step === 'assist')) ||
+    (foulActive &&
+      (foulFlow.step === 'pickFouler' ||
+        foulFlow.step === 'pickFouled' ||
+        foulFlow.step === 'rebounder')) ||
+    (turnoverActive && (turnoverFlow.step === 'pickPlayer' || turnoverFlow.step === 'steal')) ||
+    foulPickerOpen;
+  const playerInteractionsLocked = !allowSideJerseySelection;
 
   return (
     <div className={`${STAT_DASH_MAIN_OUTER} min-h-0 flex-1 items-start font-sans`}>

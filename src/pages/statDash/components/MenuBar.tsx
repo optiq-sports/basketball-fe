@@ -55,7 +55,11 @@ const MENU_GROUPS: { id: MenuGroupId; items: MenuItemDef[] }[] = [
 
 const labelFontSize = { fontSize: cl('10px', '1vw', '12px') };
 
-const MenuBar: React.FC = () => {
+export interface MenuBarProps {
+  onSwitchTeamSide?: () => void;
+}
+
+const MenuBar: React.FC<MenuBarProps> = ({ onSwitchTeamSide }) => {
   const navigate = useNavigate();
   const [openId, setOpenId] = useState<MenuGroupId | null>(null);
   const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
@@ -65,6 +69,20 @@ const MenuBar: React.FC = () => {
 
   const attachActions = useCallback(
     (group: (typeof MENU_GROUPS)[number]): MenuItemDef[] => {
+      if (group.id === 'GAME') {
+        return group.items.map((item) => {
+          if (item.label === 'Switch Team Side') {
+            return {
+              ...item,
+              onSelect: () => {
+                close();
+                onSwitchTeamSide?.();
+              },
+            };
+          }
+          return item;
+        });
+      }
       if (group.id !== 'FILE') return group.items;
       return group.items.map((item) => {
         if (item.label === 'Exit') {
@@ -79,7 +97,7 @@ const MenuBar: React.FC = () => {
         return item;
       });
     },
-    [close]
+    [close, onSwitchTeamSide]
   );
 
   useEffect(() => {

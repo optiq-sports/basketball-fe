@@ -6,6 +6,7 @@ import StatusStrip from './components/StatusStrip';
 import GameHeader from './components/GameHeader';
 import GameCenter from './components/GameCenter';
 import SubstitutionModal from './components/SubstitutionModal';
+import SwitchSidesModal from './components/SwitchSidesModal';
 import { type TimeoutChoice } from './components/TimeoutSelectModal';
 import type { JumpBallChoice } from './components/JumpBallModal';
 import type { CourtMarker } from './components/BasketballCourt';
@@ -99,7 +100,9 @@ function newLogId(): string {
 }
 
 const StatDash: React.FC = () => {
-  const { homeOnLeft, homeAttacksLeft } = readGameSetupOrientation();
+  const initialOrientation = useMemo(() => readGameSetupOrientation(), []);
+  const [homeOnLeft, setHomeOnLeft] = useState(initialOrientation.homeOnLeft);
+  const [homeAttacksLeft, setHomeAttacksLeft] = useState(initialOrientation.homeAttacksLeft);
   const { homeTeamColor, awayTeamColor } = useStatisticianTeamColors();
   const [homeName] = useState(DEFAULT_HOME);
   const [awayName] = useState(DEFAULT_AWAY);
@@ -142,6 +145,10 @@ const StatDash: React.FC = () => {
   const foulPickerOpenRef = useRef(false);
   foulPickerOpenRef.current = foulPickerOpen;
   const [activeDrawer, setActiveDrawer] = useState<'left' | 'right' | null>(null);
+  const [quarterBreakModalOpen, setQuarterBreakModalOpen] = useState(false);
+  const [quarterBreakPending, setQuarterBreakPending] = useState(false);
+  const [editingLog, setEditingLog] = useState<GameLogEntry | null>(null);
+  const [switchSidesOpen, setSwitchSidesOpen] = useState(false);
 
   const homeActiveList = useMemo(() => compactOnCourt(homeLineup), [homeLineup]);
   const awayActiveList = useMemo(() => compactOnCourt(awayLineup), [awayLineup]);
@@ -182,19 +189,18 @@ const StatDash: React.FC = () => {
     setTimerSeconds((s) => Math.max(0, s - 1));
   }, []);
 
-  // When the game clock hits 0, advance the quarter (up to Q4) and reset the timer.
+  // End-of-quarter flow: show CTA, then arm next quarter without auto-start.
   useEffect(() => {
     if (!isRunning) return;
     if (timerSeconds !== 0) return;
     setIsRunning(false);
-    setQuarter((q) => {
-      const next = q < 4 ? q + 1 : 4;
-      // If we reached Q4 already, stop the game at 0.
-      if (q === 4) setTimerSeconds(0);
-      else setTimerSeconds(QUARTER_DURATION_SEC);
-      return next;
-    });
-  }, [isRunning, timerSeconds]);
+    if (quarter >= 4) {
+      setTimerSeconds(0);
+      return;
+    }
+    setQuarterBreakPending(true);
+    setQuarterBreakModalOpen(true);
+  }, [isRunning, timerSeconds, quarter]);
 
   const onAdjustMinutes = useCallback((delta: number) => {
     setTimerSeconds((s) => Math.max(0, Math.min(QUARTER_DURATION_SEC, s + delta)));
@@ -205,8 +211,9 @@ const StatDash: React.FC = () => {
   }, []);
 
   const onStartStop = useCallback(() => {
+    if (quarterBreakPending) return;
     setIsRunning((r) => !r);
-  }, []);
+  }, [quarterBreakPending]);
 
   const commitFoulNoFt = useCallback(
     (draft: FoulFlowDraft) => {
@@ -539,7 +546,7 @@ const StatDash: React.FC = () => {
       }
       if (cur.step === 'shotType') {
         if (cur.entry === 'court') {
-          return { ...cur, step: 'pickShooter', draft: emptyShotDraft() };
+          return { ...cur, step: 'pickShooter', draft: { ...emptyShotDraft(), result: cur.draft.result } };
         }
         return 'idle';
       }
@@ -587,7 +594,10 @@ const StatDash: React.FC = () => {
         const clickPt = pendingCourtClickRef.current;
         if (clickPt && nextDraft.side !== null) {
           const shotColor = nextDraft.side === 'home' ? homeTeamColor : awayTeamColor;
-          setCourtShotMarkers((prev) => [...prev, { ...clickPt, color: shotColor }]);
+          setCourtShotMarkers((prev) => [
+            ...prev,
+            { ...clickPt, color: shotColor, kind: nextDraft.result === 'missed' ? 'missed' : 'made' },
+          ]);
         }
       }
       pendingCourtClickRef.current = null;
@@ -654,7 +664,10 @@ const StatDash: React.FC = () => {
         const clickPt = pendingCourtClickRef.current;
         if (clickPt && draft.side !== null) {
           const shotColor = draft.side === 'home' ? homeTeamColor : awayTeamColor;
-          setCourtShotMarkers((prev) => [...prev, { ...clickPt, color: shotColor }]);
+          setCourtShotMarkers((prev) => [
+            ...prev,
+            { ...clickPt, color: shotColor, kind: draft.result === 'missed' ? 'missed' : 'made' },
+          ]);
           pendingCourtClickRef.current = null;
         }
       } else {
@@ -665,42 +678,6 @@ const StatDash: React.FC = () => {
     },
     [appendLog, awayName, awayTeamColor, clockLabel, homeAttacksLeft, homeName, homeTeamColor, periodLabel]
   );
-
-  const handleSidePlayerPrimaryClick = useCallback((side: TeamSide, jersey: number) => {
-    const activeShot = shotFlowRef.current;
-    if (activeShot !== 'idle') {
-      if (activeShot.step === 'pickShooter') {
-        handlePickShooter(side, jersey);
-        return;
-      }
-      if (
-        activeShot.step === 'assist' &&
-        activeShot.draft.side === side &&
-        activeShot.draft.shooterJersey !== jersey
-      ) {
-        handleSelectAssist(jersey);
-      }
-      return;
-    }
-
-    const activeFoul = foulFlowRef.current;
-    if (activeFoul !== 'idle') {
-      if (activeFoul.step === 'pickFouler') {
-        handleFoulPickFouler(side, jersey);
-        return;
-      }
-      if (activeFoul.step === 'pickFouled') {
-        const foulerSide = activeFoul.draft.foulerSide;
-        if (foulerSide !== null && side === opponentOf(foulerSide)) {
-          handleFoulPickFouled(jersey);
-        }
-        return;
-      }
-      if (activeFoul.step === 'rebounder') {
-        handleFoulPickRebounder(side, jersey);
-      }
-    }
-  }, [handleFoulPickFouled, handleFoulPickFouler, handleFoulPickRebounder, handlePickShooter, handleSelectAssist]);
 
   const commitTurnoverLog = useCallback(
     (draft: TurnoverFlowDraft, steal: { side: TeamSide; jersey: number } | null) => {
@@ -787,6 +764,54 @@ const StatDash: React.FC = () => {
     },
     [commitTurnoverLog]
   );
+
+  const handleSidePlayerPrimaryClick = useCallback((side: TeamSide, jersey: number) => {
+    const activeShot = shotFlowRef.current;
+    if (activeShot !== 'idle') {
+      if (activeShot.step === 'pickShooter') {
+        handlePickShooter(side, jersey);
+        return;
+      }
+      if (
+        activeShot.step === 'assist' &&
+        activeShot.draft.side === side &&
+        activeShot.draft.shooterJersey !== jersey
+      ) {
+        handleSelectAssist(jersey);
+      }
+      return;
+    }
+
+    const activeFoul = foulFlowRef.current;
+    if (activeFoul !== 'idle') {
+      if (activeFoul.step === 'pickFouler') {
+        handleFoulPickFouler(side, jersey);
+        return;
+      }
+      if (activeFoul.step === 'pickFouled') {
+        const foulerSide = activeFoul.draft.foulerSide;
+        if (foulerSide !== null && side === opponentOf(foulerSide)) {
+          handleFoulPickFouled(jersey);
+        }
+        return;
+      }
+      if (activeFoul.step === 'rebounder') {
+        handleFoulPickRebounder(side, jersey);
+      }
+      return;
+    }
+
+    const activeTurnover = turnoverFlowRef.current;
+    if (activeTurnover !== 'idle') {
+      if (activeTurnover.step === 'pickPlayer' && side === activeTurnover.draft.committingSide) {
+        handleTurnoverPickCommittingPlayer(jersey);
+        return;
+      }
+      if (activeTurnover.step === 'steal' && side === opponentOf(activeTurnover.draft.committingSide)) {
+        handleTurnoverPickStealer(side, jersey);
+      }
+    }
+  }, [handleFoulPickFouled, handleFoulPickFouler, handleFoulPickRebounder, handlePickShooter, handleSelectAssist, handleTurnoverPickCommittingPlayer, handleTurnoverPickStealer]);
 
   const openTimeoutModal = useCallback(() => {
     if (
@@ -920,13 +945,57 @@ const StatDash: React.FC = () => {
     setJumpBallModalOpen(false);
   }, []);
 
+  const handleQuarterBreakConfirm = useCallback(() => {
+    setQuarter((q) => Math.min(4, q + 1));
+    setTimerSeconds(QUARTER_DURATION_SEC);
+    setQuarterBreakPending(false);
+    setQuarterBreakModalOpen(false);
+  }, []);
+
+  const handleQuarterBreakKeepReviewing = useCallback(() => {
+    setQuarterBreakModalOpen(false);
+  }, []);
+
+  const handleOpenLogEditor = useCallback((entry: GameLogEntry) => {
+    setEditingLog(entry);
+  }, []);
+
+  const handleCloseLogEditor = useCallback(() => {
+    setEditingLog(null);
+  }, []);
+
+  const handleChangeEditingLog = useCallback((field: keyof GameLogEntry, value: string) => {
+    setEditingLog((cur) => (cur ? { ...cur, [field]: value } : cur));
+  }, []);
+
+  const handleSaveEditingLog = useCallback(() => {
+    if (editingLog === null) return;
+    setGameLog((prev) => prev.map((entry) => (entry.id === editingLog.id ? editingLog : entry)));
+    setEditingLog(null);
+  }, [editingLog]);
+
+  const periodOptions = ['Q1', 'Q2', 'Q3', 'Q4'];
+  const actionOptions = ['shot', 'foul', 'turnover', 'steal', 'timeout', 'jump ball', 'substitution'];
+  const teamOptions = useMemo(
+    () => Array.from(new Set([homeName, awayName, 'Officials', '—', ...gameLog.map((entry) => entry.team)])),
+    [awayName, gameLog, homeName]
+  );
+  const playerOptions = useMemo(
+    () => Array.from(new Set(['—', ...gameLog.map((entry) => entry.player)])),
+    [gameLog]
+  );
+  const resultOptions = useMemo(
+    () => Array.from(new Set(gameLog.map((entry) => entry.result))),
+    [gameLog]
+  );
+
   return (
     <div
       className="relative flex min-h-[90dvh] flex-col overflow-hidden text-gray-900"
       style={{ fontFamily: STAT_DASH.fontStack, background: STAT_DASH.pageBg }}
     >
       <StatisticianFullscreenGate />
-      <MenuBar />
+      <MenuBar onSwitchTeamSide={() => setSwitchSidesOpen(true)} />
 
       <EdgeTeamDrawer
         edge="left"
@@ -969,6 +1038,7 @@ const StatDash: React.FC = () => {
                 onTimeout={openTimeoutModal}
                 onJumpBall={openJumpBallModal}
                 onSub={openSubstitutionModal}
+                reverseSides={!homeOnLeft}
               />
             </div>
           </div>
@@ -1028,7 +1098,7 @@ const StatDash: React.FC = () => {
             />
             {subModalOpen && (
               <div className="absolute inset-0 z-30 flex items-center justify-center">
-                <div className="w-full max-w-[min(100%,980px)] px-3 sm:px-4">
+                <div className="flex h-full w-full max-w-[min(100%,980px)] px-3 py-1 sm:px-4 sm:py-2">
                   <SubstitutionModal
                     open={subModalOpen}
                     homeName={homeName}
@@ -1051,11 +1121,148 @@ const StatDash: React.FC = () => {
             <div
               className={`${STAT_DASH_MAIN_INNER} h-[min(220px,42dvh)] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm sm:h-[min(141px,36dvh)]`}
             >
-              <GameLog entries={gameLog} />
+              <GameLog entries={gameLog} onRowClick={handleOpenLogEditor} />
             </div>
           </div>
         </div>
       </div>
+
+      {quarterBreakModalOpen && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-4 shadow-lg">
+            <h3 className="text-base font-bold text-gray-900">Quarter ended</h3>
+            <p className="mt-2 text-sm text-gray-700">
+              Have you finished adding all data for this quarter?
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleQuarterBreakKeepReviewing}
+                className="rounded border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+              >
+                Not yet
+              </button>
+              <button
+                type="button"
+                onClick={handleQuarterBreakConfirm}
+                className="rounded bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700"
+              >
+                Yes, next quarter
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingLog && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/35 px-3">
+          <div className="w-full max-w-xl rounded-lg border border-gray-200 bg-white p-4 shadow-lg">
+            <h3 className="text-base font-bold text-gray-900">Edit Game Log Entry</h3>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1 text-xs font-semibold text-gray-700">
+                Period
+                <select
+                  className="rounded border border-gray-300 px-2 py-1 text-sm"
+                  value={editingLog.period}
+                  onChange={(e) => handleChangeEditingLog('period', e.target.value)}
+                >
+                  {periodOptions.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-semibold text-gray-700">
+                Team
+                <select
+                  className="rounded border border-gray-300 px-2 py-1 text-sm"
+                  value={editingLog.team}
+                  onChange={(e) => handleChangeEditingLog('team', e.target.value)}
+                >
+                  {teamOptions.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-semibold text-gray-700">
+                Player
+                <select
+                  className="rounded border border-gray-300 px-2 py-1 text-sm"
+                  value={editingLog.player}
+                  onChange={(e) => handleChangeEditingLog('player', e.target.value)}
+                >
+                  {playerOptions.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs font-semibold text-gray-700">
+                Action
+                <select
+                  className="rounded border border-gray-300 px-2 py-1 text-sm"
+                  value={editingLog.action}
+                  onChange={(e) => handleChangeEditingLog('action', e.target.value)}
+                >
+                  {actionOptions.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="col-span-2 flex flex-col gap-1 text-xs font-semibold text-gray-700">
+                Result
+                <select
+                  className="rounded border border-gray-300 px-2 py-1 text-sm"
+                  value={editingLog.result}
+                  onChange={(e) => handleChangeEditingLog('result', e.target.value)}
+                >
+                  {resultOptions.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleCloseLogEditor}
+                className="rounded border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEditingLog}
+                className="rounded bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <SwitchSidesModal
+        open={switchSidesOpen}
+        homeColor={homeTeamColor}
+        awayColor={awayTeamColor}
+        initialHomeOnLeft={homeOnLeft}
+        initialHomeAttacksLeft={homeAttacksLeft}
+        onClose={() => setSwitchSidesOpen(false)}
+        onApply={(next) => {
+          setHomeOnLeft(next.homeOnLeft);
+          setHomeAttacksLeft(next.homeAttacksLeft);
+          setSwitchSidesOpen(false);
+        }}
+      />
 
     </div>
   );

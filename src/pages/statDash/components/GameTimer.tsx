@@ -44,6 +44,7 @@ const GameTimer: React.FC<GameTimerProps> = ({
 
   const btnPadY = cl('7px', '1vh', '13px');
   const btnPadX = cl('10px', '1.3vw', '22px');
+  const lowClock = timerSeconds <= 10;
 
   return (
     <div
@@ -91,7 +92,7 @@ const GameTimer: React.FC<GameTimerProps> = ({
         </div>
 
         <span
-          className="min-w-0 flex-1 text-center font-bold tabular-nums leading-none text-gray-900"
+          className={`min-w-0 flex-1 text-center font-bold tabular-nums leading-none ${lowClock ? 'text-red-600' : 'text-gray-900'}`}
           style={{
             fontSize: cl('26px', '3.5vw', '52px'),
             letterSpacing: 3,

@@ -5,6 +5,7 @@ import { STAT_DASH } from '../statDashTheme';
 
 export interface GameLogProps {
   entries: GameLogEntry[];
+  onRowClick?: (entry: GameLogEntry) => void;
 }
 
 const COLUMNS = ['Period', 'Clock', 'Team', 'Player', 'Action', 'Result'] as const;
@@ -29,7 +30,7 @@ function cellText(v: string | undefined): string {
   return s;
 }
 
-const GameLog: React.FC<GameLogProps> = ({ entries }) => {
+const GameLog: React.FC<GameLogProps> = ({ entries, onRowClick }) => {
   const cellPadY = cl('4px', '0.45vh', '6px');
   const cellPadX = cl('8px', '1vw', '14px');
   const cellPad = `${cellPadY} ${cellPadX}`;
@@ -84,7 +85,11 @@ const GameLog: React.FC<GameLogProps> = ({ entries }) => {
               </tr>
             ) : (
               entries.map((row, i) => (
-                <tr key={row.id}>
+                <tr
+                  key={row.id}
+                  onClick={() => onRowClick?.(row)}
+                  className={onRowClick ? 'cursor-pointer hover:brightness-[0.98]' : ''}
+                >
                   {[row.period, row.clock, row.team, row.player, row.action, row.result].map((v, j) => {
                     const text = cellText(v);
                     return (

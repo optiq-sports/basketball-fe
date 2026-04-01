@@ -40,7 +40,7 @@ const JumpBall: React.FC = () => {
   const { homeTeamColor, awayTeamColor } = useStatisticianTeamColors();
   const [team1Pick, setTeam1Pick] = useState<number | null>(null);
   const [team2Pick, setTeam2Pick] = useState<number | null>(null);
-  const [winner, setWinner] = useState<'team1' | 'team2' | null>(null);
+  const [winner, setWinner] = useState<'left' | 'right' | null>(null);
   const { homeOnLeft } = readGameSetupOrientation();
 
   const team1Color = homeTeamColor;
@@ -139,27 +139,27 @@ const JumpBall: React.FC = () => {
             <div className="flex items-center gap-6">
               <button
                 type="button"
-                onClick={() => setWinner('team1')}
+                onClick={() => setWinner('left')}
                 className={`rounded px-10 py-2.5 text-sm font-bold text-white transition-all ${
-                  winner === 'team1'
+                  winner === 'left'
                     ? 'scale-105 opacity-100 ring-4 ring-offset-2 ring-gray-400'
                     : 'opacity-90 hover:opacity-100'
                 }`}
-                style={{ backgroundColor: team1Color }}
+                style={{ backgroundColor: leftBadgeColor }}
               >
-                TEAM 1
+                {leftBadgeLabel}
               </button>
               <button
                 type="button"
-                onClick={() => setWinner('team2')}
+                onClick={() => setWinner('right')}
                 className={`rounded px-10 py-2.5 text-sm font-bold text-white transition-all ${
-                  winner === 'team2'
+                  winner === 'right'
                     ? 'scale-105 opacity-100 ring-4 ring-offset-2 ring-gray-400'
                     : 'opacity-90 hover:opacity-100'
                 }`}
-                style={{ backgroundColor: team2Color }}
+                style={{ backgroundColor: rightBadgeColor }}
               >
-                TEAM 2
+                {rightBadgeLabel}
               </button>
             </div>
           </div>

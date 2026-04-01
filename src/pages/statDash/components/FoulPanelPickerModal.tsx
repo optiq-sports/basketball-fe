@@ -87,22 +87,6 @@ function SideColumn({
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden">
         <div className="flex flex-col gap-1">
           <span className="text-center text-[8px] font-semibold uppercase tracking-wide text-gray-500">
-            On court
-          </span>
-          <div className="flex flex-col items-center gap-1">
-            {onCourt.map((n, idx) => (
-              <JerseyButton
-                key={`${side}-on-${idx}-${n}`}
-                jersey={n}
-                accentColor={accentColor}
-                onClick={() => onPick({ kind: 'player', jersey: n })}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-1 border-t border-gray-200 pt-2">
-          <span className="text-center text-[8px] font-semibold uppercase tracking-wide text-gray-500">
             Bench
           </span>
           <div className="flex flex-col items-center gap-1">
@@ -155,7 +139,7 @@ const FoulPanelPickerModal: React.FC<FoulPanelPickerModalProps> = ({
     >
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-2 pt-3 sm:px-3 sm:pt-4">
         <h2 id="foul-panel-picker-title" className={titleClass} style={titleStyle}>
-          Select player/bench/coach for foul
+          Select bench player, bench, or coach for foul
         </h2>
         <div className="flex min-h-0 flex-row justify-center gap-3 sm:gap-6">
           <SideColumn

@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type CourtMarker = { nx: number; ny: number; color: string };
+export type CourtMarker = { nx: number; ny: number; color: string; kind?: 'made' | 'missed' | 'foul' };
 
 export interface BasketballCourtProps {
   className?: string;
@@ -72,14 +72,28 @@ const BasketballCourt: React.FC<BasketballCourtProps> = ({
         {shotMarkers?.map((m, i) => (
           <div
             key={`shot-${i}-${m.nx}-${m.ny}`}
-            className="absolute h-3.5 w-3.5 rounded-full border-2 border-white shadow-sm sm:h-4 sm:w-4"
+            className="absolute flex h-5 w-5 items-center justify-center sm:h-6 sm:w-6"
             style={{
               left: `${m.nx * 100}%`,
               top: `${m.ny * 100}%`,
               transform: 'translate(-50%, -50%)',
-              backgroundColor: m.color,
+              filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.35))',
             }}
-          />
+          >
+            {m.kind === 'missed' ? (
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden>
+                <line x1="3" y1="3" x2="13" y2="13" stroke="white" strokeWidth="3.4" strokeLinecap="round" />
+                <line x1="13" y1="3" x2="3" y2="13" stroke="white" strokeWidth="3.4" strokeLinecap="round" />
+                <line x1="3" y1="3" x2="13" y2="13" stroke={m.color} strokeWidth="2.2" strokeLinecap="round" />
+                <line x1="13" y1="3" x2="3" y2="13" stroke={m.color} strokeWidth="2.2" strokeLinecap="round" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 sm:h-4 sm:w-4" aria-hidden>
+                <circle cx="8" cy="8" r="5.2" fill="none" stroke="white" strokeWidth="3.2" />
+                <circle cx="8" cy="8" r="5.2" fill="none" stroke={m.color} strokeWidth="2.2" />
+              </svg>
+            )}
+          </div>
         ))}
         {foulMarkers?.map((m, i) => (
           <svg
