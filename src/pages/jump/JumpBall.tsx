@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { FiArrowLeft, FiArrowRight } from 'react-icons/fi';
 import StatisticianLayout from '../../components/StatisticianLayout';
 import { useStatisticianTeamColors } from '../../contexts/StatisticianTeamColorsContext';
+import { readGameSetupOrientation } from '../gameSetupOrientation';
 
 const PLAYERS = [1, 2, 3, 4, 5] as const;
 
@@ -40,9 +41,14 @@ const JumpBall: React.FC = () => {
   const [team1Pick, setTeam1Pick] = useState<number | null>(null);
   const [team2Pick, setTeam2Pick] = useState<number | null>(null);
   const [winner, setWinner] = useState<'team1' | 'team2' | null>(null);
+  const { homeOnLeft } = readGameSetupOrientation();
 
   const team1Color = homeTeamColor;
   const team2Color = awayTeamColor;
+  const leftBadgeLabel = homeOnLeft ? 'TEAM 1' : 'TEAM 2';
+  const rightBadgeLabel = homeOnLeft ? 'TEAM 2' : 'TEAM 1';
+  const leftBadgeColor = homeOnLeft ? team1Color : team2Color;
+  const rightBadgeColor = homeOnLeft ? team2Color : team1Color;
 
   useEffect(() => {
     if (!sessionStorage.getItem('statistician_match_key')) {
@@ -86,9 +92,9 @@ const JumpBall: React.FC = () => {
           <div className="flex items-center gap-3">
             <span
               className="shrink-0 rounded px-3 py-2 text-xs font-bold text-white"
-              style={{ backgroundColor: team1Color }}
+              style={{ backgroundColor: leftBadgeColor }}
             >
-              TEAM 1
+              {leftBadgeLabel}
             </span>
 
             <div className="flex gap-2">
@@ -117,9 +123,9 @@ const JumpBall: React.FC = () => {
 
             <span
               className="shrink-0 rounded px-3 py-2 text-xs font-bold text-white"
-              style={{ backgroundColor: team2Color }}
+              style={{ backgroundColor: rightBadgeColor }}
             >
-              TEAM 2
+              {rightBadgeLabel}
             </span>
           </div>
 

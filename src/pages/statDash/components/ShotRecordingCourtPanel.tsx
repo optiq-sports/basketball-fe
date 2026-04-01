@@ -124,35 +124,11 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
         {step === 'pickShooter' && (
           <>
             <h2 id="shot-flow-title" className={titleClass} style={titleStyle}>
-              Select player for made shot
+              {draft.result === 'made' ? 'Select player for made shot' : 'Select player for missed shot'}
             </h2>
-            <div className="flex justify-center gap-4 sm:gap-8">
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-[10px] font-semibold text-gray-600">{homeName}</span>
-                <div className="flex flex-col gap-1">
-                  {homePlayers.map((n) => (
-                    <JerseyButton
-                      key={`h-${n}`}
-                      jersey={n}
-                      accentColor={homeColor}
-                      onClick={() => onPickShooter('home', n)}
-                    />
-                  ))}
-                </div>
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-[10px] font-semibold text-gray-600">{awayName}</span>
-                <div className="flex flex-col gap-1">
-                  {awayPlayers.map((n) => (
-                    <JerseyButton
-                      key={`a-${n}`}
-                      jersey={n}
-                      accentColor={awayColor}
-                      onClick={() => onPickShooter('away', n)}
-                    />
-                  ))}
-                </div>
-              </div>
+            <div className="mx-auto max-w-[360px] rounded-lg bg-gray-100 px-4 py-4 text-center">
+              <p className="text-sm font-semibold text-gray-700">Select shooter from side jersey lists</p>
+              <p className="mt-1 text-xs text-gray-500">{homeName} and {awayName} players are selectable by the court sides.</p>
             </div>
           </>
         )}
@@ -176,22 +152,29 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
             </div>
             <div className="mx-auto mt-4 flex max-w-[320px] items-center justify-between gap-3 rounded-lg bg-gray-200 px-4 py-3 sm:mt-5">
               <span className="text-[12px] font-medium text-black sm:text-[13px]">Fast break</span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={draft.fastBreak ? 'true' : 'false'}
-                aria-label="Fast break"
-                onClick={() => onSetFastBreak(!draft.fastBreak)}
-                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 ${
-                  draft.fastBreak ? 'bg-gray-700' : 'bg-gray-500'
-                }`}
-              >
-                <span
-                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
-                    draft.fastBreak ? 'right-0.5 left-auto' : 'left-0.5 right-auto'
-                  }`}
-                />
-              </button>
+              {draft.fastBreak ? (
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked="true"
+                  aria-label="Fast break"
+                  onClick={() => onSetFastBreak(false)}
+                  className="relative h-6 w-11 shrink-0 rounded-full bg-gray-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                >
+                  <span className="absolute right-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked="false"
+                  aria-label="Fast break"
+                  onClick={() => onSetFastBreak(true)}
+                  className="relative h-6 w-11 shrink-0 rounded-full bg-gray-500 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                >
+                  <span className="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all" />
+                </button>
+              )}
             </div>
           </>
         )}

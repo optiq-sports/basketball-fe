@@ -28,7 +28,6 @@ const BasketballCourt: React.FC<BasketballCourtProps> = ({
         <rect x="16" y="16" width="588" height="348" fill="#e4e7eb" stroke="#6b7280" strokeWidth="3" rx="2" />
         <line x1="310" y1="16" x2="310" y2="364" stroke="#4b5563" strokeWidth="2" />
         <circle cx="310" cy="190" r="54" fill="none" stroke="#4b5563" strokeWidth="2" />
-        <circle cx="310" cy="190" r="5" fill="#4b5563" />
         <rect x="16" y="118" width="132" height="144" fill="none" stroke="#4b5563" strokeWidth="2" />
         <path d="M148 118 A72 72 0 0 1 148 262" fill="none" stroke="#4b5563" strokeWidth="2" />
         <path
@@ -39,7 +38,6 @@ const BasketballCourt: React.FC<BasketballCourtProps> = ({
           strokeDasharray="7 5"
         />
         {/* Left hoop + restricted area semicircle */}
-        <circle cx="46" cy="190" r="6" fill="#4b5563" />
         <path
           d="M66 190 A20 20 0 0 0 66 190.0001"
           fill="none"
@@ -59,7 +57,6 @@ const BasketballCourt: React.FC<BasketballCourtProps> = ({
           strokeDasharray="7 5"
         />
         {/* Right hoop + restricted area semicircle */}
-        <circle cx="574" cy="190" r="6" fill="#4b5563" />
         <path
           d="M554 190 A20 20 0 0 1 554 190.0001"
           fill="none"

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { FiArrowLeft, FiArrowRight } from 'react-icons/fi';
 import StatisticianLayout from '../../components/StatisticianLayout';
 import { useStatisticianTeamColors } from '../../contexts/StatisticianTeamColorsContext';
+import { writeGameSetupOrientation } from '../gameSetupOrientation';
 
 const FOOTER_BG = '#F3F4F6';
 
@@ -161,6 +162,13 @@ const ChooseSides: React.FC = () => {
 
   const leftDir: 'left' | 'right' = courtType === 1 ? 'left' : 'right';
   const rightDir: 'left' | 'right' = courtType === 1 ? 'right' : 'left';
+  const homeOnLeft = !swapped;
+  const homeAttacksLeft = homeOnLeft ? leftDir === 'left' : rightDir === 'left';
+
+  const handleContinue = () => {
+    writeGameSetupOrientation({ homeOnLeft, homeAttacksLeft });
+    navigate('/jump-ball');
+  };
 
   return (
     <StatisticianLayout>
@@ -176,7 +184,7 @@ const ChooseSides: React.FC = () => {
           </button>
           <button
             type="button"
-            onClick={() => navigate('/jump-ball')}
+            onClick={handleContinue}
             className="flex items-center gap-1.5 text-sm font-medium text-gray-700 transition-colors hover:text-gray-900"
           >
             <span>Continue</span>

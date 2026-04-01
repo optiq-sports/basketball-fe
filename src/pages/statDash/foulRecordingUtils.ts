@@ -2,15 +2,19 @@ import type { TeamSide } from './types';
 
 export type FoulTypeId =
   | 'personal'
+  | 'shooting'
   | 'technical'
-  | 'intentional'
-  | 'charging';
+  | 'unsportmanlike'
+  | 'double_foul'
+  | 'offensive';
 
 export const FOUL_TYPE_OPTIONS: { id: FoulTypeId; label: string }[] = [
   { id: 'personal', label: 'Personal' },
+  { id: 'shooting', label: 'Shooting' },
   { id: 'technical', label: 'Technical' },
-  { id: 'intentional', label: 'Intentional' },
-  { id: 'charging', label: 'Charging' },
+  { id: 'unsportmanlike', label: 'Unsportmanlike' },
+  { id: 'double_foul', label: 'Double Foul' },
+  { id: 'offensive', label: 'Offensive' },
 ];
 
 export function foulTypeLabel(id: FoulTypeId): string {

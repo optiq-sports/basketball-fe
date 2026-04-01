@@ -1,6 +1,7 @@
 import type { TeamSide } from './types';
 
 export type ShotTypeId = 'jump' | 'layup' | 'dunk' | 'post';
+export type ShotResult = 'made' | 'missed';
 
 export type ShotFlowEntry = 'player' | 'court';
 
@@ -10,6 +11,7 @@ export type ShotFlowDraft = {
   side: TeamSide | null;
   shooterJersey: number | null;
   shotType: ShotTypeId | null;
+  result: ShotResult;
   fastBreak: boolean;
 };
 
@@ -31,14 +33,14 @@ export const SHOT_TYPE_OPTIONS: { id: ShotTypeId; label: string }[] = [
   { id: 'post', label: 'Post shot' },
 ];
 
-export function shotTypeResultPhrase(id: ShotTypeId): string {
-  const m: Record<ShotTypeId, string> = {
-    jump: 'Jump shot made',
-    layup: 'Layup made',
-    dunk: 'Dunk made',
-    post: 'Post shot made',
+export function shotTypeResultPhrase(id: ShotTypeId, result: ShotResult): string {
+  const m: Record<ShotTypeId, { made: string; missed: string }> = {
+    jump: { made: 'Jump shot made', missed: 'Jump shot missed' },
+    layup: { made: 'Layup made', missed: 'Layup missed' },
+    dunk: { made: 'Dunk made', missed: 'Dunk missed' },
+    post: { made: 'Post shot made', missed: 'Post shot missed' },
   };
-  return m[id];
+  return m[id][result];
 }
 
 export function emptyShotDraft(): ShotFlowDraft {
@@ -46,6 +48,7 @@ export function emptyShotDraft(): ShotFlowDraft {
     side: null,
     shooterJersey: null,
     shotType: null,
+    result: 'made',
     fastBreak: false,
   };
 }

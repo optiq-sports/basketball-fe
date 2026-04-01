@@ -8,7 +8,7 @@ export interface PlayerPanelProps {
   playerNumbers: number[];
   /** When true, jersey and FOUL/TURNOVER actions are disabled (court flow active). */
   interactionsLocked?: boolean;
-  /** Left-click: foul flow */
+  /** Left-click: primary action based on active flow state */
   onPlayerFoulClick: (side: TeamSide, jersey: number) => void;
   /** Right-click: made-shot flow (caller must preventDefault on event) */
   onPlayerShotContextMenu: (side: TeamSide, jersey: number, e: React.MouseEvent) => void;
@@ -33,7 +33,6 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
   return (
     <div
       className={`flex shrink-0 flex-col font-sans ${interactionsLocked ? 'pointer-events-none opacity-45' : ''}`.trim()}
-      aria-busy={interactionsLocked || undefined}
       style={{
         gap: cl('5px', '0.55vw', '8px'),
         width: btnW,
@@ -58,7 +57,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
             fontSize: cl('16px', '1.9vw', '28px'),
             borderRadius: 6,
           }}
-          aria-label={`${side} player ${n}. Left-click: foul. Right-click: made shot.`}
+          aria-label={`${side} player ${n}. Left-click: select player. Right-click: made shot.`}
         >
           {n}
         </button>

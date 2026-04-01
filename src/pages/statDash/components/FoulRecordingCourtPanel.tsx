@@ -68,27 +68,6 @@ function PanelFooter({
   );
 }
 
-function JerseyButton({
-  jersey,
-  accentColor,
-  onClick,
-}: {
-  jersey: number;
-  accentColor: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex aspect-square w-9 shrink-0 cursor-pointer select-none items-center justify-center rounded-md border-none text-xs font-bold text-white hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 sm:w-10 sm:text-sm"
-      style={{ background: accentColor }}
-    >
-      {jersey}
-    </button>
-  );
-}
-
 const titleClass =
   'mb-2 text-center text-[10px] font-bold uppercase leading-tight tracking-wide sm:mb-2 sm:text-[11px]';
 const titleStyle = { color: STAT_DASH.accentBlue };
@@ -97,19 +76,12 @@ const FoulRecordingCourtPanel: React.FC<FoulRecordingCourtPanelProps> = ({
   flow,
   homeName,
   awayName,
-  homePlayers,
-  awayPlayers,
-  homeColor,
-  awayColor,
   onBack,
   onCancel,
-  onPickFouler,
   onSelectFoulType,
-  onPickFouled,
   onSelectFtCount,
   onFtShooterSamePlayer,
   onFtResult,
-  onPickRebounder,
 }) => {
   const { entry, step, draft } = flow;
 
@@ -117,9 +89,6 @@ const FoulRecordingCourtPanel: React.FC<FoulRecordingCourtPanelProps> = ({
 
   const fouledSide =
     draft.foulerSide !== null ? opponentOf(draft.foulerSide) : null;
-  const fouledPlayers = fouledSide === 'home' ? homePlayers : fouledSide === 'away' ? awayPlayers : [];
-  const fouledColor = fouledSide === 'home' ? homeColor : fouledSide === 'away' ? awayColor : '#64748b';
-
   const nextFtIndex = draft.ftResults.length;
   const ftCount = draft.ftCount ?? 0;
 
@@ -136,33 +105,9 @@ const FoulRecordingCourtPanel: React.FC<FoulRecordingCourtPanelProps> = ({
             <h2 id="foul-flow-title" className={titleClass} style={titleStyle}>
               Select player who fouled
             </h2>
-            <div className="flex justify-center gap-4 sm:gap-8">
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-[10px] font-semibold text-gray-600">{homeName}</span>
-                <div className="flex flex-col gap-1">
-                  {homePlayers.map((n) => (
-                    <JerseyButton
-                      key={`hf-${n}`}
-                      jersey={n}
-                      accentColor={homeColor}
-                      onClick={() => onPickFouler('home', n)}
-                    />
-                  ))}
-                </div>
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-[10px] font-semibold text-gray-600">{awayName}</span>
-                <div className="flex flex-col gap-1">
-                  {awayPlayers.map((n) => (
-                    <JerseyButton
-                      key={`af-${n}`}
-                      jersey={n}
-                      accentColor={awayColor}
-                      onClick={() => onPickFouler('away', n)}
-                    />
-                  ))}
-                </div>
-              </div>
+            <div className="mx-auto max-w-[360px] rounded-lg bg-gray-100 px-4 py-4 text-center">
+              <p className="text-sm font-semibold text-gray-700">Select fouler from side jersey lists</p>
+              <p className="mt-1 text-xs text-gray-500">{homeName} and {awayName} players are selectable by the court sides.</p>
             </div>
           </>
         )}
@@ -192,20 +137,9 @@ const FoulRecordingCourtPanel: React.FC<FoulRecordingCourtPanelProps> = ({
             <h2 id="foul-flow-title" className={titleClass} style={titleStyle}>
               Select player who was fouled
             </h2>
-            <div className="flex flex-col items-center gap-1">
-              <span className="text-[10px] font-semibold text-gray-600">
-                {fouledSide === 'home' ? homeName : awayName}
-              </span>
-              <div className="flex flex-col gap-1">
-                {fouledPlayers.map((n) => (
-                  <JerseyButton
-                    key={n}
-                    jersey={n}
-                    accentColor={fouledColor}
-                    onClick={() => onPickFouled(n)}
-                  />
-                ))}
-              </div>
+            <div className="mx-auto max-w-[360px] rounded-lg bg-gray-100 px-4 py-4 text-center">
+              <p className="text-sm font-semibold text-gray-700">Select fouled player from side jersey lists</p>
+              <p className="mt-1 text-xs text-gray-500">{fouledSide === 'home' ? homeName : awayName} side players are currently selectable.</p>
             </div>
           </>
         )}
@@ -304,33 +238,8 @@ const FoulRecordingCourtPanel: React.FC<FoulRecordingCourtPanelProps> = ({
             <h2 id="foul-flow-title" className={titleClass} style={titleStyle}>
               Select player who rebounded the ball
             </h2>
-            <div className="flex justify-center gap-4 sm:gap-8">
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-[10px] font-semibold text-gray-600">{homeName}</span>
-                <div className="flex flex-col gap-1">
-                  {homePlayers.map((n) => (
-                    <JerseyButton
-                      key={`hr-${n}`}
-                      jersey={n}
-                      accentColor={homeColor}
-                      onClick={() => onPickRebounder('home', n)}
-                    />
-                  ))}
-                </div>
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <span className="text-[10px] font-semibold text-gray-600">{awayName}</span>
-                <div className="flex flex-col gap-1">
-                  {awayPlayers.map((n) => (
-                    <JerseyButton
-                      key={`ar-${n}`}
-                      jersey={n}
-                      accentColor={awayColor}
-                      onClick={() => onPickRebounder('away', n)}
-                    />
-                  ))}
-                </div>
-              </div>
+            <div className="mx-auto max-w-[360px] rounded-lg bg-gray-100 px-4 py-4 text-center">
+              <p className="text-sm font-semibold text-gray-700">Select rebounder from side jersey lists</p>
             </div>
           </>
         )}

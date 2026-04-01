@@ -24,6 +24,7 @@ function contrastTextOnBg(hex: string): string {
 }
 
 const TEAM_SWATCHES = [
+  '#FFFFFF',
   '#EF4444',
   '#DC2626',
   '#2563EB',
@@ -104,24 +105,20 @@ function PlayerAvatar() {
 function MainStyleStarterCheckbox({
   checked,
   onChange,
-  id,
 }: {
   checked: boolean;
   onChange: () => void;
-  id: string;
 }) {
-  return (
-    <button
-      type="button"
-      id={id}
-      aria-checked={checked ? 'true' : 'false'}
-      role="checkbox"
-      onClick={onChange}
-      className={`flex h-5 w-5 items-center justify-center rounded border-2 transition-colors ${
-        checked ? 'border-gray-800 bg-white' : 'border-gray-400 bg-white hover:border-gray-500'
-      }`}
-    >
-      {checked && (
+  if (checked) {
+    return (
+      <button
+        type="button"
+        aria-checked="true"
+        role="checkbox"
+        aria-label="Starter selected"
+        onClick={onChange}
+        className="flex h-5 w-5 items-center justify-center rounded border-2 border-gray-800 bg-white transition-colors"
+      >
         <svg
           viewBox="0 0 12 12"
           fill="none"
@@ -134,8 +131,18 @@ function MainStyleStarterCheckbox({
         >
           <path d="M2 6l3 3 5-5" />
         </svg>
-      )}
-    </button>
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      aria-checked="false"
+      role="checkbox"
+      aria-label="Starter not selected"
+      onClick={onChange}
+      className="flex h-5 w-5 items-center justify-center rounded border-2 border-gray-400 bg-white transition-colors hover:border-gray-500"
+    />
   );
 }
 
@@ -184,7 +191,6 @@ function TeamColumn({
 
               <div className="flex justify-end pr-1">
                 <MainStyleStarterCheckbox
-                  id={`starter-${side}-${index}`}
                   checked={starterSet.has(index)}
                   onChange={() => onToggle(index)}
                 />
