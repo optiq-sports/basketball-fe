@@ -11,6 +11,8 @@ import {
 } from '../../contexts/StatisticianTeamColorsContext';
 const TOKEN_KEY = 'access_token';
 const ROWS = 12;
+const STARTER_PLAYER_IMAGE = '/dplayer.png';
+const DEFAULT_PLAYING_ROWS = new Set([0, 1, 2, 3, 4, 5, 6, 7]);
 
 /** Same default as main: rows 1–4 and 7 starters (0-based: 0,1,2,3,6) */
 const DEFAULT_STARTER_ROWS = new Set([0, 1, 2, 3, 6]);
@@ -86,6 +88,63 @@ function TeamColorBlock({
   );
 }
 
+function PlayerAvatar() {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-gray-100" aria-hidden />;
+  }
+  return (
+    <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-gray-100">
+      <img
+        src={STARTER_PLAYER_IMAGE}
+        alt="player"
+        className="h-full w-full object-cover"
+        onError={() => setFailed(true)}
+        loading="lazy"
+      />
+    </div>
+  );
+}
+
+function MainStyleStarterCheckbox({
+  checked,
+  onChange,
+  disabled = false,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      aria-checked={checked ? 'true' : 'false'}
+      role="checkbox"
+      aria-label={checked ? 'Starter selected' : 'Starter not selected'}
+      onClick={onChange}
+      disabled={disabled}
+      className={`flex h-5 w-5 items-center justify-center rounded border-2 transition-colors ${
+        checked ? 'border-gray-800 bg-white' : 'border-gray-400 bg-white hover:border-gray-500'
+      }`}
+    >
+      {checked && (
+        <svg
+          viewBox="0 0 12 12"
+          fill="none"
+          className="h-3 w-3"
+          stroke="#111827"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <path d="M2 6l3 3 5-5" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 function TeamColumn({
   side,
   playingSet,
@@ -104,68 +163,61 @@ function TeamColumn({
   onTeamColorChange: (hex: string) => void;
 }) {
   const playingPlayers = MOCK_PLAYERS.filter((p) => playingSet.has(p.id));
-  const startingFive = playingPlayers.filter((p) => starterSet.has(p.id)).slice(0, 5);
-
-  const chipClass = 'rounded-md border px-2 py-1 text-[11px] font-semibold';
+  const selectedFirstFive = playingPlayers.filter((p) => starterSet.has(p.id)).slice(0, 5);
 
   return (
     <div className="flex min-w-0 flex-col">
       <h2 className="mb-3 text-center text-sm font-bold uppercase tracking-widest text-gray-800">TEAM NAME</h2>
 
-      <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
-        <div className="mb-2 rounded-md border border-gray-200 bg-gray-50 p-2">
-          <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-700">All Players</h3>
-          <div className="grid grid-cols-4 gap-1">
-            {MOCK_PLAYERS.map((player) => (
-              <button
-                key={`${side}-all-${player.id}`}
-                type="button"
-                onClick={() => onTogglePlaying(player.id)}
-                className={`${chipClass} ${
-                  playingSet.has(player.id)
-                    ? 'border-sky-500 bg-sky-100 text-sky-800'
-                    : 'border-gray-300 bg-white text-gray-700'
-                }`}
-              >
-                #{player.jersey}
-              </button>
-            ))}
-          </div>
+      <div className="flex-1 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div className="grid items-center bg-[#F3F4F6] px-4 py-2.5" style={{ gridTemplateColumns: '40px 1fr 72px 72px' }}>
+          <span className="text-xs font-bold uppercase text-gray-800">#</span>
+          <span className="text-xs font-bold uppercase text-gray-800">Player</span>
+          <span className="pr-1 text-right text-[10px] font-bold uppercase text-gray-800">Playing</span>
+          <span className="pr-1 text-right text-[10px] font-bold uppercase text-gray-800">First 5</span>
         </div>
 
-        <div className="mb-2 rounded-md border border-gray-200 bg-gray-50 p-2">
-          <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-700">Players Playing</h3>
-          <div className="grid grid-cols-4 gap-1">
-            {playingPlayers.map((player) => (
-              <button
-                key={`${side}-playing-${player.id}`}
-                type="button"
-                onClick={() => onToggle(player.id)}
-                className={`${chipClass} ${
-                  starterSet.has(player.id)
-                    ? 'border-emerald-500 bg-emerald-100 text-emerald-800'
-                    : 'border-gray-300 bg-white text-gray-700'
-                }`}
-              >
-                #{player.jersey}
-              </button>
-            ))}
-          </div>
-        </div>
+        <div>
+          {MOCK_PLAYERS.map((player, index) => (
+            <div
+              key={`${side}-row-${player.id}`}
+              className={`grid items-center px-4 py-2.5 ${index < ROWS - 1 ? 'border-b border-gray-100' : ''}`}
+              style={{ gridTemplateColumns: '40px 1fr 72px 72px' }}
+            >
+              <span className="text-sm font-medium text-gray-700">{player.jersey}</span>
 
-        <div className="rounded-md border border-gray-200 bg-gray-50 p-2">
-          <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-700">Selected First 5 Players Playing</h3>
-          <div className="grid grid-cols-5 gap-1">
-            {startingFive.map((player) => (
-              <span
-                key={`${side}-starting-${player.id}`}
-                className={`${chipClass} border-emerald-500 bg-emerald-100 text-center text-emerald-800`}
-              >
-                #{player.jersey}
-              </span>
-            ))}
-          </div>
+              <div className="flex items-center gap-2.5">
+                <PlayerAvatar />
+                <span className="text-sm font-medium text-gray-800">{player.name}</span>
+              </div>
+
+              <div className="flex justify-end pr-1">
+                <MainStyleStarterCheckbox
+                  checked={playingSet.has(player.id)}
+                  onChange={() => onTogglePlaying(player.id)}
+                />
+              </div>
+
+              <div className="flex justify-end pr-1">
+                <MainStyleStarterCheckbox
+                  checked={starterSet.has(player.id)}
+                  onChange={() => onToggle(player.id)}
+                  disabled={!playingSet.has(player.id)}
+                />
+              </div>
+            </div>
+          ))}
         </div>
+      </div>
+
+      <div className="mt-2 rounded-md border border-gray-200 bg-white p-2">
+        <p className="text-[10px] font-semibold uppercase text-gray-600">
+          Players Playing ({playingPlayers.length}) {'->'} First 5 ({selectedFirstFive.length})
+        </p>
+        <p className="mt-1 text-xs text-gray-700">
+          Playing: {playingPlayers.map((p) => `#${p.jersey}`).join(', ') || 'None'} | First 5:{' '}
+          {selectedFirstFive.map((p) => `#${p.jersey}`).join(', ') || 'None'}
+        </p>
       </div>
 
       <TeamColorBlock side={side} color={teamColor} onChange={onTeamColorChange} />
@@ -178,8 +230,8 @@ const Starters: React.FC = () => {
   const queryClient = useQueryClient();
   const { homeTeamColor, awayTeamColor, setHomeTeamColor, setAwayTeamColor } =
     useStatisticianTeamColors();
-  const [homePlaying, setHomePlaying] = useState<Set<number>>(() => new Set([0, 1, 2, 3, 4, 5, 6, 7]));
-  const [awayPlaying, setAwayPlaying] = useState<Set<number>>(() => new Set([0, 1, 2, 3, 4, 5, 6, 7]));
+  const [homePlaying, setHomePlaying] = useState<Set<number>>(() => new Set(DEFAULT_PLAYING_ROWS));
+  const [awayPlaying, setAwayPlaying] = useState<Set<number>>(() => new Set(DEFAULT_PLAYING_ROWS));
   const [homeStarters, setHomeStarters] = useState<Set<number>>(() => new Set(DEFAULT_STARTER_ROWS));
   const [awayStarters, setAwayStarters] = useState<Set<number>>(() => new Set(DEFAULT_STARTER_ROWS));
 
@@ -203,8 +255,7 @@ const Starters: React.FC = () => {
       if (next.has(i)) next.delete(i);
       else next.add(i);
       if (next.size > 5) {
-        const firstFive = Array.from(next).sort((a, b) => a - b).slice(0, 5);
-        return new Set(firstFive);
+        return new Set(Array.from(next).sort((a, b) => a - b).slice(0, 5));
       }
       return next;
     });
@@ -217,8 +268,7 @@ const Starters: React.FC = () => {
       if (next.has(i)) next.delete(i);
       else next.add(i);
       if (next.size > 5) {
-        const firstFive = Array.from(next).sort((a, b) => a - b).slice(0, 5);
-        return new Set(firstFive);
+        return new Set(Array.from(next).sort((a, b) => a - b).slice(0, 5));
       }
       return next;
     });
@@ -265,7 +315,7 @@ const Starters: React.FC = () => {
           </button>
         </div>
 
-        <div className="flex-1 px-6 pb-8 pt-4">
+        <div className="flex-1 px-6 pb-20 pt-4">
           <div className="mx-auto grid max-w-5xl grid-cols-2 gap-6">
             <TeamColumn
               side="home"
