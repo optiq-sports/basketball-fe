@@ -4,6 +4,7 @@ import { FiArrowLeft, FiArrowRight } from 'react-icons/fi';
 import StatisticianLayout from '../../components/StatisticianLayout';
 import { useStatisticianTeamColors } from '../../contexts/StatisticianTeamColorsContext';
 import { readGameSetupOrientation } from '../gameSetupOrientation';
+import { writeJumpBallWinner } from '../jumpBallWinner';
 
 const PLAYERS = [1, 2, 3, 4, 5] as const;
 
@@ -59,6 +60,11 @@ const JumpBall: React.FC = () => {
   const handleTeam1Pick = (n: number) => setTeam1Pick((prev) => (prev === n ? null : n));
 
   const handleTeam2Pick = (n: number) => setTeam2Pick((prev) => (prev === n ? null : n));
+
+  const selectWinner = (w: 'left' | 'right') => {
+    setWinner(w);
+    writeJumpBallWinner(w);
+  };
 
   return (
     <StatisticianLayout>
@@ -139,7 +145,7 @@ const JumpBall: React.FC = () => {
             <div className="flex items-center gap-6">
               <button
                 type="button"
-                onClick={() => setWinner('left')}
+                onClick={() => selectWinner('left')}
                 className={`rounded px-10 py-2.5 text-sm font-bold text-white transition-all ${
                   winner === 'left'
                     ? 'scale-105 opacity-100 ring-4 ring-offset-2 ring-gray-400'
@@ -151,7 +157,7 @@ const JumpBall: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => setWinner('right')}
+                onClick={() => selectWinner('right')}
                 className={`rounded px-10 py-2.5 text-sm font-bold text-white transition-all ${
                   winner === 'right'
                     ? 'scale-105 opacity-100 ring-4 ring-offset-2 ring-gray-400'

@@ -5,7 +5,25 @@ export type ShotResult = 'made' | 'missed';
 
 export type ShotFlowEntry = 'player' | 'court';
 
-export type ShotFlowStep = 'pickShooter' | 'shotType' | 'assist';
+export type ShotFlowStep =
+  | 'pickShooter'
+  | 'shotType'
+  | 'assist'
+  | 'pickRebounder'
+  | 'reboundOutcome'
+  | 'pickBlocker';
+
+export type ReboundOutcomeId =
+  | 'simple_rebound'
+  | 'tipin_layup_miss'
+  | 'tipin_dunk_miss'
+  | 'tipin_layup_made'
+  | 'tipin_dunk_made'
+  | 'block_involved'
+  | 'dead_out_of_bounds'
+  | 'dead_shot_clock_violation';
+
+export type DeadBallReasonId = 'out_of_bounds' | 'shot_clock_violation';
 
 export type ShotFlowDraft = {
   side: TeamSide | null;
@@ -13,6 +31,17 @@ export type ShotFlowDraft = {
   shotType: ShotTypeId | null;
   result: ShotResult;
   fastBreak: boolean;
+
+  // Live ball rebound loop (triggered after committing a missed shot).
+  rebounderSide: TeamSide | null;
+  rebounderJersey: number | null;
+  blockerSide: TeamSide | null;
+  blockerJersey: number | null;
+  reboundOutcome: ReboundOutcomeId | null;
+  deadBallReason: DeadBallReasonId | null;
+
+  // Tip-in attempts skip shotType/assist UI and commit immediately after pickShooter.
+  tipInCommit: boolean;
 };
 
 export type ActiveShotFlow = {
@@ -50,5 +79,14 @@ export function emptyShotDraft(): ShotFlowDraft {
     shotType: null,
     result: 'made',
     fastBreak: false,
+
+    rebounderSide: null,
+    rebounderJersey: null,
+    blockerSide: null,
+    blockerJersey: null,
+    reboundOutcome: null,
+    deadBallReason: null,
+
+    tipInCommit: false,
   };
 }

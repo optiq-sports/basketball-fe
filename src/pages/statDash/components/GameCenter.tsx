@@ -1,6 +1,6 @@
 import React from 'react';
 import type { TeamSide } from '../types';
-import type { ActiveShotFlow, ShotTypeId } from '../shotRecordingUtils';
+import type { ActiveShotFlow, ReboundOutcomeId, ShotTypeId } from '../shotRecordingUtils';
 import type { ActiveFoulFlow, FoulTypeId, PanelFoulPick } from '../foulRecordingUtils';
 import type { ActiveTurnoverFlow, TurnoverTypeId } from '../turnoverRecordingUtils';
 import PlayerPanel from './PlayerPanel';
@@ -43,6 +43,7 @@ export interface GameCenterProps {
   onSelectShotType: (type: ShotTypeId) => void;
   onSetFastBreak: (value: boolean) => void;
   onSelectAssist: (assist: number | 'none') => void;
+  onSelectReboundOutcome: (outcome: ReboundOutcomeId) => void;
   onFoulFlowBack: () => void;
   onFoulFlowCancel: () => void;
   onFoulPickFouler: (side: TeamSide, jersey: number) => void;
@@ -101,6 +102,7 @@ const GameCenter: React.FC<GameCenterProps> = ({
   onSelectShotType,
   onSetFastBreak,
   onSelectAssist,
+  onSelectReboundOutcome,
   onFoulFlowBack,
   onFoulFlowCancel,
   onFoulPickFouler,
@@ -138,7 +140,11 @@ const GameCenter: React.FC<GameCenterProps> = ({
   const courtOverlayActive =
     flowActive || foulPickerOpen || timeoutModalOpen || jumpBallModalOpen;
   const allowSideJerseySelection =
-    (shotActive && (shotFlow.step === 'pickShooter' || shotFlow.step === 'assist')) ||
+    (shotActive &&
+      (shotFlow.step === 'pickShooter' ||
+        shotFlow.step === 'assist' ||
+        shotFlow.step === 'pickRebounder' ||
+        shotFlow.step === 'pickBlocker')) ||
     (foulActive &&
       (foulFlow.step === 'pickFouler' ||
         foulFlow.step === 'pickFouled' ||
@@ -204,6 +210,7 @@ const GameCenter: React.FC<GameCenterProps> = ({
                   onSelectShotType={onSelectShotType}
                   onSetFastBreak={onSetFastBreak}
                   onSelectAssist={onSelectAssist}
+                onSelectReboundOutcome={onSelectReboundOutcome}
                 />
               )}
             </div>

@@ -85,7 +85,7 @@ const MenuBar: React.FC<MenuBarProps> = ({ onSwitchTeamSide }) => {
       }
       if (group.id !== 'FILE') return group.items;
       return group.items.map((item) => {
-        if (item.label === 'Exit') {
+        if (item.label === 'Exit' || item.label === 'Close Game') {
           return {
             ...item,
             onSelect: () => {
@@ -143,7 +143,6 @@ const MenuBar: React.FC<MenuBarProps> = ({ onSwitchTeamSide }) => {
                     type="button"
                     className="cursor-pointer bg-transparent p-0 text-left font-sans font-semibold uppercase tracking-wide text-gray-400 hover:text-gray-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
                     style={labelFontSize}
-                    aria-expanded={isOpen ? 'true' : 'false'}
                     aria-haspopup="menu"
                     aria-controls={`menu-panel-${group.id}`}
                     id={`menu-trigger-${group.id}`}
@@ -187,7 +186,12 @@ const MenuBar: React.FC<MenuBarProps> = ({ onSwitchTeamSide }) => {
           <button type="button" className="flex text-white hover:opacity-80" aria-label="Maximize">
             <VscChromeMaximize size={14} strokeWidth={0.5} />
           </button>
-          <button type="button" className="flex text-white hover:opacity-80" aria-label="Close">
+          <button
+            type="button"
+            className="flex text-white hover:opacity-80"
+            aria-label="Close"
+            onClick={() => setExitConfirmOpen(true)}
+          >
             <VscChromeClose size={14} strokeWidth={0.5} />
           </button>
         </div>
