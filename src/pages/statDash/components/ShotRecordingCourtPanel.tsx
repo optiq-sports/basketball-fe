@@ -1,6 +1,7 @@
 import React from 'react';
 import { FiArrowLeft, FiX } from 'react-icons/fi';
 import type { TeamSide } from '../types';
+import { jerseyAccentSurfaceStyle } from '../../../contexts/StatisticianTeamColorsContext';
 import type { ActiveShotFlow, ReboundOutcomeId, ShotTypeId } from '../shotRecordingUtils';
 import { SHOT_TYPE_OPTIONS } from '../shotRecordingUtils';
 import { STAT_DASH } from '../statDashTheme';
@@ -79,8 +80,8 @@ function JerseyButton({
     <button
       type="button"
       onClick={onClick}
-      className="flex aspect-square w-9 shrink-0 cursor-pointer select-none items-center justify-center rounded-md border-none text-xs font-bold text-white hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 sm:w-10 sm:text-sm"
-      style={{ background: accentColor }}
+      className="flex aspect-square w-9 shrink-0 cursor-pointer select-none items-center justify-center rounded-md border-none text-xs font-bold hover:brightness-[1.03] focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:w-10 sm:text-sm"
+      style={jerseyAccentSurfaceStyle(accentColor)}
     >
       {jersey}
     </button>
@@ -109,7 +110,9 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
   const { entry, step, draft } = flow;
 
   const showBack =
-    step === 'assist' || (step === 'shotType' && (entry === 'court' || entry === 'player'));
+    step === 'assist' ||
+    (step === 'shotType' && (entry === 'court' || entry === 'player')) ||
+    (step === 'pickRebounder' && draft.reboundBranch !== null);
 
   const titleClass =
     'mb-2 text-center text-[11px] font-bold uppercase leading-tight tracking-wide sm:mb-3 sm:text-xs';
@@ -141,39 +144,14 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
               Select rebounder
             </h2>
             <div className="mx-auto max-w-[360px] rounded-lg bg-gray-100 px-4 py-4 text-center">
-              <p className="text-sm font-semibold text-gray-700">Select rebounder from side jersey lists</p>
-              <p className="mt-1 text-xs text-gray-500">{homeName} and {awayName} players are selectable by the court sides.</p>
+              <p className="text-sm font-semibold text-gray-700">
+                Tap a jersey for a simple rebound (ends here), or choose an action below first, then complete with
+                jerseys where needed.
+              </p>
+              <p className="mt-1 text-xs text-gray-500">{homeName} and {awayName} players are on the side lists.</p>
             </div>
-          </>
-        )}
 
-        {step === 'pickBlocker' && (
-          <>
-            <h2 id="shot-flow-title" className={titleClass} style={titleStyle}>
-              Select blocker
-            </h2>
-            <div className="mx-auto max-w-[360px] rounded-lg bg-gray-100 px-4 py-4 text-center">
-              <p className="text-sm font-semibold text-gray-700">Select blocker from side jersey lists</p>
-              <p className="mt-1 text-xs text-gray-500">{homeName} and {awayName} players are selectable by the court sides.</p>
-            </div>
-          </>
-        )}
-
-        {step === 'reboundOutcome' && (
-          <>
-            <h2 id="shot-flow-title" className={titleClass} style={titleStyle}>
-              Live ball rebound: choose outcome
-            </h2>
-
-            <div className="mx-auto grid max-w-[360px] grid-cols-1 gap-2.5">
-              <button
-                type="button"
-                onClick={() => onSelectReboundOutcome('simple_rebound')}
-                className="rounded-lg bg-gray-200 px-3 py-3 text-center text-[12px] font-medium text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:text-[13px]"
-              >
-                Simple rebound (end)
-              </button>
-
+            <div className="mx-auto mt-3 grid max-w-[360px] grid-cols-1 gap-2.5">
               <div className="rounded-lg bg-gray-200 px-3 py-2.5">
                 <div className="text-center text-[11px] font-bold uppercase text-gray-700">Offensive rebound (miss)</div>
                 <div className="mt-2 grid grid-cols-2 gap-2">
@@ -241,6 +219,18 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
                   </button>
                 </div>
               </div>
+            </div>
+          </>
+        )}
+
+        {step === 'pickBlocker' && (
+          <>
+            <h2 id="shot-flow-title" className={titleClass} style={titleStyle}>
+              Select blocker
+            </h2>
+            <div className="mx-auto max-w-[360px] rounded-lg bg-gray-100 px-4 py-4 text-center">
+              <p className="text-sm font-semibold text-gray-700">Select blocker from side jersey lists</p>
+              <p className="mt-1 text-xs text-gray-500">{homeName} and {awayName} players are selectable by the court sides.</p>
             </div>
           </>
         )}

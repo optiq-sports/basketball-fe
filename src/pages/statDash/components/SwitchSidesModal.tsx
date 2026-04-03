@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { jerseyAccentSurfaceStyle } from '../../../contexts/StatisticianTeamColorsContext';
 import { writeGameSetupOrientation } from '../../gameSetupOrientation';
 
 export interface SwitchSidesModalProps {
@@ -147,10 +148,10 @@ const SwitchSidesModal: React.FC<SwitchSidesModalProps> = ({
             </div>
 
             <div className="flex w-full justify-between gap-4 px-0">
-              <span className="shrink-0 rounded-lg px-5 py-2 text-sm font-bold text-white" style={{ backgroundColor: leftColor }}>
+              <span className="shrink-0 rounded-lg px-5 py-2 text-sm font-bold" style={jerseyAccentSurfaceStyle(leftColor)}>
                 {leftLabel}
               </span>
-              <span className="shrink-0 rounded-lg px-5 py-2 text-sm font-bold text-white" style={{ backgroundColor: rightColor }}>
+              <span className="shrink-0 rounded-lg px-5 py-2 text-sm font-bold" style={jerseyAccentSurfaceStyle(rightColor)}>
                 {rightLabel}
               </span>
             </div>

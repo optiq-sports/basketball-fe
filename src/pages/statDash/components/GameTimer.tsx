@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { IoChevronDown, IoChevronUp } from 'react-icons/io5';
+import { getContrastTextColor, jerseyAccentSurfaceStyle } from '../../../contexts/StatisticianTeamColorsContext';
 import { cl } from '../utils/cl';
 import { STAT_DASH } from '../statDashTheme';
 
@@ -55,9 +56,9 @@ const GameTimer: React.FC<GameTimerProps> = ({
       }}
     >
       <div
-        className="w-full text-center font-bold uppercase text-white"
+        className="w-full text-center font-bold uppercase"
         style={{
-          background: STAT_DASH.accentBlue,
+          ...jerseyAccentSurfaceStyle(STAT_DASH.accentBlue),
           fontSize: cl('9px', '0.82vw', '12px'),
           letterSpacing: 2,
           paddingTop: '6px',
@@ -124,9 +125,10 @@ const GameTimer: React.FC<GameTimerProps> = ({
         <button
           type="button"
           onClick={onStartStop}
-          className="shrink-0 cursor-pointer whitespace-nowrap rounded-md border-none font-bold uppercase text-white hover:opacity-95"
+          className="shrink-0 cursor-pointer whitespace-nowrap rounded-md border-none font-bold uppercase hover:opacity-95"
           style={{
             background: isRunning ? STAT_DASH.startGreen : STAT_DASH.stopRed,
+            color: getContrastTextColor(isRunning ? STAT_DASH.startGreen : STAT_DASH.stopRed),
             padding: `${btnPadY} ${btnPadX}`,
             fontSize: cl('12px', '1.25vw', '18px'),
             letterSpacing: 1,

@@ -1,6 +1,7 @@
 import React from 'react';
 import { FiArrowLeft, FiX } from 'react-icons/fi';
 import type { TeamSide } from '../types';
+import { jerseyAccentSurfaceStyle } from '../../../contexts/StatisticianTeamColorsContext';
 import type { ActiveFoulFlow, FoulTypeId } from '../foulRecordingUtils';
 import { FOUL_TYPE_OPTIONS, opponentOf } from '../foulRecordingUtils';
 import { STAT_DASH } from '../statDashTheme';
@@ -21,7 +22,7 @@ export interface FoulRecordingCourtPanelProps {
   onSelectFoulType: (type: FoulTypeId) => void;
   onPickFouled: (jersey: number) => void;
   onSelectFtCount: (count: 0 | 1 | 2 | 3) => void;
-  onFtShooterSamePlayer: () => void;
+  onFtAssistSelect: (assist: number | 'none') => void;
   onFtResult: (result: 'made' | 'miss') => void;
   onPickRebounder: (side: TeamSide, jersey: number) => void;
 }
@@ -72,15 +73,40 @@ const titleClass =
   'mb-2 text-center text-[10px] font-bold uppercase leading-tight tracking-wide sm:mb-2 sm:text-[11px]';
 const titleStyle = { color: STAT_DASH.accentBlue };
 
+function JerseyButton({
+  jersey,
+  accentColor,
+  onClick,
+}: {
+  jersey: number;
+  accentColor: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex aspect-square w-9 shrink-0 cursor-pointer select-none items-center justify-center rounded-md border-none text-xs font-bold hover:brightness-[1.03] focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:w-10 sm:text-sm"
+      style={jerseyAccentSurfaceStyle(accentColor)}
+    >
+      {jersey}
+    </button>
+  );
+}
+
 const FoulRecordingCourtPanel: React.FC<FoulRecordingCourtPanelProps> = ({
   flow,
   homeName,
   awayName,
+  homePlayers,
+  awayPlayers,
+  homeColor,
+  awayColor,
   onBack,
   onCancel,
   onSelectFoulType,
   onSelectFtCount,
-  onFtShooterSamePlayer,
+  onFtAssistSelect,
   onFtResult,
 }) => {
   const { entry, step, draft } = flow;
@@ -103,11 +129,11 @@ const FoulRecordingCourtPanel: React.FC<FoulRecordingCourtPanelProps> = ({
         {step === 'pickFouler' && (
           <>
             <h2 id="foul-flow-title" className={titleClass} style={titleStyle}>
-              Select player who fouled
+              Select bench player who fouled
             </h2>
             <div className="mx-auto max-w-[360px] rounded-lg bg-gray-100 px-4 py-4 text-center">
-              <p className="text-sm font-semibold text-gray-700">Select fouler from side jersey lists</p>
-              <p className="mt-1 text-xs text-gray-500">{homeName} and {awayName} players are selectable by the court sides.</p>
+              <p className="text-sm font-semibold text-gray-700">Only bench jerseys are selectable on each side.</p>
+              <p className="mt-1 text-xs text-gray-500">{homeName} and {awayName} bench lists match the side columns.</p>
             </div>
           </>
         )}
@@ -171,19 +197,33 @@ const FoulRecordingCourtPanel: React.FC<FoulRecordingCourtPanelProps> = ({
           </>
         )}
 
-        {step === 'ftShooter' && (
+        {step === 'ftAssist' &&
+          fouledSide !== null &&
+          draft.fouledJersey !== null && (
           <>
             <h2 id="foul-flow-title" className={titleClass} style={titleStyle}>
-              Select player shooting
+              Select player for assist (FT shooter: #{draft.fouledJersey})
             </h2>
-            <div className="mx-auto max-w-[240px]">
+            <div className="mx-auto flex max-w-[240px] flex-col items-stretch gap-2 sm:gap-3">
               <button
                 type="button"
-                onClick={onFtShooterSamePlayer}
-                className="w-full rounded-lg bg-gray-200 px-3 py-3 text-center text-[11px] font-medium text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                onClick={() => onFtAssistSelect('none')}
+                className="rounded-lg bg-slate-200 px-3 py-2 text-center text-[11px] font-medium text-black hover:bg-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:text-xs"
               >
-                Same player
+                No assist
               </button>
+              <div className="flex flex-wrap justify-center gap-1.5">
+                {(fouledSide === 'home' ? homePlayers : awayPlayers)
+                  .filter((n) => n !== draft.fouledJersey)
+                  .map((n) => (
+                    <JerseyButton
+                      key={n}
+                      jersey={n}
+                      accentColor={fouledSide === 'home' ? homeColor : awayColor}
+                      onClick={() => onFtAssistSelect(n)}
+                    />
+                  ))}
+              </div>
             </div>
           </>
         )}

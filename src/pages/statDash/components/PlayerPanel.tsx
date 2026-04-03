@@ -1,4 +1,5 @@
 import React from 'react';
+import { jerseyAccentSurfaceStyle } from '../../../contexts/StatisticianTeamColorsContext';
 import type { TeamSide } from '../types';
 import { cl } from '../utils/cl';
 
@@ -49,11 +50,11 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
             if (interactionsLocked) return;
             onPlayerShotContextMenu(side, n, e);
           }}
-          className="flex shrink-0 cursor-pointer select-none items-center justify-center border-none font-bold text-white hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 disabled:cursor-not-allowed disabled:opacity-60"
+          className="flex shrink-0 cursor-pointer select-none items-center justify-center border-none font-bold hover:brightness-[1.03] focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
           style={{
+            ...jerseyAccentSurfaceStyle(accentColor),
             width: btnW,
             aspectRatio: '1',
-            background: accentColor,
             fontSize: cl('16px', '1.9vw', '28px'),
             borderRadius: 6,
           }}

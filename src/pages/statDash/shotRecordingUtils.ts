@@ -10,11 +10,10 @@ export type ShotFlowStep =
   | 'shotType'
   | 'assist'
   | 'pickRebounder'
-  | 'reboundOutcome'
   | 'pickBlocker';
 
+/** Modal choice on "Select Rebounder" (not including simple rebound — jersey alone). */
 export type ReboundOutcomeId =
-  | 'simple_rebound'
   | 'tipin_layup_miss'
   | 'tipin_dunk_miss'
   | 'tipin_layup_made'
@@ -37,7 +36,8 @@ export type ShotFlowDraft = {
   rebounderJersey: number | null;
   blockerSide: TeamSide | null;
   blockerJersey: number | null;
-  reboundOutcome: ReboundOutcomeId | null;
+  /** Set when user taps a non-simple action first; jersey click completes the branch. */
+  reboundBranch: ReboundOutcomeId | null;
   deadBallReason: DeadBallReasonId | null;
 
   // Tip-in attempts skip shotType/assist UI and commit immediately after pickShooter.
@@ -84,7 +84,7 @@ export function emptyShotDraft(): ShotFlowDraft {
     rebounderJersey: null,
     blockerSide: null,
     blockerJersey: null,
-    reboundOutcome: null,
+    reboundBranch: null,
     deadBallReason: null,
 
     tipInCommit: false,

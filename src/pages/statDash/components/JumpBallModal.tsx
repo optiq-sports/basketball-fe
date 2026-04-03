@@ -1,5 +1,6 @@
 import React from 'react';
 import { FiX } from 'react-icons/fi';
+import { jerseyAccentSurfaceStyle } from '../../../contexts/StatisticianTeamColorsContext';
 import { STAT_DASH } from '../statDashTheme';
 
 export type JumpBallChoice = 'home' | 'away';
@@ -52,16 +53,16 @@ const JumpBallModal: React.FC<JumpBallModalProps> = ({
           <button
             type="button"
             onClick={() => onSelect('home')}
-            className="h-[48px] w-[140px] rounded-[4px] text-[14px] font-bold uppercase tracking-wide text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-            style={{ background: homeColor }}
+            className="h-[48px] w-[140px] rounded-[4px] text-[14px] font-bold uppercase tracking-wide focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            style={jerseyAccentSurfaceStyle(homeColor)}
           >
             {homeName}
           </button>
           <button
             type="button"
             onClick={() => onSelect('away')}
-            className="h-[48px] w-[140px] rounded-[4px] text-[14px] font-bold uppercase tracking-wide text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-            style={{ background: awayColor }}
+            className="h-[48px] w-[140px] rounded-[4px] text-[14px] font-bold uppercase tracking-wide focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            style={jerseyAccentSurfaceStyle(awayColor)}
           >
             {awayName}
           </button>

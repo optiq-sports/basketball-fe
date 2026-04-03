@@ -2,7 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiArrowLeft, FiArrowRight } from 'react-icons/fi';
 import StatisticianLayout from '../../components/StatisticianLayout';
-import { useStatisticianTeamColors } from '../../contexts/StatisticianTeamColorsContext';
+import {
+  jerseyAccentSurfaceStyle,
+  useStatisticianTeamColors,
+} from '../../contexts/StatisticianTeamColorsContext';
 import { readGameSetupOrientation } from '../gameSetupOrientation';
 import { writeJumpBallWinner } from '../jumpBallWinner';
 
@@ -97,8 +100,8 @@ const JumpBall: React.FC = () => {
         <div className="flex flex-col items-center gap-8 px-8 pb-8">
           <div className="flex items-center gap-3">
             <span
-              className="shrink-0 rounded px-3 py-2 text-xs font-bold text-white"
-              style={{ backgroundColor: leftBadgeColor }}
+              className="shrink-0 rounded px-3 py-2 text-xs font-bold"
+              style={jerseyAccentSurfaceStyle(leftBadgeColor)}
             >
               {leftBadgeLabel}
             </span>
@@ -128,8 +131,8 @@ const JumpBall: React.FC = () => {
             </div>
 
             <span
-              className="shrink-0 rounded px-3 py-2 text-xs font-bold text-white"
-              style={{ backgroundColor: rightBadgeColor }}
+              className="shrink-0 rounded px-3 py-2 text-xs font-bold"
+              style={jerseyAccentSurfaceStyle(rightBadgeColor)}
             >
               {rightBadgeLabel}
             </span>
@@ -146,24 +149,24 @@ const JumpBall: React.FC = () => {
               <button
                 type="button"
                 onClick={() => selectWinner('left')}
-                className={`rounded px-10 py-2.5 text-sm font-bold text-white transition-all ${
+                className={`rounded px-10 py-2.5 text-sm font-bold transition-all ${
                   winner === 'left'
                     ? 'scale-105 opacity-100 ring-4 ring-offset-2 ring-gray-400'
                     : 'opacity-90 hover:opacity-100'
                 }`}
-                style={{ backgroundColor: leftBadgeColor }}
+                style={jerseyAccentSurfaceStyle(leftBadgeColor)}
               >
                 {leftBadgeLabel}
               </button>
               <button
                 type="button"
                 onClick={() => selectWinner('right')}
-                className={`rounded px-10 py-2.5 text-sm font-bold text-white transition-all ${
+                className={`rounded px-10 py-2.5 text-sm font-bold transition-all ${
                   winner === 'right'
                     ? 'scale-105 opacity-100 ring-4 ring-offset-2 ring-gray-400'
                     : 'opacity-90 hover:opacity-100'
                 }`}
-                style={{ backgroundColor: rightBadgeColor }}
+                style={jerseyAccentSurfaceStyle(rightBadgeColor)}
               >
                 {rightBadgeLabel}
               </button>

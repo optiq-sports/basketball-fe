@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { STAT_DASH } from '../pages/statDash/statDashTheme';
 
@@ -36,6 +37,17 @@ export function getContrastTextColor(value: string): '#111827' | '#ffffff' {
   const b = parseInt(n.slice(5, 7), 16);
   const yiq = (r * 299 + g * 587 + b * 114) / 1000;
   return yiq >= 140 ? '#111827' : '#ffffff';
+}
+
+/** Jersey / team-color chips: readable text on any hex + subtle edge on very light fills. */
+export function jerseyAccentSurfaceStyle(accentColor: string): CSSProperties {
+  const n = normalizeHex(accentColor);
+  const bg = n ?? accentColor;
+  return {
+    backgroundColor: bg,
+    color: getContrastTextColor(bg),
+    ...(isLightColor(bg) ? { boxShadow: 'inset 0 0 0 1px rgba(17, 24, 39, 0.38)' } : {}),
+  };
 }
 
 /** Returns `#RRGGBB` or null if invalid */

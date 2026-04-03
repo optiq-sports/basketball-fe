@@ -50,7 +50,7 @@ export interface GameCenterProps {
   onFoulSelectType: (type: FoulTypeId) => void;
   onFoulPickFouled: (jersey: number) => void;
   onFoulSelectFtCount: (count: 0 | 1 | 2 | 3) => void;
-  onFoulFtShooterSame: () => void;
+  onFoulFtAssistSelect: (assist: number | 'none') => void;
   onFoulFtResult: (result: 'made' | 'miss') => void;
   onFoulPickRebounder: (side: TeamSide, jersey: number) => void;
   onTurnoverFlowBack: () => void;
@@ -109,7 +109,7 @@ const GameCenter: React.FC<GameCenterProps> = ({
   onFoulSelectType,
   onFoulPickFouled,
   onFoulSelectFtCount,
-  onFoulFtShooterSame,
+  onFoulFtAssistSelect,
   onFoulFtResult,
   onFoulPickRebounder,
   onTurnoverFlowBack,
@@ -148,6 +148,7 @@ const GameCenter: React.FC<GameCenterProps> = ({
     (foulActive &&
       (foulFlow.step === 'pickFouler' ||
         foulFlow.step === 'pickFouled' ||
+        foulFlow.step === 'ftAssist' ||
         foulFlow.step === 'rebounder')) ||
     (turnoverActive && (turnoverFlow.step === 'pickPlayer' || turnoverFlow.step === 'steal')) ||
     foulPickerOpen;
@@ -234,7 +235,7 @@ const GameCenter: React.FC<GameCenterProps> = ({
                   onSelectFoulType={onFoulSelectType}
                   onPickFouled={onFoulPickFouled}
                   onSelectFtCount={onFoulSelectFtCount}
-                  onFtShooterSamePlayer={onFoulFtShooterSame}
+                  onFtAssistSelect={onFoulFtAssistSelect}
                   onFtResult={onFoulFtResult}
                   onPickRebounder={onFoulPickRebounder}
                 />

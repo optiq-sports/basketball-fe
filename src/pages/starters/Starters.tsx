@@ -6,6 +6,7 @@ import { queryKeys } from '../../api/hooks';
 import StatisticianLayout from '../../components/StatisticianLayout';
 import {
   getContrastTextColor,
+  isLightColor,
   normalizeHex,
   useStatisticianTeamColors,
 } from '../../contexts/StatisticianTeamColorsContext';
@@ -63,7 +64,10 @@ function TeamColorBlock({
         <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Team Color</span>
         <div
           className="relative flex w-full items-center justify-center rounded-md border border-gray-300 px-4 py-1.5"
-          style={{ backgroundColor: normalized }}
+          style={{
+            backgroundColor: normalized,
+            ...(isLightColor(normalized) ? { boxShadow: 'inset 0 0 0 1px rgba(17, 24, 39, 0.35)' } : {}),
+          }}
         >
           <span className="pointer-events-none text-sm font-bold tracking-widest" style={{ color: fg }}>
             00
@@ -78,7 +82,10 @@ function TeamColorBlock({
               className={`h-6 rounded border focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
                 normalizeHex(color) === swatch ? 'border-gray-900 ring-1 ring-gray-900' : 'border-gray-300'
               }`}
-              style={{ backgroundColor: swatch }}
+              style={{
+                backgroundColor: swatch,
+                ...(isLightColor(swatch) ? { boxShadow: 'inset 0 0 0 1px rgba(17, 24, 39, 0.35)' } : {}),
+              }}
               aria-label={`${side === 'home' ? 'Home' : 'Away'} team color ${swatch}`}
             />
           ))}

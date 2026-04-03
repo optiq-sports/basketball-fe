@@ -1,5 +1,6 @@
 import React from 'react';
 import { FiArrowRight, FiX } from 'react-icons/fi';
+import { jerseyAccentSurfaceStyle } from '../../../contexts/StatisticianTeamColorsContext';
 import type { TeamLineup } from '../substitutionLineupUtils';
 import {
   LINEUP_SLOTS,
@@ -53,8 +54,8 @@ function TeamColumn({
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-3 border-gray-200 px-2 sm:px-3">
       <div
-        className="mx-auto w-full max-w-[140px] rounded-md px-2 py-1 text-center text-[10px] font-bold uppercase tracking-wide text-white sm:text-[11px]"
-        style={{ background: badgeColor }}
+        className="mx-auto w-full max-w-[140px] rounded-md px-2 py-1 text-center text-[10px] font-bold uppercase tracking-wide sm:text-[11px]"
+        style={jerseyAccentSurfaceStyle(badgeColor)}
       >
         {teamName}
       </div>

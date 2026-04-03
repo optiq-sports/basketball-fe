@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { FiX } from 'react-icons/fi';
 import type { TeamSide } from '../types';
+import { jerseyAccentSurfaceStyle } from '../../../contexts/StatisticianTeamColorsContext';
 import type { PanelFoulPick } from '../foulRecordingUtils';
 import { STAT_DASH } from '../statDashTheme';
 
@@ -53,8 +54,8 @@ function JerseyButton({
     <button
       type="button"
       onClick={onClick}
-      className="flex aspect-square w-9 shrink-0 cursor-pointer select-none items-center justify-center rounded-md border-none text-xs font-bold text-white hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80 sm:w-10 sm:text-sm"
-      style={{ background: accentColor }}
+      className="flex aspect-square w-9 shrink-0 cursor-pointer select-none items-center justify-center rounded-md border-none text-xs font-bold hover:brightness-[1.03] focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:w-10 sm:text-sm"
+      style={jerseyAccentSurfaceStyle(accentColor)}
     >
       {jersey}
     </button>

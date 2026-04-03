@@ -37,11 +37,13 @@ function TeamStatsTable({
   roster: number[];
   entries: GameLogEntry[];
 }) {
+  const rosterSorted = useMemo(() => [...roster].sort((a, b) => a - b), [roster]);
+
   const statsByJersey = useMemo(() => {
     const pts: Record<number, number> = {};
     const pf: Record<number, number> = {};
 
-    for (const n of roster) {
+    for (const n of rosterSorted) {
       pts[n] = 0;
       pf[n] = 0;
     }
@@ -60,7 +62,7 @@ function TeamStatsTable({
     }
 
     return { pts, pf };
-  }, [entries, roster, teamName]);
+  }, [entries, rosterSorted, teamName]);
 
   return (
     <div className="flex flex-col overflow-hidden">
@@ -98,7 +100,7 @@ function TeamStatsTable({
             </tr>
           </thead>
           <tbody>
-            {roster.map((n) => (
+            {rosterSorted.map((n) => (
               <tr key={n} className={n % 2 === 0 ? 'bg-[#F8FAFC]' : 'bg-white'}>
                 <td className="px-4 py-3.5 font-medium text-[#1E40AF]">{n}</td>
                 <td className="px-4 py-3.5 font-medium text-[#1E40AF]">{`#${n}`}</td>

@@ -30,7 +30,7 @@ export type FoulFlowStep =
   | 'foulType'
   | 'pickFouled'
   | 'ftCount'
-  | 'ftShooter'
+  | 'ftAssist'
   | 'ftResults'
   | 'rebounder';
 
@@ -42,7 +42,8 @@ export type FoulFlowDraft = {
   fouledJersey: number | null;
   /** 0 = no free throws */
   ftCount: 0 | 1 | 2 | 3 | null;
-  shooterSameAsFouled: boolean | null;
+  /** Assist on the FT sequence; fouled player shoots automatically. */
+  ftAssistJersey: number | 'none' | null;
   ftResults: ('made' | 'miss')[];
   reboundSide: TeamSide | null;
   reboundJersey: number | null;
@@ -62,7 +63,7 @@ export function emptyFoulDraft(): FoulFlowDraft {
     foulType: null,
     fouledJersey: null,
     ftCount: null,
-    shooterSameAsFouled: null,
+    ftAssistJersey: null,
     ftResults: [],
     reboundSide: null,
     reboundJersey: null,
@@ -92,7 +93,6 @@ export function isFoulerDraftComplete(draft: FoulFlowDraft): boolean {
 }
 
 export type PanelFoulPick =
-  | { kind: 'player'; jersey: number }
   | { kind: 'bench_player'; jersey: number }
   | { kind: 'bench' }
   | { kind: 'coach' };
@@ -102,18 +102,6 @@ export function initialFoulFlowFromPanelSelection(
   pick: PanelFoulPick
 ): ActiveFoulFlow {
   const base = emptyFoulDraft();
-  if (pick.kind === 'player') {
-    return {
-      entry: 'panel',
-      step: 'foulType',
-      draft: {
-        ...base,
-        foulerSide: side,
-        foulerJersey: pick.jersey,
-        foulerRole: 'player',
-      },
-    };
-  }
   if (pick.kind === 'bench_player') {
     return {
       entry: 'panel',
@@ -151,14 +139,14 @@ export function foulFlowBack(cur: ActiveFoulFlow): ActiveFoulFlow | 'idle' {
     case 'ftResults':
       return {
         ...cur,
-        step: 'ftShooter',
-        draft: { ...draft, ftResults: [], shooterSameAsFouled: null },
+        step: 'ftAssist',
+        draft: { ...draft, ftResults: [], ftAssistJersey: null },
       };
-    case 'ftShooter':
+    case 'ftAssist':
       return {
         ...cur,
         step: 'ftCount',
-        draft: { ...draft },
+        draft: { ...draft, ftAssistJersey: null },
       };
     case 'ftCount':
       return {
