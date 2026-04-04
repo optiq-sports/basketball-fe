@@ -150,9 +150,23 @@ const GameCenter: React.FC<GameCenterProps> = ({
         foulFlow.step === 'pickFouled' ||
         foulFlow.step === 'ftAssist' ||
         foulFlow.step === 'rebounder')) ||
-    (turnoverActive && (turnoverFlow.step === 'pickPlayer' || turnoverFlow.step === 'steal')) ||
-    foulPickerOpen;
+    (turnoverActive && (turnoverFlow.step === 'pickPlayer' || turnoverFlow.step === 'steal'));
   const playerInteractionsLocked = !allowSideJerseySelection;
+
+  const tipPickShooterOffensiveSide: TeamSide | null =
+    shotActive &&
+    shotFlow.step === 'pickShooter' &&
+    shotFlow.draft.tipInCommit &&
+    shotFlow.draft.rebounderSide !== null
+      ? shotFlow.draft.rebounderSide
+      : null;
+
+  const homePanelLocked =
+    playerInteractionsLocked ||
+    (tipPickShooterOffensiveSide !== null && tipPickShooterOffensiveSide !== 'home');
+  const awayPanelLocked =
+    playerInteractionsLocked ||
+    (tipPickShooterOffensiveSide !== null && tipPickShooterOffensiveSide !== 'away');
 
   return (
     <div className={`${STAT_DASH_MAIN_OUTER} min-h-0 flex-1 items-start font-sans`}>
@@ -164,7 +178,7 @@ const GameCenter: React.FC<GameCenterProps> = ({
           side="home"
           accentColor={homeColor}
           playerNumbers={homeActivePlayers}
-          interactionsLocked={playerInteractionsLocked}
+          interactionsLocked={homePanelLocked}
           onPlayerFoulClick={onPlayerFoulClick}
           onPlayerShotContextMenu={onPlayerShotContextMenu}
           onFoul={onFoul}
@@ -186,7 +200,7 @@ const GameCenter: React.FC<GameCenterProps> = ({
                   onCourtShotContextMenu(e);
                 }}
                 className="h-full w-full cursor-pointer overflow-hidden rounded-lg border-[3px] border-gray-500 bg-[#d8dce1] p-0 text-left shadow-sm hover:brightness-[1.02] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3B82F6] focus-visible:ring-offset-2"
-                aria-label="Court. Left-click: missed shot. Right-click: made shot."
+                aria-label="Court. Left-click: missed shot. Shift+left-click: foul at spot. Right-click: made shot."
               >
                 <BasketballCourt shotMarkers={courtShotMarkers} foulMarkers={courtFoulMarkers} />
               </button>
@@ -328,7 +342,7 @@ const GameCenter: React.FC<GameCenterProps> = ({
           side="away"
           accentColor={awayColor}
           playerNumbers={awayActivePlayers}
-          interactionsLocked={playerInteractionsLocked}
+          interactionsLocked={awayPanelLocked}
           onPlayerFoulClick={onPlayerFoulClick}
           onPlayerShotContextMenu={onPlayerShotContextMenu}
           onFoul={onFoul}

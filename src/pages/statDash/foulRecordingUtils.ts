@@ -93,6 +93,7 @@ export function isFoulerDraftComplete(draft: FoulFlowDraft): boolean {
 }
 
 export type PanelFoulPick =
+  | { kind: 'player'; jersey: number }
   | { kind: 'bench_player'; jersey: number }
   | { kind: 'bench' }
   | { kind: 'coach' };
@@ -102,6 +103,18 @@ export function initialFoulFlowFromPanelSelection(
   pick: PanelFoulPick
 ): ActiveFoulFlow {
   const base = emptyFoulDraft();
+  if (pick.kind === 'player') {
+    return {
+      entry: 'panel',
+      step: 'foulType',
+      draft: {
+        ...base,
+        foulerSide: side,
+        foulerJersey: pick.jersey,
+        foulerRole: 'player',
+      },
+    };
+  }
   if (pick.kind === 'bench_player') {
     return {
       entry: 'panel',
@@ -116,6 +129,50 @@ export function initialFoulFlowFromPanelSelection(
   }
   return {
     entry: 'panel',
+    step: 'foulType',
+    draft: {
+      ...base,
+      foulerSide: side,
+      foulerJersey: null,
+      foulerRole: pick.kind === 'bench' ? 'bench' : 'coach',
+    },
+  };
+}
+
+/** Apply FOUL modal pick while already on `pickFouler` (e.g. court flow); preserves `entry`. */
+export function foulFlowFromPanelPickAtPickFouler(
+  cur: ActiveFoulFlow,
+  side: TeamSide,
+  pick: PanelFoulPick
+): ActiveFoulFlow {
+  if (cur.step !== 'pickFouler') return cur;
+  const base = emptyFoulDraft();
+  if (pick.kind === 'player') {
+    return {
+      ...cur,
+      step: 'foulType',
+      draft: {
+        ...base,
+        foulerSide: side,
+        foulerJersey: pick.jersey,
+        foulerRole: 'player',
+      },
+    };
+  }
+  if (pick.kind === 'bench_player') {
+    return {
+      ...cur,
+      step: 'foulType',
+      draft: {
+        ...base,
+        foulerSide: side,
+        foulerJersey: pick.jersey,
+        foulerRole: 'bench',
+      },
+    };
+  }
+  return {
+    ...cur,
     step: 'foulType',
     draft: {
       ...base,

@@ -125,15 +125,42 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
       aria-modal="true"
       aria-labelledby="shot-flow-title"
     >
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-2 pt-3 sm:px-3 sm:pt-4">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-1 pt-2 sm:px-3 sm:pb-2 sm:pt-3">
         {step === 'pickShooter' && (
           <>
             <h2 id="shot-flow-title" className={titleClass} style={titleStyle}>
-              {draft.result === 'made' ? 'Select player for made shot' : 'Select player for missed shot'}
+              {draft.tipInCommit
+                ? draft.result === 'made'
+                  ? 'Tip-in (made)'
+                  : 'Tip-in (miss)'
+                : draft.result === 'made'
+                  ? 'Select shooter (made)'
+                  : 'Select shooter (miss)'}
             </h2>
-            <div className="mx-auto max-w-[360px] rounded-lg bg-gray-100 px-4 py-4 text-center">
-              <p className="text-sm font-semibold text-gray-700">Select shooter from side jersey lists</p>
-              <p className="mt-1 text-xs text-gray-500">{homeName} and {awayName} players are selectable by the court sides.</p>
+            <div className="mx-auto mb-2 max-w-[360px] space-y-1.5 text-center text-[11px] leading-snug text-gray-600 sm:text-xs">
+              {draft.tipInCommit && draft.rebounderSide !== null ? (
+                <>
+                  <p>
+                    Use only the <strong>{draft.rebounderSide === 'home' ? homeName : awayName}</strong> column
+                    (jerseys + FOUL/TURNOVER). The other team’s column is disabled for this step.
+                  </p>
+                  {draft.result === 'made' ? (
+                    <p>
+                      Tap the jersey of the player who <strong>made</strong> the tip-in. The play ends after you pick
+                      them (no rebound step).
+                    </p>
+                  ) : (
+                    <p>
+                      Tap the jersey of the player who <strong>missed</strong> the tip-in. You will return to{' '}
+                      <strong>Select rebounder</strong> next — still use the side panels, not the court buttons here.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p>
+                  Tap a jersey on <strong>{homeName}</strong> or <strong>{awayName}</strong> in the side panels.
+                </p>
+              )}
             </div>
           </>
         )}
@@ -143,15 +170,8 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
             <h2 id="shot-flow-title" className={titleClass} style={titleStyle}>
               Select rebounder
             </h2>
-            <div className="mx-auto max-w-[360px] rounded-lg bg-gray-100 px-4 py-4 text-center">
-              <p className="text-sm font-semibold text-gray-700">
-                Tap a jersey for a simple rebound (ends here), or choose an action below first, then complete with
-                jerseys where needed.
-              </p>
-              <p className="mt-1 text-xs text-gray-500">{homeName} and {awayName} players are on the side lists.</p>
-            </div>
 
-            <div className="mx-auto mt-3 grid max-w-[360px] grid-cols-1 gap-2.5">
+            <div className="mx-auto grid max-w-[360px] grid-cols-1 gap-2">
               <div className="rounded-lg bg-gray-200 px-3 py-2.5">
                 <div className="text-center text-[11px] font-bold uppercase text-gray-700">Offensive rebound (miss)</div>
                 <div className="mt-2 grid grid-cols-2 gap-2">
@@ -228,10 +248,9 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
             <h2 id="shot-flow-title" className={titleClass} style={titleStyle}>
               Select blocker
             </h2>
-            <div className="mx-auto max-w-[360px] rounded-lg bg-gray-100 px-4 py-4 text-center">
-              <p className="text-sm font-semibold text-gray-700">Select blocker from side jersey lists</p>
-              <p className="mt-1 text-xs text-gray-500">{homeName} and {awayName} players are selectable by the court sides.</p>
-            </div>
+            <p className="mx-auto max-w-[360px] text-center text-[11px] leading-snug text-gray-600 sm:text-xs">
+              Defensive team only — then back to rebounder if play continues.
+            </p>
           </>
         )}
 

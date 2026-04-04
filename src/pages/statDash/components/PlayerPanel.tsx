@@ -67,6 +67,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
         <button
           key={lbl}
           type="button"
+          disabled={interactionsLocked}
           onClick={() => (lbl === 'FOUL' ? onFoul(side) : onTurnover(side))}
           className="cursor-pointer border border-gray-400/90 bg-gray-200 font-bold uppercase tracking-wide text-gray-900 hover:bg-gray-300/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-60"
           style={{

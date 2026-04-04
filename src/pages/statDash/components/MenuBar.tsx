@@ -23,6 +23,7 @@ const MENU_GROUPS: { id: MenuGroupId; items: MenuItemDef[] }[] = [
     id: 'GAME',
     items: [
       { label: 'Switch Team Side' },
+      { label: 'Starters' },
       { label: 'Setup Quarters' },
       { label: 'Finish Match' },
       { label: 'Export Game' },
@@ -57,9 +58,10 @@ const labelFontSize = { fontSize: cl('10px', '1vw', '12px') };
 
 export interface MenuBarProps {
   onSwitchTeamSide?: () => void;
+  onStarters?: () => void;
 }
 
-const MenuBar: React.FC<MenuBarProps> = ({ onSwitchTeamSide }) => {
+const MenuBar: React.FC<MenuBarProps> = ({ onSwitchTeamSide, onStarters }) => {
   const navigate = useNavigate();
   const [openId, setOpenId] = useState<MenuGroupId | null>(null);
   const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
@@ -80,6 +82,15 @@ const MenuBar: React.FC<MenuBarProps> = ({ onSwitchTeamSide }) => {
               },
             };
           }
+          if (item.label === 'Starters') {
+            return {
+              ...item,
+              onSelect: () => {
+                close();
+                onStarters?.();
+              },
+            };
+          }
           return item;
         });
       }
@@ -97,7 +108,7 @@ const MenuBar: React.FC<MenuBarProps> = ({ onSwitchTeamSide }) => {
         return item;
       });
     },
-    [close, onSwitchTeamSide]
+    [close, onSwitchTeamSide, onStarters]
   );
 
   useEffect(() => {

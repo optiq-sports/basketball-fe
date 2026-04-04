@@ -129,11 +129,14 @@ const FoulRecordingCourtPanel: React.FC<FoulRecordingCourtPanelProps> = ({
         {step === 'pickFouler' && (
           <>
             <h2 id="foul-flow-title" className={titleClass} style={titleStyle}>
-              Select bench player who fouled
+              Select player who fouled
             </h2>
             <div className="mx-auto max-w-[360px] rounded-lg bg-gray-100 px-4 py-4 text-center">
-              <p className="text-sm font-semibold text-gray-700">Only bench jerseys are selectable on each side.</p>
-              <p className="mt-1 text-xs text-gray-500">{homeName} and {awayName} bench lists match the side columns.</p>
+              <p className="text-sm font-semibold text-gray-700">
+                Tap an on-court jersey on the side columns, or press <span className="font-bold">FOUL</span> on a panel
+                to choose a bench jersey, team bench, or coach.
+              </p>
+              <p className="mt-1 text-xs text-gray-500">{homeName} and {awayName}</p>
             </div>
           </>
         )}
