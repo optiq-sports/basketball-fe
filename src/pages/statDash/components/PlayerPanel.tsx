@@ -7,7 +7,7 @@ export interface PlayerPanelProps {
   side: TeamSide;
   accentColor: string;
   playerNumbers: number[];
-  /** When true, jersey and FOUL/TURNOVER actions are disabled (court flow active). */
+  /** When true, jersey numbers (and made-shot context menu) are disabled; FOUL/TURNOVER stay clickable. */
   interactionsLocked?: boolean;
   /** Left-click: primary action based on active flow state */
   onPlayerFoulClick: (side: TeamSide, jersey: number) => void;
@@ -67,9 +67,8 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
         <button
           key={lbl}
           type="button"
-          disabled={interactionsLocked}
           onClick={() => (lbl === 'FOUL' ? onFoul(side) : onTurnover(side))}
-          className="cursor-pointer border border-gray-400/90 bg-gray-200 font-bold uppercase tracking-wide text-gray-900 hover:bg-gray-300/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 disabled:cursor-not-allowed disabled:opacity-60"
+          className="cursor-pointer border border-gray-400/90 bg-gray-200 font-bold uppercase tracking-wide text-gray-900 hover:bg-gray-300/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
           style={{
             width: btnW,
             padding: `${cl('5px', '0.55vh', '8px')} ${cl('2px', '0.2vw', '4px')}`,

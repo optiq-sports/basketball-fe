@@ -1,7 +1,7 @@
 import React from 'react';
 import type { TeamSide } from '../types';
 import type { ActiveShotFlow, ReboundOutcomeId, ShotTypeId } from '../shotRecordingUtils';
-import type { ActiveFoulFlow, FoulTypeId, PanelFoulPick } from '../foulRecordingUtils';
+import { opponentOf, type ActiveFoulFlow, type FoulTypeId, type PanelFoulPick } from '../foulRecordingUtils';
 import type { ActiveTurnoverFlow, TurnoverTypeId } from '../turnoverRecordingUtils';
 import PlayerPanel from './PlayerPanel';
 import BasketballCourt, { type CourtMarker } from './BasketballCourt';
@@ -139,7 +139,9 @@ const GameCenter: React.FC<GameCenterProps> = ({
   const flowActive = shotActive || foulActive || turnoverActive;
   const courtOverlayActive =
     flowActive || foulPickerOpen || timeoutModalOpen || jumpBallModalOpen;
+  const foulPickerIdleSelectingFouler = foulPickerOpen && foulFlow === 'idle';
   const allowSideJerseySelection =
+    foulPickerIdleSelectingFouler ||
     (shotActive &&
       (shotFlow.step === 'pickShooter' ||
         shotFlow.step === 'assist' ||
@@ -161,12 +163,21 @@ const GameCenter: React.FC<GameCenterProps> = ({
       ? shotFlow.draft.rebounderSide
       : null;
 
+  const pickBlockerDefenseSide: TeamSide | null =
+    shotActive &&
+    shotFlow.step === 'pickBlocker' &&
+    shotFlow.draft.rebounderSide !== null
+      ? opponentOf(shotFlow.draft.rebounderSide)
+      : null;
+
   const homePanelLocked =
     playerInteractionsLocked ||
-    (tipPickShooterOffensiveSide !== null && tipPickShooterOffensiveSide !== 'home');
+    (tipPickShooterOffensiveSide !== null && tipPickShooterOffensiveSide !== 'home') ||
+    (pickBlockerDefenseSide !== null && pickBlockerDefenseSide !== 'home');
   const awayPanelLocked =
     playerInteractionsLocked ||
-    (tipPickShooterOffensiveSide !== null && tipPickShooterOffensiveSide !== 'away');
+    (tipPickShooterOffensiveSide !== null && tipPickShooterOffensiveSide !== 'away') ||
+    (pickBlockerDefenseSide !== null && pickBlockerDefenseSide !== 'away');
 
   return (
     <div className={`${STAT_DASH_MAIN_OUTER} min-h-0 flex-1 items-start font-sans`}>
@@ -326,8 +337,6 @@ const GameCenter: React.FC<GameCenterProps> = ({
                   awayName={awayName}
                   homeColor={homeColor}
                   awayColor={awayColor}
-                  homeOnCourt={homeActivePlayers}
-                  awayOnCourt={awayActivePlayers}
                   homeBench={homeBench}
                   awayBench={awayBench}
                   onPick={onFoulPanelPick}

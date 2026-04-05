@@ -31,8 +31,22 @@ import type {
 } from '../types/api';
 import { ApiError } from '../types/api';
 import { API_BASE } from '../config';
+import { broadcastAuthSessionExpired } from '../auth/authSession';
 
 const TOKEN_KEY = 'access_token';
+
+function isPublicAuthEndpoint(endpoint: string): boolean {
+  const path = endpoint.split('?')[0];
+  return path === '/auth/login' || path === '/auth/register';
+}
+
+/** When a request included a Bearer token, 401 means session is dead — clear storage and notify router. */
+function clearSessionIfUnauthorized(endpoint: string, status: number, hadAuth: boolean): void {
+  if (status !== 401 || !hadAuth || isPublicAuthEndpoint(endpoint)) return;
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem('user_name');
+  broadcastAuthSessionExpired();
+}
 
 
 class ApiClient {
@@ -69,6 +83,7 @@ class ApiClient {
       }
 
       if (!response.ok) {
+        clearSessionIfUnauthorized(endpoint, response.status, !!token);
         throw new ApiError(
           (data as { message?: string }).message || 'Request failed',
           response.status,
@@ -138,6 +153,7 @@ class ApiClient {
         // non-JSON
       }
       if (!response.ok) {
+        clearSessionIfUnauthorized('/upload', response.status, !!token);
         throw new ApiError(
           (data as { message?: string }).message || 'Upload failed',
           response.status,
@@ -263,6 +279,7 @@ class ApiClient {
       }
 
       if (!response.ok) {
+        clearSessionIfUnauthorized(`/players/team/${teamId}/upload`, response.status, !!token);
         throw new ApiError(
           (data as { message?: string }).message || 'Upload failed',
           response.status,
@@ -420,6 +437,7 @@ class ApiClient {
       }
 
       if (!response.ok) {
+        clearSessionIfUnauthorized(`/tournaments/${id}/flyer`, response.status, !!token);
         throw new ApiError(
           (data as { message?: string }).message || 'Failed to upload flyer',
           response.status,
@@ -568,6 +586,7 @@ class ApiClient {
       }
 
       if (!response.ok) {
+        clearSessionIfUnauthorized(`/statistician/${id}/photo`, response.status, !!token);
         throw new ApiError(
           (data as { message?: string }).message || 'Failed to upload statistician photo',
           response.status,

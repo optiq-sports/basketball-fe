@@ -24,6 +24,13 @@ export type ReboundOutcomeId =
 
 export type DeadBallReasonId = 'out_of_bounds' | 'shot_clock_violation';
 
+export type PriorMissSnapshot = {
+  side: TeamSide;
+  shooterJersey: number;
+  shotType: ShotTypeId;
+  fastBreak: boolean;
+};
+
 export type ShotFlowDraft = {
   side: TeamSide | null;
   shooterJersey: number | null;
@@ -42,6 +49,11 @@ export type ShotFlowDraft = {
 
   // Tip-in attempts skip shotType/assist UI and commit immediately after pickShooter.
   tipInCommit: boolean;
+
+  /** Original miss fields before tip/block sub-flow clears them — used for Back navigation. */
+  priorMiss: PriorMissSnapshot | null;
+  /** After block: offensive rebounder tap (logged) before defensive rebound pick — for Back from that step. */
+  lastOffensiveRebound: { side: TeamSide; jersey: number } | null;
 };
 
 export type ActiveShotFlow = {
@@ -88,5 +100,32 @@ export function emptyShotDraft(): ShotFlowDraft {
     deadBallReason: null,
 
     tipInCommit: false,
+
+    priorMiss: null,
+    lastOffensiveRebound: null,
+  };
+}
+
+/** Map tip-in putback draft to the rebound-outcome id (layup/dunk only in UI). */
+export function reboundBranchFromTipShot(
+  shotType: ShotTypeId,
+  result: 'made' | 'missed'
+): ReboundOutcomeId | null {
+  if (shotType === 'layup') {
+    return result === 'made' ? 'tipin_layup_made' : 'tipin_layup_miss';
+  }
+  if (shotType === 'dunk') {
+    return result === 'made' ? 'tipin_dunk_made' : 'tipin_dunk_miss';
+  }
+  return null;
+}
+
+export function snapshotPriorMiss(draft: ShotFlowDraft): PriorMissSnapshot | null {
+  if (draft.side === null || draft.shooterJersey === null || draft.shotType === null) return null;
+  return {
+    side: draft.side,
+    shooterJersey: draft.shooterJersey,
+    shotType: draft.shotType,
+    fastBreak: draft.fastBreak,
   };
 }

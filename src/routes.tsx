@@ -1,5 +1,6 @@
-import React, { Suspense, lazy, useLayoutEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import React, { Suspense, lazy, useEffect, useLayoutEffect } from 'react';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { AUTH_SESSION_EXPIRED_EVENT } from './auth/authSession';
 import { useQueryClient } from '@tanstack/react-query';
 import Login from './pages/login/login';
 import ForgotPassword from './pages/login/ForgotPassword';
@@ -79,16 +80,34 @@ const StatisticianRoutes: React.FC = () => (
   </StatisticianTeamColorsProvider>
 );
 
+/** React to 401 from ApiClient: clear query cache and send user to login. */
+const AuthSessionListener: React.FC = () => {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const onSessionExpired = () => {
+      queryClient.clear();
+      navigate('/login', { replace: true });
+    };
+    window.addEventListener(AUTH_SESSION_EXPIRED_EVENT, onSessionExpired);
+    return () => window.removeEventListener(AUTH_SESSION_EXPIRED_EVENT, onSessionExpired);
+  }, [navigate, queryClient]);
+
+  return null;
+};
+
 const AppRoutes: React.FC = () => {
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/forgot-password" element={<ForgotPassword />} />
-
-      <Route path="/*" element={<AppGate />} />
-
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-    </Routes>
+    <>
+      <AuthSessionListener />
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/*" element={<AppGate />} />
+      </Routes>
+    </>
   );
 };
 

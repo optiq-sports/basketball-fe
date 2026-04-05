@@ -12,6 +12,9 @@ export interface GameTimerProps {
   onTick: () => void;
   onAdjustMinutes: (deltaSeconds: number) => void;
   onAdjustSeconds: (deltaSeconds: number) => void;
+  /** After quarter-ended "Not yet": show yellow Finish instead of Start/Stop. */
+  showQuarterFinish?: boolean;
+  onQuarterFinish?: () => void;
 }
 
 const chevronSize = 13;
@@ -28,6 +31,8 @@ export function formatClock(totalSeconds: number): string {
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
+const FINISH_YELLOW = STAT_DASH.awayYellow;
+
 const GameTimer: React.FC<GameTimerProps> = ({
   quarter,
   timerSeconds,
@@ -36,6 +41,8 @@ const GameTimer: React.FC<GameTimerProps> = ({
   onTick,
   onAdjustMinutes,
   onAdjustSeconds,
+  showQuarterFinish = false,
+  onQuarterFinish,
 }) => {
   useEffect(() => {
     if (!isRunning) return;
@@ -122,20 +129,37 @@ const GameTimer: React.FC<GameTimerProps> = ({
           </button>
         </div>
 
-        <button
-          type="button"
-          onClick={onStartStop}
-          className="shrink-0 cursor-pointer whitespace-nowrap rounded-md border-none font-bold uppercase hover:opacity-95"
-          style={{
-            background: isRunning ? STAT_DASH.startGreen : STAT_DASH.stopRed,
-            color: getContrastTextColor(isRunning ? STAT_DASH.startGreen : STAT_DASH.stopRed),
-            padding: `${btnPadY} ${btnPadX}`,
-            fontSize: cl('12px', '1.25vw', '18px'),
-            letterSpacing: 1,
-          }}
-        >
-          {isRunning ? 'STOP' : 'START'}
-        </button>
+        {showQuarterFinish && onQuarterFinish ? (
+          <button
+            type="button"
+            onClick={onQuarterFinish}
+            className="shrink-0 cursor-pointer whitespace-nowrap rounded-md border-none font-bold uppercase hover:opacity-95"
+            style={{
+              background: FINISH_YELLOW,
+              color: getContrastTextColor(FINISH_YELLOW),
+              padding: `${btnPadY} ${btnPadX}`,
+              fontSize: cl('12px', '1.25vw', '18px'),
+              letterSpacing: 1,
+            }}
+          >
+            Finish
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onStartStop}
+            className="shrink-0 cursor-pointer whitespace-nowrap rounded-md border-none font-bold uppercase hover:opacity-95"
+            style={{
+              background: isRunning ? STAT_DASH.startGreen : STAT_DASH.stopRed,
+              color: getContrastTextColor(isRunning ? STAT_DASH.startGreen : STAT_DASH.stopRed),
+              padding: `${btnPadY} ${btnPadX}`,
+              fontSize: cl('12px', '1.25vw', '18px'),
+              letterSpacing: 1,
+            }}
+          >
+            {isRunning ? 'STOP' : 'START'}
+          </button>
+        )}
       </div>
     </div>
   );

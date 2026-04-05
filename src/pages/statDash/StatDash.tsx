@@ -17,7 +17,13 @@ import { useStatisticianTeamColors } from '../../contexts/StatisticianTeamColors
 import { STAT_DASH, STAT_DASH_MAIN_INNER, STAT_DASH_MAIN_OUTER } from './statDashTheme';
 import type { GameLogEntry, TeamSide } from './types';
 import type { ActiveShotFlow, ReboundOutcomeId, ShotTypeId } from './shotRecordingUtils';
-import { emptyShotDraft, getShotPoints, shotTypeResultPhrase } from './shotRecordingUtils';
+import {
+  emptyShotDraft,
+  getShotPoints,
+  reboundBranchFromTipShot,
+  shotTypeResultPhrase,
+  snapshotPriorMiss,
+} from './shotRecordingUtils';
 import type {
   ActiveFoulFlow,
   FoulFlowDraft,
@@ -61,40 +67,12 @@ import { clearJumpBallWinner, readJumpBallWinner } from '../jumpBallWinner';
 const DEFAULT_HOME = 'TEAM 1';
 const DEFAULT_AWAY = 'TEAM 2';
 const QUARTER_DURATION_SEC = 10 * 60;
+/** Upper bound for manual clock adjustment (seconds). */
+const MAX_TIMER_SECONDS = 60 * 60;
 
 type ShotFlowState = 'idle' | ActiveShotFlow;
 type FoulFlowState = 'idle' | ActiveFoulFlow;
 type TurnoverFlowState = 'idle' | ActiveTurnoverFlow;
-
-const SEED_LOG: GameLogEntry[] = [
-  {
-    id: 'seed-1',
-    period: 'Q1',
-    clock: '09:22',
-    team: 'Team 1',
-    player: '#5 M. Abdul',
-    action: 'shot',
-    result: '3pt made',
-  },
-  {
-    id: 'seed-2',
-    period: 'Q1',
-    clock: '09:22',
-    team: 'Team 2',
-    player: '#10 S. Langas',
-    action: 'shot',
-    result: '3pt made',
-  },
-  {
-    id: 'seed-3',
-    period: 'Q1',
-    clock: '09:22',
-    team: 'Team 2',
-    player: '#10 S. Langas',
-    action: 'shot',
-    result: '3pt made',
-  },
-];
 
 function newLogId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -115,7 +93,7 @@ const StatDash: React.FC = () => {
   const [quarter, setQuarter] = useState(1);
   const [timerSeconds, setTimerSeconds] = useState(QUARTER_DURATION_SEC);
   const [isRunning, setIsRunning] = useState(false);
-  const [gameLog, setGameLog] = useState<GameLogEntry[]>(SEED_LOG);
+  const [gameLog, setGameLog] = useState<GameLogEntry[]>([]);
   const [shotFlow, setShotFlow] = useState<ShotFlowState>('idle');
   const shotFlowRef = useRef<ShotFlowState>('idle');
   shotFlowRef.current = shotFlow;
@@ -151,6 +129,8 @@ const StatDash: React.FC = () => {
   const [activeDrawer, setActiveDrawer] = useState<'left' | 'right' | null>(null);
   const [quarterBreakModalOpen, setQuarterBreakModalOpen] = useState(false);
   const [quarterBreakPending, setQuarterBreakPending] = useState(false);
+  /** After "Not yet" on quarter-ended modal: show yellow Finish to reopen that modal. */
+  const [quarterEndAwaitingFinish, setQuarterEndAwaitingFinish] = useState(false);
   const [editingLog, setEditingLog] = useState<GameLogEntry | null>(null);
   const [switchSidesOpen, setSwitchSidesOpen] = useState(false);
   const [startersModalOpen, setStartersModalOpen] = useState(false);
@@ -221,6 +201,7 @@ const StatDash: React.FC = () => {
     }
     setQuarterBreakPending(true);
     setQuarterBreakModalOpen(true);
+    setQuarterEndAwaitingFinish(false);
   }, [isRunning, timerSeconds, quarter]);
 
   // Jump-ball page -> StatDash: start the timer once the winner has been selected.
@@ -233,30 +214,28 @@ const StatDash: React.FC = () => {
   }, []);
 
   const onAdjustMinutes = useCallback((delta: number) => {
-    setTimerSeconds((s) => Math.max(0, Math.min(QUARTER_DURATION_SEC, s + delta)));
+    setTimerSeconds((s) => Math.max(0, Math.min(MAX_TIMER_SECONDS, s + delta)));
   }, []);
 
   const onAdjustSeconds = useCallback((delta: number) => {
-    setTimerSeconds((s) => Math.max(0, Math.min(QUARTER_DURATION_SEC, s + delta)));
+    setTimerSeconds((s) => Math.max(0, Math.min(MAX_TIMER_SECONDS, s + delta)));
   }, []);
 
   const onStartStop = useCallback(() => {
-    if (quarterBreakPending) return;
     setIsRunning((r) => !r);
-  }, [quarterBreakPending]);
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== 'Space') return;
       const el = e.target as HTMLElement | null;
       if (el?.closest('input, textarea, select, [contenteditable="true"]')) return;
-      if (quarterBreakPending) return;
       e.preventDefault();
       setIsRunning((r) => !r);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [quarterBreakPending]);
+  }, []);
 
   const commitFoulNoFt = useCallback(
     (draft: FoulFlowDraft) => {
@@ -308,10 +287,14 @@ const StatDash: React.FC = () => {
       if (fouledSide === 'home') setHomeScore((s) => s + makes);
       else setAwayScore((s) => s + makes);
       const ftStr = draft.ftResults.map((r) => (r === 'made' ? 'Made' : 'Miss')).join(', ');
-      const assistPart =
-        draft.ftAssistJersey === 'none'
+      const firstFtMade = draft.ftResults[0] === 'made';
+      const assistPart = !firstFtMade
+        ? ''
+        : draft.ftAssistJersey === 'none'
           ? ' · No assist'
-          : ` · Assist #${draft.ftAssistJersey}`;
+          : typeof draft.ftAssistJersey === 'number'
+            ? ` · Assist #${draft.ftAssistJersey}`
+            : '';
       let rebSuffix = '';
       if (
         !skipRebound &&
@@ -351,7 +334,7 @@ const StatDash: React.FC = () => {
     setShotFlow({
       entry: 'player',
       step: 'shotType',
-      draft: { side, shooterJersey: jersey, shotType: null, result: 'made', fastBreak: false },
+      draft: { ...emptyShotDraft(), side, shooterJersey: jersey, shotType: null, result: 'made' },
     });
   }, []);
 
@@ -390,9 +373,7 @@ const StatDash: React.FC = () => {
       foulPickerOpenRef.current ||
       subModalOpenRef.current ||
       timeoutModalOpenRef.current ||
-      jumpBallModalOpenRef.current ||
-      shotFlowRef.current !== 'idle' ||
-      turnoverFlowRef.current !== 'idle'
+      jumpBallModalOpenRef.current
     )
       return;
     const curFoul = foulFlowRef.current;
@@ -433,14 +414,13 @@ const StatDash: React.FC = () => {
       subModalOpenRef.current ||
       timeoutModalOpenRef.current ||
       jumpBallModalOpenRef.current ||
-      shotFlowRef.current !== 'idle' ||
-      foulFlowRef.current !== 'idle' ||
       turnoverFlowRef.current !== 'idle'
     )
       return;
     pendingCourtClickRef.current = null;
     setShotFlow('idle');
     setFoulFlow('idle');
+    setFoulPickerOpen(false);
     setTurnoverFlow(initialTurnoverFlowFromPanel(side));
   }, []);
 
@@ -626,23 +606,170 @@ const StatDash: React.FC = () => {
   );
 
   const handleModalBack = useCallback(() => {
-    setShotFlow((cur) => {
-      if (cur === 'idle') return cur;
-      if (cur.step === 'pickRebounder' && cur.draft.reboundBranch !== null) {
-        return { ...cur, draft: { ...cur.draft, reboundBranch: null } };
+    const cur = shotFlowRef.current;
+    if (cur === 'idle') return;
+
+    // Tip-in putback picker: undo offensive rebound log; restore branch + original miss.
+    if (cur.step === 'pickShooter' && cur.draft.tipInCommit && cur.draft.priorMiss !== null) {
+      const pm = cur.draft.priorMiss;
+      const st = cur.draft.shotType;
+      if (st !== null) {
+        const branch = reboundBranchFromTipShot(st, cur.draft.result === 'made' ? 'made' : 'missed');
+        if (branch !== null) {
+          setGameLog((prev) => {
+            const head = prev[0];
+            if (head && head.action === 'rebound') return prev.slice(1);
+            return prev;
+          });
+          setShotFlow({
+            entry: cur.entry,
+            step: 'pickRebounder',
+            draft: {
+              ...emptyShotDraft(),
+              result: 'missed',
+              tipInCommit: false,
+              side: pm.side,
+              shooterJersey: pm.shooterJersey,
+              shotType: pm.shotType,
+              fastBreak: pm.fastBreak,
+              reboundBranch: branch,
+              priorMiss: pm,
+            },
+          });
+          return;
+        }
       }
-      if (cur.step === 'assist') {
-        return { ...cur, step: 'shotType', draft: { ...cur.draft, shotType: null } };
-      }
-      if (cur.step === 'shotType') {
+    }
+
+    // Court: initial shooter pick — leave flow (same as cancel for this step).
+    if (cur.step === 'pickShooter' && !cur.draft.tipInCommit && cur.entry === 'court') {
+      clearPendingCourtPoint();
+      setShotFlow('idle');
+      return;
+    }
+
+    // Blocker step: undo offensive rebound log; back to block branch on rebounder screen.
+    if (cur.step === 'pickBlocker') {
+      const pm = cur.draft.priorMiss;
+      setGameLog((prev) => {
+        const head = prev[0];
+        if (head && head.action === 'rebound') return prev.slice(1);
+        return prev;
+      });
+      setShotFlow({
+        entry: cur.entry,
+        step: 'pickRebounder',
+        draft: {
+          ...emptyShotDraft(),
+          result: 'missed',
+          tipInCommit: false,
+          reboundBranch: 'block_involved',
+          side: pm?.side ?? null,
+          shooterJersey: pm?.shooterJersey ?? null,
+          shotType: pm?.shotType ?? null,
+          fastBreak: pm?.fastBreak ?? false,
+          priorMiss: pm,
+        },
+      });
+      return;
+    }
+
+    // After block: defensive rebounder pick — undo block log; back to blocker jersey step.
+    if (
+      cur.step === 'pickRebounder' &&
+      cur.draft.reboundBranch === null &&
+      cur.draft.blockerSide !== null &&
+      cur.draft.lastOffensiveRebound !== null
+    ) {
+      const lor = cur.draft.lastOffensiveRebound;
+      setGameLog((prev) => {
+        const head = prev[0];
+        if (head && head.action === 'block') return prev.slice(1);
+        return prev;
+      });
+      setShotFlow({
+        ...cur,
+        step: 'pickBlocker',
+        draft: {
+          ...cur.draft,
+          rebounderSide: lor.side,
+          rebounderJersey: lor.jersey,
+          blockerSide: null,
+          blockerJersey: null,
+          lastOffensiveRebound: null,
+        },
+      });
+      return;
+    }
+
+    // Initial rebounder screen after a miss (court or panel): shot type + undo miss log / court marker.
+    if (
+      cur.step === 'pickRebounder' &&
+      (cur.entry === 'court' || cur.entry === 'player') &&
+      cur.draft.reboundBranch === null &&
+      cur.draft.blockerSide === null &&
+      cur.draft.lastOffensiveRebound === null
+    ) {
+      const d = cur.draft;
+      if (d.side !== null && d.shooterJersey !== null && d.shotType !== null) {
+        setGameLog((prev) => {
+          const head = prev[0];
+          if (
+            head &&
+            head.action === 'shot' &&
+            head.player === `#${d.shooterJersey}` &&
+            /missed/i.test(head.result)
+          ) {
+            return prev.slice(1);
+          }
+          return prev;
+        });
         if (cur.entry === 'court') {
-          return { ...cur, step: 'pickShooter', draft: { ...emptyShotDraft(), result: cur.draft.result } };
+          setCourtShotMarkers((prev) => {
+            if (prev.length === 0) return prev;
+            const last = prev[prev.length - 1];
+            if (last.kind === 'missed') return prev.slice(0, -1);
+            return prev;
+          });
+        }
+        setShotFlow({
+          entry: cur.entry,
+          step: 'shotType',
+          draft: {
+            ...emptyShotDraft(),
+            result: 'missed',
+            tipInCommit: false,
+            side: d.side,
+            shooterJersey: d.shooterJersey,
+            shotType: d.shotType,
+            fastBreak: d.fastBreak,
+          },
+        });
+        return;
+      }
+    }
+
+    setShotFlow((inner) => {
+      if (inner === 'idle') return inner;
+      if (inner.step === 'pickRebounder' && inner.draft.reboundBranch !== null) {
+        return { ...inner, draft: { ...inner.draft, reboundBranch: null } };
+      }
+      if (inner.step === 'assist') {
+        return { ...inner, step: 'shotType', draft: { ...inner.draft, shotType: null } };
+      }
+      if (inner.step === 'shotType') {
+        if (inner.entry === 'court') {
+          return {
+            ...inner,
+            step: 'pickShooter',
+            draft: { ...emptyShotDraft(), result: inner.draft.result },
+          };
         }
         return 'idle';
       }
-      return cur;
+      return inner;
     });
-  }, []);
+  }, [clearPendingCourtPoint]);
 
   const handleModalCancel = useCallback(() => {
     clearPendingCourtPoint();
@@ -650,6 +777,9 @@ const StatDash: React.FC = () => {
   }, [clearPendingCourtPoint]);
 
   const handlePickRebounder = useCallback((side: TeamSide, jersey: number) => {
+    /** Log after setShotFlow — never inside the updater (Strict Mode runs updaters twice in dev). */
+    let reboundLogRow: Omit<GameLogEntry, 'id'> | null = null;
+
     setShotFlow((prev) => {
       if (prev === 'idle' || prev.step !== 'pickRebounder') return prev;
 
@@ -659,32 +789,34 @@ const StatDash: React.FC = () => {
       const teamName = side === 'home' ? homeName : awayName;
       const branch = prev.draft.reboundBranch;
 
-      const logRebound = () => {
-        appendLog({
+      const markReboundLog = () => {
+        reboundLogRow = {
           period: periodLabel,
           clock: clockLabel,
           team: teamName,
           player: `#${jersey}`,
           action: 'rebound',
           result: 'Rebound',
-        });
+        };
       };
 
       // Simple rebound: tap jersey only (no modal branch) — end flow.
       if (branch === null) {
-        logRebound();
+        markReboundLog();
         pendingCourtClickRef.current = null;
         return 'idle';
       }
 
       // Block: offensive rebounder first, then blocker step.
       if (branch === 'block_involved') {
-        logRebound();
+        markReboundLog();
+        const priorMiss = snapshotPriorMiss(prev.draft);
         return {
           ...prev,
           step: 'pickBlocker',
           draft: {
             ...prev.draft,
+            priorMiss,
             rebounderSide: side,
             rebounderJersey: jersey,
             reboundBranch: null,
@@ -695,6 +827,7 @@ const StatDash: React.FC = () => {
             shooterJersey: null,
             shotType: null,
             fastBreak: false,
+            lastOffensiveRebound: null,
           },
         };
       }
@@ -723,12 +856,14 @@ const StatDash: React.FC = () => {
           return prev;
       }
 
-      logRebound();
+      markReboundLog();
+      const priorMiss = snapshotPriorMiss(prev.draft);
       return {
         ...prev,
         step: 'pickShooter',
         draft: {
           ...prev.draft,
+          priorMiss,
           rebounderSide: side,
           rebounderJersey: jersey,
           reboundBranch: null,
@@ -741,12 +876,19 @@ const StatDash: React.FC = () => {
           fastBreak: false,
           blockerSide: null,
           blockerJersey: null,
+          lastOffensiveRebound: null,
         },
       };
     });
+
+    if (reboundLogRow !== null) {
+      appendLog(reboundLogRow);
+    }
   }, [appendLog, awayName, clockLabel, homeName, periodLabel]);
 
   const handlePickBlocker = useCallback((side: TeamSide, jersey: number) => {
+    let blockLogRow: Omit<GameLogEntry, 'id'> | null = null;
+
     setShotFlow((prev) => {
       if (prev === 'idle' || prev.step !== 'pickBlocker') return prev;
 
@@ -759,14 +901,19 @@ const StatDash: React.FC = () => {
       if (!active.includes(jersey)) return prev;
 
       const teamName = side === 'home' ? homeName : awayName;
-      appendLog({
+      blockLogRow = {
         period: periodLabel,
         clock: clockLabel,
         team: teamName,
         player: `#${jersey}`,
         action: 'block',
         result: 'Block',
-      });
+      };
+
+      const lastOffensiveRebound =
+        prev.draft.rebounderSide !== null && prev.draft.rebounderJersey !== null
+          ? { side: prev.draft.rebounderSide, jersey: prev.draft.rebounderJersey }
+          : null;
 
       return {
         ...prev,
@@ -784,70 +931,84 @@ const StatDash: React.FC = () => {
           reboundBranch: null,
           deadBallReason: null,
           fastBreak: false,
+          lastOffensiveRebound,
         },
       };
     });
+
+    if (blockLogRow !== null) {
+      appendLog(blockLogRow);
+    }
   }, [appendLog, awayName, clockLabel, homeName, periodLabel]);
 
   const handlePickShooter = useCallback(
     (side: TeamSide, jersey: number) => {
-      const cur = shotFlowRef.current;
-      if (cur === 'idle' || cur.step !== 'pickShooter') return;
+      type TipCommitMeta = {
+        side: TeamSide;
+        jersey: number;
+        shotType: NonNullable<ActiveShotFlow['draft']['shotType']>;
+        result: 'made' | 'missed';
+      };
+      let tipCommitted: TipCommitMeta | null = null;
 
-      const active = side === 'home' ? activeRosterRef.current.home : activeRosterRef.current.away;
-      if (!active.includes(jersey)) return;
+      setShotFlow((prev) => {
+        if (prev === 'idle' || prev.step !== 'pickShooter') return prev;
 
-      // Tip-ins commit immediately after selecting the shooter.
-      if (cur.draft.tipInCommit) {
-        if (cur.draft.shotType === null) return;
-        const expectedShooterSide = cur.draft.rebounderSide;
-        if (expectedShooterSide !== null && side !== expectedShooterSide) return;
-        const result = cur.draft.result;
+        const active = side === 'home' ? activeRosterRef.current.home : activeRosterRef.current.away;
+        if (!active.includes(jersey)) return prev;
 
-        const teamName = side === 'home' ? homeName : awayName;
-        const points = getShotPoints(cur.draft.shotType);
+        if (prev.draft.tipInCommit) {
+          const { shotType, rebounderSide, result } = prev.draft;
+          if (shotType === null) return prev;
+          if (rebounderSide !== null && side !== rebounderSide) return prev;
+
+          tipCommitted = { side, jersey, shotType, result };
+          if (result === 'made') return 'idle';
+          return {
+            entry: 'court',
+            step: 'pickRebounder',
+            draft: { ...emptyShotDraft(), result: 'missed', tipInCommit: false },
+          };
+        }
+
+        return {
+          ...prev,
+          step: 'shotType',
+          draft: { ...prev.draft, side, shooterJersey: jersey },
+        };
+      });
+
+      if (tipCommitted !== null) {
+        const { side: s, jersey: j, shotType, result } = tipCommitted;
+        const teamName = s === 'home' ? homeName : awayName;
+        const points = getShotPoints(shotType);
         if (result === 'made') {
-          if (side === 'home') setHomeScore((s) => s + points);
-          else setAwayScore((s) => s + points);
+          if (s === 'home') setHomeScore((x) => x + points);
+          else setAwayScore((x) => x + points);
         }
 
         appendLog({
           period: periodLabel,
           clock: clockLabel,
           team: teamName,
-          player: `#${jersey}`,
+          player: `#${j}`,
           action: 'shot',
-          result: shotTypeResultPhrase(cur.draft.shotType, result),
+          result: shotTypeResultPhrase(shotType, result),
         });
 
         const clickPt = pendingCourtClickRef.current;
         if (clickPt) {
-          const shotColor = side === 'home' ? homeTeamColor : awayTeamColor;
-          setCourtShotMarkers((prev) => [
-            ...prev,
+          const shotColor = s === 'home' ? homeTeamColor : awayTeamColor;
+          setCourtShotMarkers((prevM) => [
+            ...prevM,
             { ...clickPt, color: shotColor, kind: result === 'missed' ? 'missed' : 'made' },
           ]);
         }
 
         if (result === 'made') {
           pendingCourtClickRef.current = null;
-          setShotFlow('idle');
-        } else {
-          // Missed tip-in: continue the live-ball rebound loop.
-          setShotFlow({
-            entry: 'court',
-            step: 'pickRebounder',
-            draft: { ...emptyShotDraft(), result: 'missed', tipInCommit: false },
-          });
         }
-        return;
       }
-
-      setShotFlow({
-        ...cur,
-        step: 'shotType',
-        draft: { ...cur.draft, side, shooterJersey: jersey },
-      });
     },
     [
       appendLog,
@@ -864,20 +1025,22 @@ const StatDash: React.FC = () => {
 
   const handleSelectReboundOutcome = useCallback(
     (outcome: ReboundOutcomeId) => {
+      let deadBallLogRow: Omit<GameLogEntry, 'id'> | null = null;
+
       setShotFlow((prev) => {
         if (prev === 'idle' || prev.step !== 'pickRebounder') return prev;
 
         if (outcome === 'dead_out_of_bounds' || outcome === 'dead_shot_clock_violation') {
           const reason =
             outcome === 'dead_out_of_bounds' ? 'Out of bounds' : '24 sec violation';
-          appendLog({
+          deadBallLogRow = {
             period: periodLabel,
             clock: clockLabel,
             team: 'Officials',
             player: '—',
             action: 'dead ball',
             result: reason,
-          });
+          };
           pendingCourtClickRef.current = null;
           return 'idle';
         }
@@ -887,6 +1050,10 @@ const StatDash: React.FC = () => {
           draft: { ...prev.draft, reboundBranch: outcome },
         };
       });
+
+      if (deadBallLogRow !== null) {
+        appendLog(deadBallLogRow);
+      }
     },
     [appendLog, clockLabel, periodLabel]
   );
@@ -924,7 +1091,15 @@ const StatDash: React.FC = () => {
         setShotFlow({
           entry: 'court',
           step: 'pickRebounder',
-          draft: { ...emptyShotDraft(), result: 'missed', tipInCommit: false },
+          draft: {
+            ...emptyShotDraft(),
+            result: 'missed',
+            tipInCommit: false,
+            side: nextDraft.side,
+            shooterJersey: nextDraft.shooterJersey,
+            shotType,
+            fastBreak: nextDraft.fastBreak,
+          },
         });
       } else {
         pendingCourtClickRef.current = null;
@@ -1107,6 +1282,11 @@ const StatDash: React.FC = () => {
   );
 
   const handleSidePlayerPrimaryClick = useCallback((side: TeamSide, jersey: number) => {
+    if (foulPickerOpenRef.current && foulFlowRef.current === 'idle') {
+      handleFoulPanelPickerSelect(side, { kind: 'player', jersey });
+      return;
+    }
+
     const activeShot = shotFlowRef.current;
     if (activeShot !== 'idle') {
       if (activeShot.step === 'pickRebounder') {
@@ -1172,6 +1352,7 @@ const StatDash: React.FC = () => {
     }
   }, [
     handleFoulFtAssistSelect,
+    handleFoulPanelPickerSelect,
     handleFoulPickFouled,
     handleFoulPickFouler,
     handleFoulPickRebounder,
@@ -1322,11 +1503,22 @@ const StatDash: React.FC = () => {
     setQuarter((q) => Math.min(4, q + 1));
     setTimerSeconds(QUARTER_DURATION_SEC);
     setQuarterBreakPending(false);
+    setQuarterEndAwaitingFinish(false);
     setQuarterBreakModalOpen(false);
   }, []);
 
   const handleQuarterBreakKeepReviewing = useCallback(() => {
     setQuarterBreakModalOpen(false);
+    setQuarterEndAwaitingFinish(true);
+  }, []);
+
+  const handleQuarterFinishReopen = useCallback(() => {
+    setQuarterBreakModalOpen(true);
+  }, []);
+
+  const handleClearGameLog = useCallback(() => {
+    if (!window.confirm('Clear the entire game log? This cannot be undone.')) return;
+    setGameLog([]);
   }, []);
 
   const handleOpenLogEditor = useCallback((entry: GameLogEntry) => {
@@ -1374,6 +1566,89 @@ const StatDash: React.FC = () => {
     [gameLog]
   );
 
+  useEffect(() => {
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const t = e.target as HTMLElement | null;
+      if (t?.closest('input, textarea, select, [contenteditable="true"]')) return;
+
+      if (editingLog !== null) {
+        e.preventDefault();
+        setEditingLog(null);
+        return;
+      }
+      if (subModalOpen) {
+        e.preventDefault();
+        handleSubstitutionCancel();
+        return;
+      }
+      if (quarterBreakModalOpen) {
+        e.preventDefault();
+        setQuarterBreakModalOpen(false);
+        setQuarterEndAwaitingFinish(true);
+        return;
+      }
+      if (switchSidesOpen) {
+        e.preventDefault();
+        setSwitchSidesOpen(false);
+        return;
+      }
+      if (startersModalOpen) {
+        e.preventDefault();
+        setStartersModalOpen(false);
+        return;
+      }
+      if (timeoutModalOpen) {
+        e.preventDefault();
+        handleTimeoutModalCancel();
+        return;
+      }
+      if (jumpBallModalOpen) {
+        e.preventDefault();
+        handleJumpBallCancel();
+        return;
+      }
+      if (foulPickerOpen) {
+        e.preventDefault();
+        handleFoulPanelPickerCancel();
+        return;
+      }
+      if (shotFlowRef.current !== 'idle') {
+        e.preventDefault();
+        handleModalCancel();
+        return;
+      }
+      if (foulFlowRef.current !== 'idle') {
+        e.preventDefault();
+        handleFoulFlowCancel();
+        return;
+      }
+      if (turnoverFlowRef.current !== 'idle') {
+        e.preventDefault();
+        handleTurnoverFlowCancel();
+        return;
+      }
+    };
+    window.addEventListener('keydown', onEscape);
+    return () => window.removeEventListener('keydown', onEscape);
+  }, [
+    editingLog,
+    subModalOpen,
+    quarterBreakModalOpen,
+    switchSidesOpen,
+    startersModalOpen,
+    timeoutModalOpen,
+    jumpBallModalOpen,
+    foulPickerOpen,
+    handleSubstitutionCancel,
+    handleTimeoutModalCancel,
+    handleJumpBallCancel,
+    handleFoulPanelPickerCancel,
+    handleModalCancel,
+    handleFoulFlowCancel,
+    handleTurnoverFlowCancel,
+  ]);
+
   return (
     <div
       className="relative flex min-h-[90dvh] flex-col overflow-hidden text-gray-900"
@@ -1383,6 +1658,7 @@ const StatDash: React.FC = () => {
       <MenuBar
         onSwitchTeamSide={() => setSwitchSidesOpen(true)}
         onStarters={() => setStartersModalOpen(true)}
+        onClearGameLog={handleClearGameLog}
       />
 
       <EdgeTeamDrawer
@@ -1427,6 +1703,8 @@ const StatDash: React.FC = () => {
                 onJumpBall={openJumpBallModal}
                 onSub={openSubstitutionModal}
                 reverseSides={!homeOnLeft}
+                showQuarterFinish={quarterEndAwaitingFinish}
+                onQuarterFinish={handleQuarterFinishReopen}
               />
             </div>
           </div>

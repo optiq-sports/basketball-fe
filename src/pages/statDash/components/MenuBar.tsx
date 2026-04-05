@@ -24,6 +24,7 @@ const MENU_GROUPS: { id: MenuGroupId; items: MenuItemDef[] }[] = [
     items: [
       { label: 'Switch Team Side' },
       { label: 'Starters' },
+      { label: 'Clear game log' },
       { label: 'Setup Quarters' },
       { label: 'Finish Match' },
       { label: 'Export Game' },
@@ -59,9 +60,10 @@ const labelFontSize = { fontSize: cl('10px', '1vw', '12px') };
 export interface MenuBarProps {
   onSwitchTeamSide?: () => void;
   onStarters?: () => void;
+  onClearGameLog?: () => void;
 }
 
-const MenuBar: React.FC<MenuBarProps> = ({ onSwitchTeamSide, onStarters }) => {
+const MenuBar: React.FC<MenuBarProps> = ({ onSwitchTeamSide, onStarters, onClearGameLog }) => {
   const navigate = useNavigate();
   const [openId, setOpenId] = useState<MenuGroupId | null>(null);
   const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
@@ -91,6 +93,15 @@ const MenuBar: React.FC<MenuBarProps> = ({ onSwitchTeamSide, onStarters }) => {
               },
             };
           }
+          if (item.label === 'Clear game log') {
+            return {
+              ...item,
+              onSelect: () => {
+                close();
+                onClearGameLog?.();
+              },
+            };
+          }
           return item;
         });
       }
@@ -108,7 +119,7 @@ const MenuBar: React.FC<MenuBarProps> = ({ onSwitchTeamSide, onStarters }) => {
         return item;
       });
     },
-    [close, onSwitchTeamSide, onStarters]
+    [close, onSwitchTeamSide, onStarters, onClearGameLog]
   );
 
   useEffect(() => {

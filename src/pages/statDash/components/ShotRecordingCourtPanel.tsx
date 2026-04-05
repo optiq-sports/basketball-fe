@@ -109,10 +109,30 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
 }) => {
   const { entry, step, draft } = flow;
 
+  const canBackFromInitialMissRebound =
+    step === 'pickRebounder' &&
+    (entry === 'court' || entry === 'player') &&
+    draft.reboundBranch === null &&
+    draft.blockerSide === null &&
+    draft.lastOffensiveRebound === null &&
+    draft.side !== null &&
+    draft.shooterJersey !== null &&
+    draft.shotType !== null;
+
+  const canBackFromPostBlockDefRebound =
+    step === 'pickRebounder' &&
+    draft.reboundBranch === null &&
+    draft.blockerSide !== null &&
+    draft.lastOffensiveRebound !== null;
+
   const showBack =
+    step === 'pickShooter' ||
+    step === 'pickBlocker' ||
     step === 'assist' ||
     (step === 'shotType' && (entry === 'court' || entry === 'player')) ||
-    (step === 'pickRebounder' && draft.reboundBranch !== null);
+    (step === 'pickRebounder' && draft.reboundBranch !== null) ||
+    canBackFromInitialMissRebound ||
+    canBackFromPostBlockDefRebound;
 
   const titleClass =
     'mb-2 text-center text-[11px] font-bold uppercase leading-tight tracking-wide sm:mb-3 sm:text-xs';
@@ -129,13 +149,7 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
         {step === 'pickShooter' && (
           <>
             <h2 id="shot-flow-title" className={titleClass} style={titleStyle}>
-              {draft.tipInCommit
-                ? draft.result === 'made'
-                  ? 'Tip-in (made)'
-                  : 'Tip-in (miss)'
-                : draft.result === 'made'
-                  ? 'Select shooter (made)'
-                  : 'Select shooter (miss)'}
+              {draft.result === 'made' ? 'Select shooter (made)' : 'Select shooter (miss)'}
             </h2>
             <div className="mx-auto mb-2 max-w-[360px] space-y-1.5 text-center text-[11px] leading-snug text-gray-600 sm:text-xs">
               {draft.tipInCommit && draft.rebounderSide !== null ? (
@@ -146,13 +160,13 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
                   </p>
                   {draft.result === 'made' ? (
                     <p>
-                      Tap the jersey of the player who <strong>made</strong> the tip-in. The play ends after you pick
-                      them (no rebound step).
+                      Tap the jersey of the player who <strong>made</strong> the putback after the offensive rebound.
+                      The play ends after you select them.
                     </p>
                   ) : (
                     <p>
-                      Tap the jersey of the player who <strong>missed</strong> the tip-in. You will return to{' '}
-                      <strong>Select rebounder</strong> next — still use the side panels, not the court buttons here.
+                      Tap the jersey of the player who <strong>missed</strong> the putback. You will return to{' '}
+                      <strong>Select rebounder</strong> next — use the side panels, not the court here.
                     </p>
                   )}
                 </>
@@ -170,6 +184,12 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
             <h2 id="shot-flow-title" className={titleClass} style={titleStyle}>
               Select rebounder
             </h2>
+            {draft.reboundBranch !== null && (
+              <p className="mx-auto mb-2 max-w-[360px] text-center text-[11px] leading-snug text-gray-600 sm:text-xs">
+                Now tap the rebounder&apos;s jersey in the <strong>{homeName}</strong> or <strong>{awayName}</strong> side
+                column.
+              </p>
+            )}
 
             <div className="mx-auto grid max-w-[360px] grid-cols-1 gap-2">
               <div className="rounded-lg bg-gray-200 px-3 py-2.5">
@@ -246,10 +266,10 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
         {step === 'pickBlocker' && (
           <>
             <h2 id="shot-flow-title" className={titleClass} style={titleStyle}>
-              Select blocker
+              Select player (block)
             </h2>
             <p className="mx-auto max-w-[360px] text-center text-[11px] leading-snug text-gray-600 sm:text-xs">
-              Defensive team only — then back to rebounder if play continues.
+              Defensive team only — then back to <strong>Select rebounder</strong> if play continues.
             </p>
           </>
         )}

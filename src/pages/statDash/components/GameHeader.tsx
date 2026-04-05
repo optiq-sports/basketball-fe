@@ -23,6 +23,8 @@ export interface GameHeaderProps {
   onJumpBall?: () => void;
   onSub?: () => void;
   reverseSides?: boolean;
+  showQuarterFinish?: boolean;
+  onQuarterFinish?: () => void;
 }
 
 const GameHeader: React.FC<GameHeaderProps> = (props) => {
@@ -44,6 +46,8 @@ const GameHeader: React.FC<GameHeaderProps> = (props) => {
     onJumpBall,
     onSub,
     reverseSides = false,
+    showQuarterFinish = false,
+    onQuarterFinish,
   } = props;
 
   const gap = cl('6px', '1vw', '14px');
@@ -76,6 +80,8 @@ const GameHeader: React.FC<GameHeaderProps> = (props) => {
             onTick={onTick}
             onAdjustMinutes={onAdjustMinutes}
             onAdjustSeconds={onAdjustSeconds}
+            showQuarterFinish={showQuarterFinish}
+            onQuarterFinish={onQuarterFinish}
           />
           <div
             className="w-full rounded-lg"

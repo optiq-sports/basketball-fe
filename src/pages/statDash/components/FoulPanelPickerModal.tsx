@@ -10,8 +10,6 @@ export interface FoulPanelPickerModalProps {
   awayName: string;
   homeColor: string;
   awayColor: string;
-  homeOnCourt: number[];
-  awayOnCourt: number[];
   homeBench: number[];
   awayBench: number[];
   onPick: (side: TeamSide, pick: PanelFoulPick) => void;
@@ -69,39 +67,21 @@ function SideColumn({
   side,
   teamName,
   accentColor,
-  onCourt,
   bench,
   onPick,
 }: {
   side: TeamSide;
   teamName: string;
   accentColor: string;
-  onCourt: number[];
   bench: number[];
   onPick: (pick: PanelFoulPick) => void;
 }) {
-  const onCourtSorted = useMemo(() => [...onCourt].sort((a, b) => a - b), [onCourt]);
   const benchSorted = useMemo(() => [...bench].sort((a, b) => a - b), [bench]);
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
       <span className="text-center text-[10px] font-semibold text-gray-600">{teamName}</span>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden">
-        <div className="flex flex-col gap-1">
-          <span className="text-center text-[8px] font-semibold uppercase tracking-wide text-gray-500">
-            On court
-          </span>
-          <div className="flex flex-col items-center gap-1">
-            {onCourtSorted.map((n, idx) => (
-              <JerseyButton
-                key={`${side}-court-${idx}-${n}`}
-                jersey={n}
-                accentColor={accentColor}
-                onClick={() => onPick({ kind: 'player', jersey: n })}
-              />
-            ))}
-          </div>
-        </div>
         <div className="flex flex-col gap-1">
           <span className="text-center text-[8px] font-semibold uppercase tracking-wide text-gray-500">
             Bench
@@ -129,15 +109,13 @@ function SideColumn({
 }
 
 /**
- * FOUL strip: in-court panel (same shell as shot flow) — on-court, bench jerseys, generic bench, coach.
+ * FOUL strip: bench jerseys, team bench, coach. On-court fouler: use side column jerseys while this modal is open.
  */
 const FoulPanelPickerModal: React.FC<FoulPanelPickerModalProps> = ({
   homeName,
   awayName,
   homeColor,
   awayColor,
-  homeOnCourt,
-  awayOnCourt,
   homeBench,
   awayBench,
   onPick,
@@ -156,14 +134,13 @@ const FoulPanelPickerModal: React.FC<FoulPanelPickerModalProps> = ({
     >
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-2 pt-3 sm:px-3 sm:pt-4">
         <h2 id="foul-panel-picker-title" className={titleClass} style={titleStyle}>
-          Select fouler: on-court, bench jersey, team bench, or coach
+          Select fouler: bench jersey, team bench, or coach
         </h2>
         <div className="flex min-h-0 flex-row justify-center gap-3 sm:gap-6">
           <SideColumn
             side="home"
             teamName={homeName}
             accentColor={homeColor}
-            onCourt={homeOnCourt}
             bench={homeBench}
             onPick={(pick) => onPick('home', pick)}
           />
@@ -171,7 +148,6 @@ const FoulPanelPickerModal: React.FC<FoulPanelPickerModalProps> = ({
             side="away"
             teamName={awayName}
             accentColor={awayColor}
-            onCourt={awayOnCourt}
             bench={awayBench}
             onPick={(pick) => onPick('away', pick)}
           />

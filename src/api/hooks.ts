@@ -65,6 +65,9 @@ export function useProfile(enabled = true) {
       return res.data;
     },
     enabled: enabled && hasToken,
+    /** App default staleTime is 5m; profile must revalidate so expired tokens are not hidden behind cache. */
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 }
 
