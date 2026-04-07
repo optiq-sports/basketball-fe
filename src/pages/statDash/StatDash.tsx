@@ -1045,6 +1045,39 @@ const StatDash: React.FC = () => {
           return 'idle';
         }
 
+        if (
+          outcome === 'tipin_layup_miss' ||
+          outcome === 'tipin_dunk_miss' ||
+          outcome === 'tipin_layup_made' ||
+          outcome === 'tipin_dunk_made'
+        ) {
+          const tipInShotType: ShotTypeId =
+            outcome === 'tipin_layup_miss' || outcome === 'tipin_layup_made' ? 'layup' : 'dunk';
+          const tipInResult: 'made' | 'missed' =
+            outcome === 'tipin_layup_made' || outcome === 'tipin_dunk_made' ? 'made' : 'missed';
+          return {
+            ...prev,
+            step: 'pickShooter',
+            draft: {
+              ...prev.draft,
+              priorMiss: snapshotPriorMiss(prev.draft),
+              tipInCommit: true,
+              shotType: tipInShotType,
+              result: tipInResult,
+              side: null,
+              shooterJersey: null,
+              reboundBranch: null,
+              rebounderSide: null,
+              rebounderJersey: null,
+              deadBallReason: null,
+              blockerSide: null,
+              blockerJersey: null,
+              lastOffensiveRebound: null,
+              fastBreak: false,
+            },
+          };
+        }
+
         return {
           ...prev,
           draft: { ...prev.draft, reboundBranch: outcome },
