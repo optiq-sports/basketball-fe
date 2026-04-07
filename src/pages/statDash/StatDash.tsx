@@ -113,6 +113,7 @@ const StatDash: React.FC = () => {
   const [jumpBallModalOpen, setJumpBallModalOpen] = useState(false);
   const jumpBallModalOpenRef = useRef(false);
   jumpBallModalOpenRef.current = jumpBallModalOpen;
+  const [startGamePromptOpen, setStartGamePromptOpen] = useState(false);
 
   const [homeLineup, setHomeLineup] = useState<TeamLineup>(() => cloneLineup(DEFAULT_TEAM_LINEUP));
   const [awayLineup, setAwayLineup] = useState<TeamLineup>(() => cloneLineup(DEFAULT_TEAM_LINEUP));
@@ -204,13 +205,23 @@ const StatDash: React.FC = () => {
     setQuarterEndAwaitingFinish(false);
   }, [isRunning, timerSeconds, quarter]);
 
-  // Jump-ball page -> StatDash: start the timer once the winner has been selected.
+  // Jump-ball page -> StatDash: prompt before starting the game clock.
   useEffect(() => {
     const winner = readJumpBallWinner();
     if (!winner) return;
-    setIsRunning(true);
+    setStartGamePromptOpen(true);
     setQuarterBreakPending(false);
     clearJumpBallWinner();
+  }, []);
+
+  const handleStartGamePromptConfirm = useCallback(() => {
+    setIsRunning(true);
+    setQuarterBreakPending(false);
+    setStartGamePromptOpen(false);
+  }, []);
+
+  const handleStartGamePromptSkip = useCallback(() => {
+    setStartGamePromptOpen(false);
   }, []);
 
   const onAdjustMinutes = useCallback((delta: number) => {
@@ -1848,6 +1859,33 @@ const StatDash: React.FC = () => {
                 className="rounded bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700"
               >
                 Yes, next quarter
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {startGamePromptOpen && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-4 shadow-lg">
+            <h3 className="text-base font-bold text-gray-900">Start game?</h3>
+            <p className="mt-2 text-sm text-gray-700">
+              Jump ball is set. Do you want to start the game clock now?
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleStartGamePromptSkip}
+                className="rounded border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+              >
+                Not yet
+              </button>
+              <button
+                type="button"
+                onClick={handleStartGamePromptConfirm}
+                className="rounded bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700"
+              >
+                Start game
               </button>
             </div>
           </div>
