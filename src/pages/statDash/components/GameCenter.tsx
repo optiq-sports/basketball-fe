@@ -163,12 +163,12 @@ const GameCenter: React.FC<GameCenterProps> = ({
       ? shotFlow.draft.rebounderSide
       : null;
 
-  const pickBlockerDefenseSide: TeamSide | null =
-    shotActive &&
-    shotFlow.step === 'pickBlocker' &&
-    shotFlow.draft.rebounderSide !== null
-      ? opponentOf(shotFlow.draft.rebounderSide)
+  const pickBlockerOffenseSide: TeamSide | null =
+    shotActive && shotFlow.step === 'pickBlocker'
+      ? (shotFlow.draft.side ?? shotFlow.draft.priorMiss?.side ?? null)
       : null;
+  const pickBlockerDefenseSide: TeamSide | null =
+    pickBlockerOffenseSide !== null ? opponentOf(pickBlockerOffenseSide) : null;
 
   const homePanelLocked =
     playerInteractionsLocked ||

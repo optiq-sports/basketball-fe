@@ -122,8 +122,7 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
   const canBackFromPostBlockDefRebound =
     step === 'pickRebounder' &&
     draft.reboundBranch === null &&
-    draft.blockerSide !== null &&
-    draft.lastOffensiveRebound !== null;
+    draft.blockerSide !== null;
 
   const showBack =
     step === 'pickShooter' ||

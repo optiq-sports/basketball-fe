@@ -583,10 +583,30 @@ const StatDash: React.FC = () => {
         setFoulFlow('idle');
         return;
       }
-      setFoulFlow({
-        ...cur,
-        step: 'rebounder',
-        draft: { ...draft, ftResults: nextResults },
+      const finished = { ...draft, ftResults: nextResults };
+      const fromCourt = cur.entry === 'court';
+      commitFoulWithFtSequence(finished, { skipRebound: true });
+      if (fromCourt) {
+        const pt = pendingCourtClickRef.current;
+        if (pt && finished.foulerSide !== null) {
+          const foulColor =
+            finished.foulerSide === 'home' ? homeTeamColor : awayTeamColor;
+          setCourtFoulMarkers((prev) => [...prev, { ...pt, color: foulColor }]);
+          pendingCourtClickRef.current = null;
+        }
+      } else {
+        pendingCourtClickRef.current = null;
+      }
+      const fouledSide = finished.foulerSide !== null ? opponentOf(finished.foulerSide) : null;
+      setFoulFlow('idle');
+      setShotFlow({
+        entry: cur.entry === 'court' ? 'court' : 'player',
+        step: 'pickRebounder',
+        draft: {
+          ...emptyShotDraft(),
+          result: 'missed',
+          side: fouledSide,
+        },
       });
     },
     [commitFoulWithFtSequence, homeTeamColor, awayTeamColor]
@@ -659,40 +679,27 @@ const StatDash: React.FC = () => {
       return;
     }
 
-    // Blocker step: undo offensive rebound log; back to block branch on rebounder screen.
+    // Blocker step: go back to rebound options.
     if (cur.step === 'pickBlocker') {
-      const pm = cur.draft.priorMiss;
-      setGameLog((prev) => {
-        const head = prev[0];
-        if (head && head.action === 'rebound') return prev.slice(1);
-        return prev;
-      });
       setShotFlow({
-        entry: cur.entry,
+        ...cur,
         step: 'pickRebounder',
         draft: {
-          ...emptyShotDraft(),
-          result: 'missed',
-          tipInCommit: false,
-          reboundBranch: 'block_involved',
-          side: pm?.side ?? null,
-          shooterJersey: pm?.shooterJersey ?? null,
-          shotType: pm?.shotType ?? null,
-          fastBreak: pm?.fastBreak ?? false,
-          priorMiss: pm,
+          ...cur.draft,
+          reboundBranch: null,
+          blockerSide: null,
+          blockerJersey: null,
         },
       });
       return;
     }
 
-    // After block: defensive rebounder pick — undo block log; back to blocker jersey step.
+    // After block: rebound options — undo latest block log; back to blocker jersey step.
     if (
       cur.step === 'pickRebounder' &&
       cur.draft.reboundBranch === null &&
-      cur.draft.blockerSide !== null &&
-      cur.draft.lastOffensiveRebound !== null
+      cur.draft.blockerSide !== null
     ) {
-      const lor = cur.draft.lastOffensiveRebound;
       setGameLog((prev) => {
         const head = prev[0];
         if (head && head.action === 'block') return prev.slice(1);
@@ -703,11 +710,8 @@ const StatDash: React.FC = () => {
         step: 'pickBlocker',
         draft: {
           ...cur.draft,
-          rebounderSide: lor.side,
-          rebounderJersey: lor.jersey,
           blockerSide: null,
           blockerJersey: null,
-          lastOffensiveRebound: null,
         },
       });
       return;
@@ -903,8 +907,11 @@ const StatDash: React.FC = () => {
     setShotFlow((prev) => {
       if (prev === 'idle' || prev.step !== 'pickBlocker') return prev;
 
-      const expectedBlockerSide =
-        prev.draft.rebounderSide === null ? null : opponentOf(prev.draft.rebounderSide);
+      const offenseSide =
+        prev.draft.priorMiss?.side ??
+        prev.draft.side ??
+        (prev.draft.blockerSide !== null ? opponentOf(prev.draft.blockerSide) : null);
+      const expectedBlockerSide = offenseSide === null ? null : opponentOf(offenseSide);
       if (expectedBlockerSide === null) return prev;
       if (side !== expectedBlockerSide) return prev;
 
@@ -921,16 +928,12 @@ const StatDash: React.FC = () => {
         result: 'Block',
       };
 
-      const lastOffensiveRebound =
-        prev.draft.rebounderSide !== null && prev.draft.rebounderJersey !== null
-          ? { side: prev.draft.rebounderSide, jersey: prev.draft.rebounderJersey }
-          : null;
-
       return {
         ...prev,
         step: 'pickRebounder',
         draft: {
           ...prev.draft,
+          side: offenseSide,
           blockerSide: side,
           blockerJersey: jersey,
           rebounderSide: null,
@@ -942,7 +945,7 @@ const StatDash: React.FC = () => {
           reboundBranch: null,
           deadBallReason: null,
           fastBreak: false,
-          lastOffensiveRebound,
+          lastOffensiveRebound: null,
         },
       };
     });
@@ -1054,6 +1057,33 @@ const StatDash: React.FC = () => {
           };
           pendingCourtClickRef.current = null;
           return 'idle';
+        }
+
+        if (outcome === 'block_involved') {
+          const offenseSide =
+            prev.draft.priorMiss?.side ??
+            prev.draft.side ??
+            (prev.draft.blockerSide !== null ? opponentOf(prev.draft.blockerSide) : null);
+          return {
+            ...prev,
+            step: 'pickBlocker',
+            draft: {
+              ...prev.draft,
+              priorMiss: prev.draft.priorMiss ?? snapshotPriorMiss(prev.draft),
+              side: offenseSide,
+              shooterJersey: null,
+              shotType: null,
+              reboundBranch: null,
+              rebounderSide: null,
+              rebounderJersey: null,
+              blockerSide: null,
+              blockerJersey: null,
+              deadBallReason: null,
+              tipInCommit: false,
+              fastBreak: false,
+              lastOffensiveRebound: null,
+            },
+          };
         }
 
         if (
