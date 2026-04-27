@@ -1143,6 +1143,7 @@ const StatDash: React.FC = () => {
 
   const handlePickBlocker = useCallback((side: TeamSide, jersey: number) => {
     let blockLogRow: Omit<GameLogEntry, 'id'> | null = null;
+    let blockedShooter: { side: TeamSide; jersey: number } | null = null;
 
     setShotFlow((prev) => {
       if (prev === 'idle' || prev.step !== 'pickBlocker') return prev;
@@ -1159,6 +1160,9 @@ const StatDash: React.FC = () => {
       if (!active.includes(jersey)) return prev;
 
       const teamName = side === 'home' ? homeName : awayName;
+      if (offenseSide !== null && prev.draft.shooterJersey !== null) {
+        blockedShooter = { side: offenseSide, jersey: prev.draft.shooterJersey };
+      }
       blockLogRow = {
         period: periodLabel,
         clock: clockLabel,
@@ -1192,10 +1196,11 @@ const StatDash: React.FC = () => {
 
     if (blockLogRow !== null) {
       void (async () => {
+        if (!blockedShooter) return;
         const committed = await commitEventCommand('block', {
           teamId: getTeamIdForSide(side),
           blockerPlayerId: getPlayerId(side, jersey),
-          againstPlayerId: getPlayerId(opponentOf(side), 0),
+          againstPlayerId: getPlayerId(blockedShooter.side, blockedShooter.jersey),
         });
         if (!committed) return;
         appendLog(blockLogRow);
@@ -1779,12 +1784,28 @@ const StatDash: React.FC = () => {
     const awayDiff = diffLineupOnCourt(awayLineup, subDraftAway);
     const summary = `${formatSubstitutionDiff(homeName, homeDiff)} · ${formatSubstitutionDiff(awayName, awayDiff)}`;
     void (async () => {
-      const committed = await commitEventCommand('substitution', {
-        teamId: readStoredSessionContext()?.homeTeamId ?? 'home_team',
-        playerOutId: 'unknown_out',
-        playerInId: 'unknown_in',
-      });
-      if (!committed) return;
+      const submitTeamSubs = async (
+        side: TeamSide,
+        diff: { out: number[]; in: number[] },
+      ): Promise<boolean> => {
+        if (diff.out.length !== diff.in.length) {
+          setSyncNotice('Substitution mismatch detected. Keep one-out/one-in pairs per team.');
+          return false;
+        }
+        for (let idx = 0; idx < diff.out.length; idx += 1) {
+          const committed = await commitEventCommand('substitution', {
+            teamId: getTeamIdForSide(side),
+            playerOutId: getPlayerId(side, diff.out[idx]),
+            playerInId: getPlayerId(side, diff.in[idx]),
+          });
+          if (!committed) return false;
+        }
+        return true;
+      };
+
+      if (!(await submitTeamSubs('home', homeDiff))) return;
+      if (!(await submitTeamSubs('away', awayDiff))) return;
+
       appendLog({
         period: periodLabel,
         clock: clockLabel,
@@ -1796,6 +1817,7 @@ const StatDash: React.FC = () => {
       setHomeLineup(cloneLineup(subDraftHome));
       setAwayLineup(cloneLineup(subDraftAway));
       setSubModalOpen(false);
+      setSyncNotice(null);
     })();
   }, [
     subDraftHome,
@@ -1818,7 +1840,8 @@ const StatDash: React.FC = () => {
     (choice: TimeoutChoice) => {
       void (async () => {
         const committed = await commitEventCommand('timeout', {
-          timeoutType: choice === 'official' ? 'official' : 'full',
+          teamId: choice === 'away' ? getTeamIdForSide('away') : getTeamIdForSide('home'),
+          timeoutType: choice === 'officials' ? 'official' : 'full',
         });
         if (!committed) return;
       if (choice === 'home') {
