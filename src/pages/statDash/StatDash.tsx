@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
 import StatisticianFullscreenGate from '../../components/StatisticianFullscreenGate';
 import MenuBar from './components/MenuBar';
 import EdgeTeamDrawer from './components/EdgeTeamDrawer';
@@ -69,7 +68,6 @@ import {
   commandsApi,
   createSessionSseClient,
   sessionsApi,
-  StatDashApiError,
   type CommandAcceptedResponse,
   type SessionStateSnapshot,
   type RealtimeSessionMessage,
@@ -79,7 +77,8 @@ import {
   readStoredSessionContext,
   writeStoredExpectedVersion,
 } from '../../features/statdash/sessionContextStorage';
-import { generateIdempotencyKey, withSafeCommandRetry } from '../../features/statdash/utils';
+import { generateIdempotencyKey } from '../../features/statdash/utils';
+import { useEventQueue } from '../../features/statdash/eventQueue/useEventQueue';
 
 const DEFAULT_HOME = 'TEAM 1';
 const DEFAULT_AWAY = 'TEAM 2';
@@ -100,7 +99,6 @@ function newLogId(): string {
 
 const StatDash: React.FC = () => {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const initialOrientation = useMemo(() => readGameSetupOrientation(), []);
   const [homeOnLeft, setHomeOnLeft] = useState(initialOrientation.homeOnLeft);
   const [homeAttacksLeft, setHomeAttacksLeft] = useState(initialOrientation.homeAttacksLeft);
@@ -213,6 +211,7 @@ const StatDash: React.FC = () => {
     setGameLog((prev) => [{ id: newLogId(), ...row }, ...prev]);
   }, []);
   const latestVersionRef = useRef<number>(readStoredExpectedVersion());
+  const pendingCountRef = useRef(0);
 
   const applyAuthoritativeState = useCallback((state: SessionStateSnapshot) => {
     setHomeScore(state.score.home);
@@ -232,6 +231,27 @@ const StatDash: React.FC = () => {
     return `${getTeamIdForSide(side)}_${jersey}`;
   }, [getTeamIdForSide]);
 
+  const { enqueue, queue, pendingCount, failedCount, isOnline, retryFailed } = useEventQueue({
+    onCommandAccepted: (_event, response) => {
+      writeStoredExpectedVersion(response.version);
+      latestVersionRef.current = response.version;
+      setHomeScore(response.score.home);
+      setAwayScore(response.score.away);
+      if (pendingCountRef.current === 0) {
+        setSyncNotice(null);
+      }
+    },
+    onCommandFailed: (_event, error) => {
+      if (error instanceof Error) {
+        setSyncNotice(error.message);
+      }
+    },
+  });
+
+  useEffect(() => {
+    pendingCountRef.current = pendingCount;
+  }, [pendingCount]);
+
   const commitEventCommand = useCallback(
     async (
       commandType: string,
@@ -242,49 +262,28 @@ const StatDash: React.FC = () => {
         navigate('/match-key', { replace: true });
         return null;
       }
-      try {
-        const response = await withSafeCommandRetry(
-          () =>
-            commandsApi.sendCommand({
-              sessionId: context.sessionId,
-              commandType,
-              payload,
-              expectedVersion: readStoredExpectedVersion(),
-              idempotencyKey: generateIdempotencyKey(),
-            }),
-          { retries: 1 },
-        );
-        writeStoredExpectedVersion(response.version);
-        latestVersionRef.current = response.version;
-        setHomeScore(response.score.home);
-        setAwayScore(response.score.away);
-        queryClient.setQueryData(['statdash', 'session', context.sessionId, 'state'], {
-          score: response.score,
-          version: response.version,
-        });
-        queryClient.invalidateQueries({
-          queryKey: ['statdash', 'session', context.sessionId, 'projection'],
-        });
-        setSyncNotice(null);
-        return response;
-      } catch (error) {
-        if (error instanceof StatDashApiError && error.code === 'VERSION_CONFLICT') {
-          try {
-            const latest = await sessionsApi.getSessionState(context.sessionId);
-            writeStoredExpectedVersion(latest.version);
-            latestVersionRef.current = latest.version;
-            applyAuthoritativeState(latest);
-          } catch {
-            // ignore secondary sync errors
-          }
-          setSyncNotice('Session was updated elsewhere. Latest state synced, please retry.');
-          return null;
-        }
-        setSyncNotice(error instanceof Error ? error.message : 'Failed to sync event with server.');
-        return null;
-      }
+      const idempotencyKey = generateIdempotencyKey();
+      const expectedVersion = readStoredExpectedVersion();
+
+      writeStoredExpectedVersion(expectedVersion + 1);
+      latestVersionRef.current = expectedVersion + 1;
+
+      enqueue({
+        sessionId: context.sessionId,
+        commandType,
+        payload: payload as Record<string, unknown>,
+        expectedVersion,
+        localId: idempotencyKey,
+      });
+
+      return {
+        sessionId: context.sessionId,
+        version: expectedVersion + 1,
+        score: { home: homeScore, away: awayScore },
+        emittedEvents: [],
+      };
     },
-    [applyAuthoritativeState, navigate, queryClient],
+    [enqueue, homeScore, awayScore, navigate],
   );
 
   const onTick = useCallback(() => {
@@ -346,7 +345,9 @@ const StatDash: React.FC = () => {
         shotFlowRef.current !== 'idle' ||
         foulFlowRef.current !== 'idle' ||
         turnoverFlowRef.current !== 'idle' ||
-        subModalOpenRef.current;
+        subModalOpenRef.current ||
+        pendingCount > 0 ||
+        queue.some((event) => event.status === 'inflight');
 
       if (hasActiveDraft) {
         setSyncNotice('Live update received. Finish this step to auto-sync.');
@@ -398,7 +399,7 @@ const StatDash: React.FC = () => {
       client.close();
       setRealtimeConnected(false);
     };
-  }, [applyAuthoritativeState]);
+  }, [applyAuthoritativeState, pendingCount, queue]);
 
   const handleStartGamePromptConfirm = useCallback(async () => {
     const context = readStoredSessionContext();
@@ -2158,6 +2159,22 @@ const StatDash: React.FC = () => {
             <span className="rounded bg-emerald-100 px-2 py-1 text-emerald-800">Realtime: connected</span>
           ) : (
             <span className="rounded bg-gray-100 px-2 py-1 text-gray-700">Realtime: offline</span>
+          )}
+        </div>
+        <div className="px-4 pt-2 text-xs">
+          {!isOnline ? (
+            <span className="rounded bg-orange-100 px-2 py-1 text-orange-800">📵 Offline — recording locally</span>
+          ) : failedCount > 0 ? (
+            <span className="rounded bg-red-100 px-2 py-1 text-red-800">
+              ✗ {failedCount} event(s) failed to sync{' '}
+              <button type="button" className="underline" onClick={retryFailed}>
+                Retry
+              </button>
+            </span>
+          ) : pendingCount > 0 ? (
+            <span className="rounded bg-amber-100 px-2 py-1 text-amber-800"> {pendingCount} event(s) queued</span>
+          ) : (
+            <span className="rounded bg-emerald-100 px-2 py-1 text-emerald-800">All events synced</span>
           )}
         </div>
         {isBootstrapping && (
