@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiFilter, FiChevronDown, FiSearch } from 'react-icons/fi';
+import { useMatches, useTeams } from '../../api/hooks';
 
 interface MatchResult {
-  id: number;
+  id: string;
   teamA: string;
   teamAScore: number;
   teamAColor: string;
@@ -22,80 +23,32 @@ const Results: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
-  const results: MatchResult[] = [
-    {
-      id: 1,
-      teamA: 'TEAM A',
-      teamAScore: 120,
-      teamAColor: 'yellow',
-      teamB: 'TEAM B',
-      teamBScore: 98,
-      teamBColor: 'blue',
-      venue: 'Match Venue',
-      datetime: '12:40PM, 11 November 2025',
-      date: '11 November 2025'
-    },
-    {
-      id: 2,
-      teamA: 'TEAM A',
-      teamAScore: 120,
-      teamAColor: 'yellow',
-      teamB: 'TEAM B',
-      teamBScore: 98,
-      teamBColor: 'blue',
-      venue: 'Match Venue',
-      datetime: '2:00PM, 11 November 2025',
-      date: '11 November 2025'
-    },
-    {
-      id: 3,
-      teamA: 'TEAM A',
-      teamAScore: 120,
-      teamAColor: 'yellow',
-      teamB: 'TEAM B',
-      teamBScore: 98,
-      teamBColor: 'blue',
-      venue: 'Match Venue',
-      datetime: '12:40PM, 10 November 2025',
-      date: '10 November 2025'
-    },
-    {
-      id: 4,
-      teamA: 'TEAM A',
-      teamAScore: 120,
-      teamAColor: 'yellow',
-      teamB: 'TEAM B',
-      teamBScore: 98,
-      teamBColor: 'blue',
-      venue: 'Match Venue',
-      datetime: '4:30PM, 10 November 2025',
-      date: '10 November 2025'
-    },
-    {
-      id: 5,
-      teamA: 'TEAM A',
-      teamAScore: 120,
-      teamAColor: 'yellow',
-      teamB: 'TEAM B',
-      teamBScore: 98,
-      teamBColor: 'blue',
-      venue: 'Match Venue',
-      datetime: '12:40PM, 9 November 2025',
-      date: '9 November 2025'
-    },
-    {
-      id: 6,
-      teamA: 'TEAM A',
-      teamAScore: 120,
-      teamAColor: 'yellow',
-      teamB: 'TEAM B',
-      teamBScore: 98,
-      teamBColor: 'blue',
-      venue: 'Match Venue',
-      datetime: '6:00PM, 9 November 2025',
-      date: '9 November 2025'
-    }
-  ];
+  const matchesQuery = useMatches(undefined, 'COMPLETED');
+  const teamsQuery = useTeams();
+  const teamMap = useMemo(() => {
+    const map = new Map<string, { name: string; color: string }>();
+    (teamsQuery.data ?? []).forEach((team) =>
+      map.set(team.id, { name: team.name, color: team.color ?? '' }),
+    );
+    return map;
+  }, [teamsQuery.data]);
+  const results: MatchResult[] = useMemo(() => {
+    return (matchesQuery.data ?? []).map((match) => {
+      const dateObj = new Date(match.scheduledDate);
+      return {
+        id: match.id,
+        teamA: teamMap.get(match.homeTeamId)?.name ?? 'TEAM A',
+        teamAScore: match.totalHome ?? 0,
+        teamAColor: teamMap.get(match.homeTeamId)?.color ? 'yellow' : 'yellow',
+        teamB: teamMap.get(match.awayTeamId)?.name ?? 'TEAM B',
+        teamBScore: match.totalAway ?? 0,
+        teamBColor: teamMap.get(match.awayTeamId)?.color ? 'blue' : 'blue',
+        venue: match.venue ?? 'Match Venue',
+        datetime: dateObj.toLocaleString(),
+        date: dateObj.toLocaleDateString(),
+      };
+    });
+  }, [matchesQuery.data, teamMap]);
 
   // Get unique dates for the dropdown and sort them (most recent first)
   const uniqueDatesSet = Array.from(new Set(results.map(r => r.date)));
@@ -219,6 +172,14 @@ const Results: React.FC = () => {
 
         {/* Results List */}
         <div className="space-y-8 mb-8">
+          {(matchesQuery.isPending || teamsQuery.isPending) && (
+            <div className="text-sm text-gray-600">Loading completed games...</div>
+          )}
+          {(matchesQuery.error instanceof Error || teamsQuery.error instanceof Error) && (
+            <div className="text-sm text-red-600">
+              {matchesQuery.error instanceof Error ? matchesQuery.error.message : teamsQuery.error instanceof Error ? teamsQuery.error.message : 'Failed to load results'}
+            </div>
+          )}
           {sortedPaginatedResults.length > 0 ? (
             sortedPaginatedResults.map(([date, matches], groupIndex) => (
               <div key={groupIndex}>

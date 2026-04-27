@@ -1,5 +1,6 @@
 import React from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useSummaryProjection } from '../../services/statdash';
 
 export default function PlayerDetails() {
   const { id, matchId, playerId } = useParams<{
@@ -9,6 +10,7 @@ export default function PlayerDetails() {
   }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const summaryQuery = useSummaryProjection(matchId, !!matchId);
   
   // Check navigation source
   const fromPlayersPage = location.state?.from === 'players-page';
@@ -120,14 +122,16 @@ export default function PlayerDetails() {
 
         {/* Stat Summary Cards */}
         <div className="bg-white rounded-2xl shadow-sm p-8 mb-8">
+          {summaryQuery.isPending && <p className="mb-3 text-sm text-gray-600">Loading player summary...</p>}
+          {summaryQuery.error instanceof Error && <p className="mb-3 text-sm text-red-600">{summaryQuery.error.message}</p>}
           <div className="grid grid-cols-6 gap-6">
             {[
-              { label: "PPG", value: 12 },    // Points per game
-              { label: "RPG", value: 9 },     // Rebounds per game
-              { label: "APG", value: 5 },     // Assists per game
-              { label: "BPG", value: 2 },     // Blocks per game
-              { label: "SPG", value: 3 },     // Steals per game
-              { label: "FG%", value: "52%" }, // Field goal percentage
+              { label: "EVENTS", value: summaryQuery.data?.totalEvents ?? 0 },
+              { label: "POINTS", value: summaryQuery.data?.totals.points ?? 0 },
+              { label: "REBOUNDS", value: summaryQuery.data?.totals.rebounds ?? 0 },
+              { label: "PLAYER", value: playerId ?? "-" },
+              { label: "MATCH", value: matchId ?? "-" },
+              { label: "VERSION", value: summaryQuery.data?.version ?? "-" },
             ].map((stat, i) => (
               <div
                 key={i}

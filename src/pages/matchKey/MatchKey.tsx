@@ -3,6 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import StatisticianLayout from '../../components/StatisticianLayout';
 import { useMatches, useTeams } from '../../api/hooks';
 import type { Match } from '../../types/api';
+import { sessionsApi } from '../../services/statdash';
+import { apiClient } from '../../api/ApiClient';
+import {
+  writeStoredExpectedVersion,
+  writeStoredSessionContext,
+} from '../../features/statdash/sessionContextStorage';
 
 const RECENT_LIMIT = 8;
 
@@ -43,6 +49,7 @@ const MatchKey: React.FC = () => {
   const navigate = useNavigate();
   const [matchKey, setMatchKey] = useState('');
   const [keyError, setKeyError] = useState<string | null>(null);
+  const [isResolving, setIsResolving] = useState(false);
 
   const completedQuery = useMatches(undefined, 'COMPLETED');
   const teamsQuery = useTeams();
@@ -64,7 +71,7 @@ const MatchKey: React.FC = () => {
     return list.slice(0, RECENT_LIMIT);
   }, [completedQuery.data]);
 
-  const handleContinue = (e: React.FormEvent) => {
+  const handleContinue = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = matchKey.trim();
     if (!trimmed) {
@@ -72,8 +79,27 @@ const MatchKey: React.FC = () => {
       return;
     }
     setKeyError(null);
-    sessionStorage.setItem('statistician_match_key', trimmed);
-    navigate('/starters');
+    setIsResolving(true);
+    try {
+      const resolved = await sessionsApi.resolveSession({ matchKey: trimmed });
+      const snapshot = await sessionsApi.bootstrapSession({
+        sessionId: resolved.sessionId ?? undefined,
+        matchId: resolved.matchId,
+      });
+      sessionStorage.setItem('statistician_match_key', trimmed);
+      writeStoredSessionContext({
+        sessionId: snapshot.sessionId,
+        matchId: snapshot.matchId,
+        homeTeamId: (await apiClient.matches.getById(snapshot.matchId)).data?.homeTeamId,
+        awayTeamId: (await apiClient.matches.getById(snapshot.matchId)).data?.awayTeamId,
+      });
+      writeStoredExpectedVersion(snapshot.version);
+      navigate('/starters');
+    } catch (error) {
+      setKeyError(error instanceof Error ? error.message : 'Unable to resolve match key');
+    } finally {
+      setIsResolving(false);
+    }
   };
 
   const listLoading = completedQuery.isPending || teamsQuery.isPending;
@@ -128,9 +154,10 @@ const MatchKey: React.FC = () => {
             {keyError && <p className="text-sm text-red-600 px-0.5">{keyError}</p>}
             <button
               type="submit"
+              disabled={isResolving}
               className="w-full py-3 sm:py-3.5 bg-[#3B5998] text-white font-medium rounded-lg sm:rounded-xl text-base transition-opacity hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#3B5998]"
             >
-              Continue
+              {isResolving ? 'Resolving…' : 'Continue'}
             </button>
           </form>
 

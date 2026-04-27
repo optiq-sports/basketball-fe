@@ -8,6 +8,7 @@ import {
 } from '../../contexts/StatisticianTeamColorsContext';
 import { readGameSetupOrientation } from '../gameSetupOrientation';
 import { writeJumpBallWinner } from '../jumpBallWinner';
+import { readStoredSessionContext } from '../../features/statdash/sessionContextStorage';
 
 const PLAYERS = [1, 2, 3, 4, 5] as const;
 
@@ -45,6 +46,7 @@ const JumpBall: React.FC = () => {
   const [team1Pick, setTeam1Pick] = useState<number | null>(null);
   const [team2Pick, setTeam2Pick] = useState<number | null>(null);
   const [winner, setWinner] = useState<'left' | 'right' | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const { homeOnLeft } = readGameSetupOrientation();
 
   const team1Color = homeTeamColor;
@@ -55,7 +57,7 @@ const JumpBall: React.FC = () => {
   const rightBadgeColor = homeOnLeft ? team2Color : team1Color;
 
   useEffect(() => {
-    if (!sessionStorage.getItem('statistician_match_key')) {
+    if (!readStoredSessionContext()) {
       navigate('/match-key', { replace: true });
     }
   }, [navigate]);
@@ -64,9 +66,16 @@ const JumpBall: React.FC = () => {
 
   const handleTeam2Pick = (n: number) => setTeam2Pick((prev) => (prev === n ? null : n));
 
-  const selectWinner = (w: 'left' | 'right') => {
+  const selectWinner = async (w: 'left' | 'right') => {
+    const context = readStoredSessionContext();
+    if (!context) {
+      navigate('/match-key', { replace: true });
+      return;
+    }
+    setIsSaving(true);
     setWinner(w);
     writeJumpBallWinner(w);
+    setIsSaving(false);
   };
 
   return (
@@ -81,7 +90,7 @@ const JumpBall: React.FC = () => {
             <FiArrowLeft size={16} />
             <span>Back</span>
           </button>
-          {winner !== null && (
+          {winner !== null && !isSaving && (
             <button
               type="button"
               onClick={() => navigate('/stat-dash')}
@@ -148,6 +157,7 @@ const JumpBall: React.FC = () => {
             <div className="flex items-center gap-6">
               <button
                 type="button"
+                disabled={isSaving}
                 onClick={() => selectWinner('left')}
                 className={`rounded px-10 py-2.5 text-sm font-bold transition-all ${
                   winner === 'left'
@@ -160,6 +170,7 @@ const JumpBall: React.FC = () => {
               </button>
               <button
                 type="button"
+                disabled={isSaving}
                 onClick={() => selectWinner('right')}
                 className={`rounded px-10 py-2.5 text-sm font-bold transition-all ${
                   winner === 'right'

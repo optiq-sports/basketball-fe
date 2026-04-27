@@ -5,6 +5,7 @@ import { FiArrowRight } from 'react-icons/fi';
 import { queryKeys } from '../../api/hooks';
 import StatisticianLayout from '../../components/StatisticianLayout';
 import StartersFlow, { type StartersFlowHandle } from './StartersFlow';
+import { readStoredSessionContext } from '../../features/statdash/sessionContextStorage';
 
 const TOKEN_KEY = 'access_token';
 
@@ -12,11 +13,26 @@ const Starters: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const startersFlowRef = useRef<StartersFlowHandle>(null);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   useEffect(() => {
-    if (!sessionStorage.getItem('statistician_match_key')) {
+    if (!readStoredSessionContext()) {
       navigate('/match-key', { replace: true });
     }
+  }, [navigate]);
+
+  const handleContinue = useCallback(async () => {
+    if (!startersFlowRef.current?.attemptContinue()) {
+      return;
+    }
+    const context = readStoredSessionContext();
+    if (!context) {
+      navigate('/match-key', { replace: true });
+      return;
+    }
+    setIsSubmitting(true);
+    navigate('/choose-sides');
+    setIsSubmitting(false);
   }, [navigate]);
 
   const handleLogout = useCallback(() => {
@@ -39,15 +55,12 @@ const Starters: React.FC = () => {
           </button>
           <button
             type="button"
-            onClick={() => {
-              if (startersFlowRef.current?.attemptContinue()) {
-                navigate('/choose-sides');
-              }
-            }}
+            disabled={isSubmitting}
+            onClick={handleContinue}
             className="group flex items-center gap-2 text-sm font-semibold text-gray-700 transition-colors hover:text-gray-900"
           >
             <FiArrowRight size={18} className="transition-transform group-hover:translate-x-0.5" />
-            <span>Continue</span>
+            <span>{isSubmitting ? 'Saving…' : 'Continue'}</span>
           </button>
         </div>
 

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useMatch, useTeams, useUpdateMatch, useDeleteMatch } from '../../api/hooks';
 import type { MatchStatus } from '../../types/api';
+import { useBoxScoreProjection, useShotChartProjection, useSummaryProjection } from '../../services/statdash';
 
 interface QuarterScore {
   q1: number;
@@ -49,6 +50,9 @@ const GameScorePage: React.FC = () => {
   const teamsQuery = useTeams();
   const updateMatch = useUpdateMatch();
   const deleteMatch = useDeleteMatch();
+  const boxScoreQuery = useBoxScoreProjection(matchId, !!matchId);
+  const summaryQuery = useSummaryProjection(matchId, !!matchId);
+  const shotChartQuery = useShotChartProjection(matchId, !!matchId);
 
   const teamMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -360,10 +364,24 @@ const GameScorePage: React.FC = () => {
             Shot Chart
           </button>
         </div>
+        {(boxScoreQuery.error instanceof Error || summaryQuery.error instanceof Error || shotChartQuery.error instanceof Error) && (
+          <div className="mb-4 text-sm text-red-600">
+            {boxScoreQuery.error instanceof Error
+              ? boxScoreQuery.error.message
+              : summaryQuery.error instanceof Error
+                ? summaryQuery.error.message
+                : shotChartQuery.error instanceof Error
+                  ? shotChartQuery.error.message
+                  : 'Failed to load projections'}
+          </div>
+        )}
 
         {/* Shot Chart Section - Only show when shotchart tab is active */}
         {activeTab === 'shotchart' && (
           <div className="max-w-7xl mx-auto">
+            {shotChartQuery.isPending && (
+              <p className="mb-3 text-sm text-gray-600">Loading shot chart projection...</p>
+            )}
             {/* Quarter Filters */}
             <div className="flex justify-center gap-3 mb-6">
               <button className="px-6 py-2.5 rounded-lg font-medium bg-[#21409A] text-white shadow-md cursor-pointer">
@@ -386,6 +404,9 @@ const GameScorePage: React.FC = () => {
             {/* Basketball Court with Shot Chart */}
             <div className="bg-gradient-to-b from-blue-100 to-blue-50 rounded-lg p-8 mb-6 border border-gray-200 flex flex-col items-center">
               <img src="/court.png" alt="Basketball Court" className="w-2xl h-w-3xl-lg mb-6 object-cover" />
+              <p className="text-sm text-gray-600">
+                Total projected shots: {shotChartQuery.data?.length ?? 0}
+              </p>
               
               {/* Legend */}
               <div className="flex items-center gap-6">
@@ -721,6 +742,7 @@ const GameScorePage: React.FC = () => {
         {/* Box Score Section - Only shown when Box Score is active */}
         {showBoxScore && (
           <div className="rounded-lg shadow-sm p-6 border" style={{ background: '#FCFEFF', border: '1px solid #A9A9A91A' }}>
+            {boxScoreQuery.isPending && <p className="mb-3 text-sm text-gray-600">Loading box score projection...</p>}
             {/* Box Score Header */}
             <div className="mb-6">
               <div className="flex justify-between items-center mb-4">
@@ -837,7 +859,7 @@ const GameScorePage: React.FC = () => {
                   <tr style={{ background: '#F5F8FF' }}>
                     <td className="py-3 px-3 text-sm font-bold text-blue-900"></td>
                     <td className="py-3 px-3 text-sm font-bold text-blue-900">Total</td>
-                    <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
+                    <td className="text-center py-3 px-3 text-sm text-gray-700">{boxScoreQuery.data?.totals.points ?? 0}</td>
                     <td className="text-center py-3 px-3 text-sm text-gray-700">
                       <div>3/6</div>
                       <div>(50%)</div>
@@ -854,8 +876,8 @@ const GameScorePage: React.FC = () => {
                       <div>3/6</div>
                       <div>(50%)</div>
                     </td>
-                    <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
-                    <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
+                    <td className="text-center py-3 px-3 text-sm text-gray-700">{boxScoreQuery.data?.totals.fouls ?? 0}</td>
+                    <td className="text-center py-3 px-3 text-sm text-gray-700">{boxScoreQuery.data?.totals.turnovers ?? 0}</td>
                     <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
                     <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
                     <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
@@ -886,6 +908,12 @@ const GameScorePage: React.FC = () => {
         {/* Game Stats Section - Hidden when Box Score or Shot Chart is shown */}
         {!showBoxScore && activeTab !== 'shotchart' && (
           <div className="max-w-4xl mx-auto rounded-lg shadow-sm p-6 border mt-8" style={{ background: '#FCFEFF', border: '1px solid #A9A9A91A' }}>
+          {summaryQuery.isPending && <p className="mb-3 text-sm text-gray-600">Loading game summary projection...</p>}
+          {summaryQuery.data && (
+            <p className="mb-3 text-xs text-gray-500">
+              Events: {summaryQuery.data.totalEvents} · Lead changes: {summaryQuery.data.leadChanges} · Biggest lead: {summaryQuery.data.biggestLead}
+            </p>
+          )}
           <h2 className="text-lg font-semibold text-gray-800 mb-4">Game Stats</h2>
 
           {/* Tab Navigation */}

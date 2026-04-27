@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import StatisticianFullscreenGate from '../../components/StatisticianFullscreenGate';
 import MenuBar from './components/MenuBar';
 import EdgeTeamDrawer from './components/EdgeTeamDrawer';
@@ -63,6 +65,21 @@ import {
 } from './substitutionLineupUtils';
 import { readGameSetupOrientation } from '../gameSetupOrientation';
 import { clearJumpBallWinner, readJumpBallWinner } from '../jumpBallWinner';
+import {
+  commandsApi,
+  createSessionSseClient,
+  sessionsApi,
+  StatDashApiError,
+  type CommandAcceptedResponse,
+  type SessionStateSnapshot,
+  type RealtimeSessionMessage,
+} from '../../services/statdash';
+import {
+  readStoredExpectedVersion,
+  readStoredSessionContext,
+  writeStoredExpectedVersion,
+} from '../../features/statdash/sessionContextStorage';
+import { generateIdempotencyKey, withSafeCommandRetry } from '../../features/statdash/utils';
 
 const DEFAULT_HOME = 'TEAM 1';
 const DEFAULT_AWAY = 'TEAM 2';
@@ -82,6 +99,8 @@ function newLogId(): string {
 }
 
 const StatDash: React.FC = () => {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const initialOrientation = useMemo(() => readGameSetupOrientation(), []);
   const [homeOnLeft, setHomeOnLeft] = useState(initialOrientation.homeOnLeft);
   const [homeAttacksLeft, setHomeAttacksLeft] = useState(initialOrientation.homeAttacksLeft);
@@ -114,6 +133,12 @@ const StatDash: React.FC = () => {
   const jumpBallModalOpenRef = useRef(false);
   jumpBallModalOpenRef.current = jumpBallModalOpen;
   const [startGamePromptOpen, setStartGamePromptOpen] = useState(false);
+  const [isBootstrapping, setIsBootstrapping] = useState(true);
+  const [bootError, setBootError] = useState<string | null>(null);
+  const [isStartingGame, setIsStartingGame] = useState(false);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [realtimeReconnecting, setRealtimeReconnecting] = useState(false);
 
   const [homeLineup, setHomeLineup] = useState<TeamLineup>(() => cloneLineup(DEFAULT_TEAM_LINEUP));
   const [awayLineup, setAwayLineup] = useState<TeamLineup>(() => cloneLineup(DEFAULT_TEAM_LINEUP));
@@ -133,6 +158,7 @@ const StatDash: React.FC = () => {
   /** After "Not yet" on quarter-ended modal: show yellow Finish to reopen that modal. */
   const [quarterEndAwaitingFinish, setQuarterEndAwaitingFinish] = useState(false);
   const [editingLog, setEditingLog] = useState<GameLogEntry | null>(null);
+  const [isReconcilingLog, setIsReconcilingLog] = useState(false);
   const [switchSidesOpen, setSwitchSidesOpen] = useState(false);
   const [startersModalOpen, setStartersModalOpen] = useState(false);
 
@@ -186,6 +212,80 @@ const StatDash: React.FC = () => {
   const appendLog = useCallback((row: Omit<GameLogEntry, 'id'>) => {
     setGameLog((prev) => [{ id: newLogId(), ...row }, ...prev]);
   }, []);
+  const latestVersionRef = useRef<number>(readStoredExpectedVersion());
+
+  const applyAuthoritativeState = useCallback((state: SessionStateSnapshot) => {
+    setHomeScore(state.score.home);
+    setAwayScore(state.score.away);
+    setQuarter(state.quarter);
+    setTimerSeconds(state.clockSecondsRemaining);
+    setIsRunning(state.status === 'IN_PROGRESS');
+  }, []);
+
+  const getTeamIdForSide = useCallback((side: TeamSide): string => {
+    const context = readStoredSessionContext();
+    if (side === 'home') return context?.homeTeamId ?? 'home_team';
+    return context?.awayTeamId ?? 'away_team';
+  }, []);
+
+  const getPlayerId = useCallback((side: TeamSide, jersey: number): string => {
+    return `${getTeamIdForSide(side)}_${jersey}`;
+  }, [getTeamIdForSide]);
+
+  const commitEventCommand = useCallback(
+    async (
+      commandType: string,
+      payload: Record<string, unknown>,
+    ): Promise<CommandAcceptedResponse | null> => {
+      const context = readStoredSessionContext();
+      if (!context) {
+        navigate('/match-key', { replace: true });
+        return null;
+      }
+      try {
+        const response = await withSafeCommandRetry(
+          () =>
+            commandsApi.sendCommand({
+              sessionId: context.sessionId,
+              commandType,
+              payload,
+              expectedVersion: readStoredExpectedVersion(),
+              idempotencyKey: generateIdempotencyKey(),
+            }),
+          { retries: 1 },
+        );
+        writeStoredExpectedVersion(response.version);
+        latestVersionRef.current = response.version;
+        setHomeScore(response.score.home);
+        setAwayScore(response.score.away);
+        queryClient.setQueryData(['statdash', 'session', context.sessionId, 'state'], {
+          score: response.score,
+          version: response.version,
+        });
+        queryClient.invalidateQueries({
+          queryKey: ['statdash', 'session', context.sessionId, 'projection'],
+        });
+        setSyncNotice(null);
+        return response;
+      } catch (error) {
+        if (error instanceof StatDashApiError && error.code === 'VERSION_CONFLICT') {
+          try {
+            const latest = await sessionsApi.getSessionState(context.sessionId);
+            writeStoredExpectedVersion(latest.version);
+            latestVersionRef.current = latest.version;
+            applyAuthoritativeState(latest);
+          } catch {
+            // ignore secondary sync errors
+          }
+          setSyncNotice('Session was updated elsewhere. Latest state synced, please retry.');
+          return null;
+        }
+        setSyncNotice(error instanceof Error ? error.message : 'Failed to sync event with server.');
+        return null;
+      }
+    },
+    [applyAuthoritativeState, navigate, queryClient],
+  );
 
   const onTick = useCallback(() => {
     setTimerSeconds((s) => Math.max(0, s - 1));
@@ -207,18 +307,122 @@ const StatDash: React.FC = () => {
 
   // Jump-ball page -> StatDash: prompt before starting the game clock.
   useEffect(() => {
-    const winner = readJumpBallWinner();
-    if (!winner) return;
-    setStartGamePromptOpen(true);
-    setQuarterBreakPending(false);
-    clearJumpBallWinner();
-  }, []);
+    const bootstrap = async () => {
+      const context = readStoredSessionContext();
+      if (!context) {
+        navigate('/match-key', { replace: true });
+        return;
+      }
+      setIsBootstrapping(true);
+      setBootError(null);
+      try {
+        const snapshot = await sessionsApi.bootstrapSession({ sessionId: context.sessionId });
+        applyAuthoritativeState(snapshot);
+        writeStoredExpectedVersion(snapshot.version);
+        latestVersionRef.current = snapshot.version;
+        const winner = readJumpBallWinner();
+        if (winner && snapshot.status !== 'IN_PROGRESS') {
+          setStartGamePromptOpen(true);
+          setQuarterBreakPending(false);
+        }
+        clearJumpBallWinner();
+      } catch (error) {
+        setBootError(error instanceof Error ? error.message : 'Failed to bootstrap game session');
+      } finally {
+        setIsBootstrapping(false);
+      }
+    };
+    void bootstrap();
+  }, [applyAuthoritativeState, navigate]);
 
-  const handleStartGamePromptConfirm = useCallback(() => {
-    setIsRunning(true);
-    setQuarterBreakPending(false);
-    setStartGamePromptOpen(false);
-  }, []);
+  useEffect(() => {
+    const context = readStoredSessionContext();
+    if (!context) return;
+
+    const applyRealtimeMessage = async (message: RealtimeSessionMessage) => {
+      if (message.sessionId !== context.sessionId) return;
+      if (message.state.version <= latestVersionRef.current) return;
+      const hasActiveDraft =
+        shotFlowRef.current !== 'idle' ||
+        foulFlowRef.current !== 'idle' ||
+        turnoverFlowRef.current !== 'idle' ||
+        subModalOpenRef.current;
+
+      if (hasActiveDraft) {
+        setSyncNotice('Live update received. Finish this step to auto-sync.');
+        return;
+      }
+
+      try {
+        const latest = await sessionsApi.getSessionState(context.sessionId);
+        applyAuthoritativeState(latest);
+        latestVersionRef.current = latest.version;
+        writeStoredExpectedVersion(latest.version);
+        setSyncNotice(null);
+      } catch {
+        setSyncNotice('Realtime sync update failed. Pull to refresh state.');
+      }
+    };
+
+    const client = createSessionSseClient(context.sessionId, {
+      onConnected: () => {
+        setRealtimeConnected(true);
+        setRealtimeReconnecting(false);
+        void (async () => {
+          try {
+            const latest = await sessionsApi.getSessionState(context.sessionId);
+            if (latest.version > latestVersionRef.current) {
+              applyAuthoritativeState(latest);
+              latestVersionRef.current = latest.version;
+              writeStoredExpectedVersion(latest.version);
+            }
+          } catch {
+            setSyncNotice('Connected but could not refresh latest session state.');
+          }
+        })();
+      },
+      onMessage: (message) => {
+        void applyRealtimeMessage(message);
+      },
+      onDisconnected: () => {
+        setRealtimeConnected(false);
+        setRealtimeReconnecting(true);
+      },
+      onError: () => {
+        setRealtimeConnected(false);
+        setRealtimeReconnecting(true);
+      },
+    });
+
+    return () => {
+      client.close();
+      setRealtimeConnected(false);
+    };
+  }, [applyAuthoritativeState]);
+
+  const handleStartGamePromptConfirm = useCallback(async () => {
+    const context = readStoredSessionContext();
+    if (!context) {
+      navigate('/match-key', { replace: true });
+      return;
+    }
+    setIsStartingGame(true);
+    try {
+      await sessionsApi.startSession(context.sessionId);
+      const latest = await sessionsApi.getSessionState(context.sessionId);
+      writeStoredExpectedVersion(latest.version);
+      latestVersionRef.current = latest.version;
+      applyAuthoritativeState(latest);
+      setQuarterBreakPending(false);
+      setStartGamePromptOpen(false);
+    } catch {
+      setIsRunning(true);
+      setQuarterBreakPending(false);
+      setStartGamePromptOpen(false);
+    } finally {
+      setIsStartingGame(false);
+    }
+  }, [applyAuthoritativeState, navigate]);
 
   const handleStartGamePromptSkip = useCallback(() => {
     setStartGamePromptOpen(false);
@@ -249,7 +453,7 @@ const StatDash: React.FC = () => {
   }, []);
 
   const commitFoulNoFt = useCallback(
-    (draft: FoulFlowDraft) => {
+    async (draft: FoulFlowDraft) => {
       if (
         !isFoulerDraftComplete(draft) ||
         draft.foulType === null ||
@@ -260,6 +464,20 @@ const StatDash: React.FC = () => {
       const foulerTeamName = draft.foulerSide === 'home' ? homeName : awayName;
       const fouledSide = opponentOf(draft.foulerSide);
       const fouledTeamName = fouledSide === 'home' ? homeName : awayName;
+      const committed = await commitEventCommand('foul', {
+        teamId: draft.foulerSide ? getTeamIdForSide(draft.foulerSide) : undefined,
+        foulerPlayerId:
+          draft.foulerSide && typeof draft.foulerJersey === 'number'
+            ? getPlayerId(draft.foulerSide, draft.foulerJersey)
+            : undefined,
+        fouledPlayerId:
+          draft.foulerSide !== null && typeof draft.fouledJersey === 'number'
+            ? getPlayerId(opponentOf(draft.foulerSide), draft.fouledJersey)
+            : undefined,
+        foulType: draft.foulType,
+        freeThrowsAwarded: 0,
+      });
+      if (!committed) return;
       appendLog({
         period: periodLabel,
         clock: clockLabel,
@@ -269,11 +487,11 @@ const StatDash: React.FC = () => {
         result: `${foulTypeLabel(draft.foulType)} on ${fouledTeamName} #${draft.fouledJersey}; No FT`,
       });
     },
-    [appendLog, clockLabel, periodLabel, homeName, awayName]
+    [appendLog, clockLabel, commitEventCommand, periodLabel, homeName, awayName]
   );
 
   const commitFoulWithFtSequence = useCallback(
-    (draft: FoulFlowDraft, opts?: { skipRebound?: boolean }) => {
+    async (draft: FoulFlowDraft, opts?: { skipRebound?: boolean }) => {
       const skipRebound = opts?.skipRebound === true;
       if (
         !isFoulerDraftComplete(draft) ||
@@ -291,6 +509,20 @@ const StatDash: React.FC = () => {
       ) {
         return;
       }
+      const committed = await commitEventCommand('foul', {
+        teamId: draft.foulerSide ? getTeamIdForSide(draft.foulerSide) : undefined,
+        foulerPlayerId:
+          draft.foulerSide && typeof draft.foulerJersey === 'number'
+            ? getPlayerId(draft.foulerSide, draft.foulerJersey)
+            : undefined,
+        fouledPlayerId:
+          draft.foulerSide !== null && typeof draft.fouledJersey === 'number'
+            ? getPlayerId(opponentOf(draft.foulerSide), draft.fouledJersey)
+            : undefined,
+        foulType: draft.foulType,
+        freeThrowsAwarded: draft.ftCount,
+      });
+      if (!committed) return;
       const foulerTeamName = draft.foulerSide === 'home' ? homeName : awayName;
       const fouledSide = opponentOf(draft.foulerSide);
       const fouledTeamName = fouledSide === 'home' ? homeName : awayName;
@@ -325,7 +557,7 @@ const StatDash: React.FC = () => {
         result: `${foulTypeLabel(draft.foulType)} on ${fouledTeamName} #${draft.fouledJersey}; Shooter #${draft.fouledJersey}${assistPart}; FTs: ${ftStr}${rebSuffix}`,
       });
     },
-    [appendLog, clockLabel, periodLabel, homeName, awayName]
+    [appendLog, clockLabel, commitEventCommand, periodLabel, homeName, awayName]
   );
 
   const openShotFlowFromPlayer = useCallback((side: TeamSide, jersey: number) => {
@@ -502,7 +734,7 @@ const StatDash: React.FC = () => {
         return;
       }
       if (count === 0) {
-        commitFoulNoFt(draft);
+        void commitFoulNoFt(draft);
         if (cur.entry === 'court') {
           const pt = pendingCourtClickRef.current;
           if (pt && draft.foulerSide !== null) {
@@ -568,7 +800,7 @@ const StatDash: React.FC = () => {
       if (lastMade) {
         const finished = { ...draft, ftResults: nextResults };
         const fromCourt = cur.entry === 'court';
-        commitFoulWithFtSequence(finished, { skipRebound: true });
+        void commitFoulWithFtSequence(finished, { skipRebound: true });
         if (fromCourt) {
           const pt = pendingCourtClickRef.current;
           if (pt && finished.foulerSide !== null) {
@@ -585,7 +817,7 @@ const StatDash: React.FC = () => {
       }
       const finished = { ...draft, ftResults: nextResults };
       const fromCourt = cur.entry === 'court';
-      commitFoulWithFtSequence(finished, { skipRebound: true });
+      void commitFoulWithFtSequence(finished, { skipRebound: true });
       if (fromCourt) {
         const pt = pendingCourtClickRef.current;
         if (pt && finished.foulerSide !== null) {
@@ -620,7 +852,7 @@ const StatDash: React.FC = () => {
       if (!active.includes(jersey)) return;
       const draft = { ...cur.draft, reboundSide: side, reboundJersey: jersey };
       const fromCourt = cur.entry === 'court';
-      commitFoulWithFtSequence(draft);
+      void commitFoulWithFtSequence(draft);
       if (fromCourt) {
         const pt = pendingCourtClickRef.current;
         if (pt && draft.foulerSide !== null) {
@@ -897,9 +1129,17 @@ const StatDash: React.FC = () => {
     });
 
     if (reboundLogRow !== null) {
-      appendLog(reboundLogRow);
+      void (async () => {
+        const committed = await commitEventCommand('rebound', {
+          teamId: getTeamIdForSide(side),
+          playerId: getPlayerId(side, jersey),
+          reboundType: 'defensive',
+        });
+        if (!committed) return;
+        appendLog(reboundLogRow);
+      })();
     }
-  }, [appendLog, awayName, clockLabel, homeName, periodLabel]);
+  }, [appendLog, awayName, clockLabel, commitEventCommand, homeName, periodLabel]);
 
   const handlePickBlocker = useCallback((side: TeamSide, jersey: number) => {
     let blockLogRow: Omit<GameLogEntry, 'id'> | null = null;
@@ -951,9 +1191,17 @@ const StatDash: React.FC = () => {
     });
 
     if (blockLogRow !== null) {
-      appendLog(blockLogRow);
+      void (async () => {
+        const committed = await commitEventCommand('block', {
+          teamId: getTeamIdForSide(side),
+          blockerPlayerId: getPlayerId(side, jersey),
+          againstPlayerId: getPlayerId(opponentOf(side), 0),
+        });
+        if (!committed) return;
+        appendLog(blockLogRow);
+      })();
     }
-  }, [appendLog, awayName, clockLabel, homeName, periodLabel]);
+  }, [appendLog, awayName, clockLabel, commitEventCommand, homeName, periodLabel]);
 
   const handlePickShooter = useCallback(
     (side: TeamSide, jersey: number) => {
@@ -993,35 +1241,44 @@ const StatDash: React.FC = () => {
       });
 
       if (tipCommitted !== null) {
-        const { side: s, jersey: j, shotType, result } = tipCommitted;
-        const teamName = s === 'home' ? homeName : awayName;
-        const points = getShotPoints(shotType);
-        if (result === 'made') {
-          if (s === 'home') setHomeScore((x) => x + points);
-          else setAwayScore((x) => x + points);
-        }
+        void (async () => {
+          const { side: s, jersey: j, shotType, result } = tipCommitted;
+          const committed = await commitEventCommand('shot', {
+            teamId: getTeamIdForSide(s),
+            shooterPlayerId: getPlayerId(s, j),
+            shotValue: getShotPoints(shotType),
+            result,
+          });
+          if (!committed) return;
+          const teamName = s === 'home' ? homeName : awayName;
+          const points = getShotPoints(shotType);
+          if (result === 'made') {
+            if (s === 'home') setHomeScore((x) => x + points);
+            else setAwayScore((x) => x + points);
+          }
 
-        appendLog({
-          period: periodLabel,
-          clock: clockLabel,
-          team: teamName,
-          player: `#${j}`,
-          action: 'shot',
-          result: shotTypeResultPhrase(shotType, result),
-        });
+          appendLog({
+            period: periodLabel,
+            clock: clockLabel,
+            team: teamName,
+            player: `#${j}`,
+            action: 'shot',
+            result: shotTypeResultPhrase(shotType, result),
+          });
 
-        const clickPt = pendingCourtClickRef.current;
-        if (clickPt) {
-          const shotColor = s === 'home' ? homeTeamColor : awayTeamColor;
-          setCourtShotMarkers((prevM) => [
-            ...prevM,
-            { ...clickPt, color: shotColor, kind: result === 'missed' ? 'missed' : 'made' },
-          ]);
-        }
+          const clickPt = pendingCourtClickRef.current;
+          if (clickPt) {
+            const shotColor = s === 'home' ? homeTeamColor : awayTeamColor;
+            setCourtShotMarkers((prevM) => [
+              ...prevM,
+              { ...clickPt, color: shotColor, kind: result === 'missed' ? 'missed' : 'made' },
+            ]);
+          }
 
-        if (result === 'made') {
-          pendingCourtClickRef.current = null;
-        }
+          if (result === 'made') {
+            pendingCourtClickRef.current = null;
+          }
+        })();
       }
     },
     [
@@ -1034,6 +1291,7 @@ const StatDash: React.FC = () => {
       homeTeamColor,
       periodLabel,
       setCourtShotMarkers,
+      commitEventCommand,
     ]
   );
 
@@ -1126,13 +1384,19 @@ const StatDash: React.FC = () => {
       });
 
       if (deadBallLogRow !== null) {
-        appendLog(deadBallLogRow);
+        void (async () => {
+          const committed = await commitEventCommand('dead_ball', {
+            reason: outcome === 'dead_out_of_bounds' ? 'out_of_bounds' : 'shot_clock_violation',
+          });
+          if (!committed) return;
+          appendLog(deadBallLogRow);
+        })();
       }
     },
-    [appendLog, clockLabel, periodLabel]
+    [appendLog, clockLabel, commitEventCommand, periodLabel]
   );
 
-  const handleSelectShotType = useCallback((shotType: ShotTypeId) => {
+  const handleSelectShotType = useCallback(async (shotType: ShotTypeId) => {
     const cur = shotFlowRef.current;
     if (cur === 'idle' || cur.step !== 'shotType') return;
     const nextDraft = { ...cur.draft, shotType };
@@ -1142,6 +1406,16 @@ const StatDash: React.FC = () => {
       nextDraft.shooterJersey !== null
     ) {
       const teamName = nextDraft.side === 'home' ? homeName : awayName;
+      const committed = await commitEventCommand('shot', {
+        teamId: nextDraft.side ? getTeamIdForSide(nextDraft.side) : undefined,
+        shooterPlayerId:
+          nextDraft.side && typeof nextDraft.shooterJersey === 'number'
+            ? getPlayerId(nextDraft.side, nextDraft.shooterJersey)
+            : undefined,
+        shotValue: getShotPoints(shotType),
+        result: 'missed',
+      });
+      if (!committed) return;
       appendLog({
         period: periodLabel,
         clock: clockLabel,
@@ -1186,7 +1460,7 @@ const StatDash: React.FC = () => {
       step: 'assist',
       draft: nextDraft,
     });
-  }, [appendLog, awayName, awayTeamColor, clockLabel, homeName, homeTeamColor, periodLabel]);
+  }, [appendLog, awayName, awayTeamColor, clockLabel, commitEventCommand, homeName, homeTeamColor, periodLabel]);
 
   const handleSetFastBreak = useCallback((fastBreak: boolean) => {
     setShotFlow((cur) => {
@@ -1196,7 +1470,7 @@ const StatDash: React.FC = () => {
   }, []);
 
   const handleSelectAssist = useCallback(
-    (assist: number | 'none') => {
+    async (assist: number | 'none') => {
       const cur = shotFlowRef.current;
       if (cur === 'idle' || cur.step !== 'assist') return;
       const { draft } = cur;
@@ -1208,6 +1482,16 @@ const StatDash: React.FC = () => {
       }
 
 
+      const committed = await commitEventCommand('shot', {
+        teamId: draft.side ? getTeamIdForSide(draft.side) : undefined,
+        shooterPlayerId:
+          draft.side && typeof draft.shooterJersey === 'number'
+            ? getPlayerId(draft.side, draft.shooterJersey)
+            : undefined,
+        shotValue: draft.shotType ? getShotPoints(draft.shotType) : 2,
+        result: draft.result,
+      });
+      if (!committed) return;
       const teamName = draft.side === 'home' ? homeName : awayName;
       const pt = pendingCourtClickRef.current;
       const isThreeFromCourt =
@@ -1262,12 +1546,21 @@ const StatDash: React.FC = () => {
 
       setShotFlow('idle');
     },
-    [appendLog, awayName, awayTeamColor, clockLabel, homeAttacksLeft, homeName, homeTeamColor, periodLabel]
+    [appendLog, awayName, awayTeamColor, clockLabel, commitEventCommand, homeAttacksLeft, homeName, homeTeamColor, periodLabel]
   );
 
   const commitTurnoverLog = useCallback(
-    (draft: TurnoverFlowDraft, steal: { side: TeamSide; jersey: number } | null) => {
+    async (draft: TurnoverFlowDraft, steal: { side: TeamSide; jersey: number } | null) => {
       if (draft.committingJersey === null || draft.turnoverType === null) return;
+      const committed = await commitEventCommand('turnover', {
+        teamId: getTeamIdForSide(draft.committingSide),
+        playerId:
+          draft.committingJersey !== null
+            ? getPlayerId(draft.committingSide, draft.committingJersey)
+            : undefined,
+        turnoverType: draft.turnoverType,
+      });
+      if (!committed) return;
       const committingTeam = draft.committingSide === 'home' ? homeName : awayName;
       const typeLabel = turnoverTypeLabel(draft.turnoverType);
       appendLog({
@@ -1290,7 +1583,7 @@ const StatDash: React.FC = () => {
         });
       }
     },
-    [appendLog, clockLabel, periodLabel, homeName, awayName]
+    [appendLog, clockLabel, commitEventCommand, periodLabel, homeName, awayName]
   );
 
   const handleTurnoverFlowBack = useCallback(() => {
@@ -1328,7 +1621,7 @@ const StatDash: React.FC = () => {
         setTurnoverFlow({ ...cur, step: 'steal', draft });
         return;
       }
-      commitTurnoverLog(draft, null);
+      void commitTurnoverLog(draft, null);
       setTurnoverFlow('idle');
     },
     [commitTurnoverLog]
@@ -1337,7 +1630,7 @@ const StatDash: React.FC = () => {
   const handleTurnoverNoSteal = useCallback(() => {
     const cur = turnoverFlowRef.current;
     if (cur === 'idle' || cur.step !== 'steal') return;
-    commitTurnoverLog(cur.draft, null);
+    void commitTurnoverLog(cur.draft, null);
     setTurnoverFlow('idle');
   }, [commitTurnoverLog]);
 
@@ -1349,7 +1642,7 @@ const StatDash: React.FC = () => {
       if (side !== opponentOf(draft.committingSide)) return;
       const active = side === 'home' ? activeRosterRef.current.home : activeRosterRef.current.away;
       if (!active.includes(jersey)) return;
-      commitTurnoverLog(draft, { side, jersey });
+      void commitTurnoverLog(draft, { side, jersey });
       setTurnoverFlow('idle');
     },
     [commitTurnoverLog]
@@ -1484,17 +1777,26 @@ const StatDash: React.FC = () => {
     if (!lineupIsComplete(subDraftHome) || !lineupIsComplete(subDraftAway)) return;
     const homeDiff = diffLineupOnCourt(homeLineup, subDraftHome);
     const awayDiff = diffLineupOnCourt(awayLineup, subDraftAway);
-    appendLog({
-      period: periodLabel,
-      clock: clockLabel,
-      team: '—',
-      player: '—',
-      action: 'substitution',
-      result: `${formatSubstitutionDiff(homeName, homeDiff)} · ${formatSubstitutionDiff(awayName, awayDiff)}`,
-    });
-    setHomeLineup(cloneLineup(subDraftHome));
-    setAwayLineup(cloneLineup(subDraftAway));
-    setSubModalOpen(false);
+    const summary = `${formatSubstitutionDiff(homeName, homeDiff)} · ${formatSubstitutionDiff(awayName, awayDiff)}`;
+    void (async () => {
+      const committed = await commitEventCommand('substitution', {
+        teamId: readStoredSessionContext()?.homeTeamId ?? 'home_team',
+        playerOutId: 'unknown_out',
+        playerInId: 'unknown_in',
+      });
+      if (!committed) return;
+      appendLog({
+        period: periodLabel,
+        clock: clockLabel,
+        team: '—',
+        player: '—',
+        action: 'substitution',
+        result: summary,
+      });
+      setHomeLineup(cloneLineup(subDraftHome));
+      setAwayLineup(cloneLineup(subDraftAway));
+      setSubModalOpen(false);
+    })();
   }, [
     subDraftHome,
     subDraftAway,
@@ -1502,6 +1804,7 @@ const StatDash: React.FC = () => {
     awayLineup,
     appendLog,
     clockLabel,
+    commitEventCommand,
     periodLabel,
     homeName,
     awayName,
@@ -1513,6 +1816,11 @@ const StatDash: React.FC = () => {
 
   const handleTimeoutSelect = useCallback(
     (choice: TimeoutChoice) => {
+      void (async () => {
+        const committed = await commitEventCommand('timeout', {
+          timeoutType: choice === 'official' ? 'official' : 'full',
+        });
+        if (!committed) return;
       if (choice === 'home') {
         appendLog({
           period: periodLabel,
@@ -1542,8 +1850,9 @@ const StatDash: React.FC = () => {
         });
       }
       setTimeoutModalOpen(false);
+      })();
     },
-    [appendLog, clockLabel, periodLabel, homeName, awayName]
+    [appendLog, clockLabel, commitEventCommand, periodLabel, homeName, awayName]
   );
 
   const handleTimeoutModalCancel = useCallback(() => {
@@ -1552,21 +1861,29 @@ const StatDash: React.FC = () => {
 
   const handleJumpBallSelect = useCallback(
     (choice: JumpBallChoice) => {
-      const teamName = choice === 'home' ? homeName : awayName;
-      appendLog({
-        period: periodLabel,
-        clock: clockLabel,
-        team: teamName,
-        player: '—',
-        action: 'jump ball',
-        result: 'possession',
-      });
-      setJumpBallModalOpen(false);
-      // Start game clock as soon as the jump-ball winner is selected.
-      setIsRunning(true);
-      setQuarterBreakPending(false);
+      void (async () => {
+        const committed = await commitEventCommand('jump_ball', {
+          winningTeamId: choice === 'home'
+            ? (readStoredSessionContext()?.homeTeamId ?? 'home_team')
+            : (readStoredSessionContext()?.awayTeamId ?? 'away_team'),
+        });
+        if (!committed) return;
+        const teamName = choice === 'home' ? homeName : awayName;
+        appendLog({
+          period: periodLabel,
+          clock: clockLabel,
+          team: teamName,
+          player: '—',
+          action: 'jump ball',
+          result: 'possession',
+        });
+        setJumpBallModalOpen(false);
+        // Start game clock as soon as the jump-ball winner is selected.
+        setIsRunning(true);
+        setQuarterBreakPending(false);
+      })();
     },
-    [appendLog, clockLabel, periodLabel, homeName, awayName]
+    [appendLog, clockLabel, commitEventCommand, periodLabel, homeName, awayName]
   );
 
   const handleJumpBallCancel = useCallback(() => {
@@ -1609,9 +1926,65 @@ const StatDash: React.FC = () => {
 
   const handleSaveEditingLog = useCallback(() => {
     if (editingLog === null) return;
-    setGameLog((prev) => prev.map((entry) => (entry.id === editingLog.id ? editingLog : entry)));
-    setEditingLog(null);
-  }, [editingLog]);
+    const context = readStoredSessionContext();
+    if (!context) {
+      navigate('/match-key', { replace: true });
+      return;
+    }
+    setIsReconcilingLog(true);
+    void (async () => {
+      try {
+        const response = await commandsApi.correctEvent(editingLog.id, {
+          reason: 'Corrected from StatDash log editor',
+          correctedPayload: {
+            period: editingLog.period,
+            clock: editingLog.clock,
+            team: editingLog.team,
+            player: editingLog.player,
+            action: editingLog.action,
+            result: editingLog.result,
+          },
+        });
+        writeStoredExpectedVersion(response.version);
+        latestVersionRef.current = response.version;
+        const latest = await sessionsApi.getSessionState(context.sessionId);
+        applyAuthoritativeState(latest);
+        setEditingLog(null);
+        setSyncNotice('Event correction submitted and synced.');
+      } catch (error) {
+        setSyncNotice(error instanceof Error ? error.message : 'Failed to correct event.');
+      } finally {
+        setIsReconcilingLog(false);
+      }
+    })();
+  }, [applyAuthoritativeState, editingLog, navigate]);
+
+  const handleReverseEditingLog = useCallback(() => {
+    if (editingLog === null) return;
+    const context = readStoredSessionContext();
+    if (!context) {
+      navigate('/match-key', { replace: true });
+      return;
+    }
+    setIsReconcilingLog(true);
+    void (async () => {
+      try {
+        const response = await commandsApi.reverseEvent(editingLog.id, {
+          reason: 'Reversed from StatDash log editor',
+        });
+        writeStoredExpectedVersion(response.version);
+        latestVersionRef.current = response.version;
+        const latest = await sessionsApi.getSessionState(context.sessionId);
+        applyAuthoritativeState(latest);
+        setEditingLog(null);
+        setSyncNotice('Event reversal submitted and synced.');
+      } catch (error) {
+        setSyncNotice(error instanceof Error ? error.message : 'Failed to reverse event.');
+      } finally {
+        setIsReconcilingLog(false);
+      }
+    })();
+  }, [applyAuthoritativeState, editingLog, navigate]);
 
   const periodOptions = ['Q1', 'Q2', 'Q3', 'Q4'];
   const actionOptions = [
@@ -1755,6 +2128,24 @@ const StatDash: React.FC = () => {
       />
 
       <div className="flex min-h-0 flex-1 flex-col">
+        <div className="px-4 pt-2 text-xs">
+          {realtimeReconnecting ? (
+            <span className="rounded bg-amber-100 px-2 py-1 text-amber-800">Realtime: reconnecting...</span>
+          ) : realtimeConnected ? (
+            <span className="rounded bg-emerald-100 px-2 py-1 text-emerald-800">Realtime: connected</span>
+          ) : (
+            <span className="rounded bg-gray-100 px-2 py-1 text-gray-700">Realtime: offline</span>
+          )}
+        </div>
+        {isBootstrapping && (
+          <div className="px-4 py-2 text-sm text-gray-600">Syncing game session...</div>
+        )}
+        {bootError && (
+          <div className="px-4 py-2 text-sm text-red-600">{bootError}</div>
+        )}
+        {syncNotice && (
+          <div className="px-4 py-2 text-sm text-amber-700">{syncNotice}</div>
+        )}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden py-4 pl-12 pr-12 sm:pl-14 sm:pr-14">
           <div className="flex min-w-0 shrink-0 items-center justify-evenly sm:gap-4">
             <StatusStrip />
@@ -1912,10 +2303,11 @@ const StatDash: React.FC = () => {
               </button>
               <button
                 type="button"
+                disabled={isStartingGame}
                 onClick={handleStartGamePromptConfirm}
                 className="rounded bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700"
               >
-                Start game
+                {isStartingGame ? 'Starting…' : 'Start game'}
               </button>
             </div>
           </div>
@@ -2001,6 +2393,7 @@ const StatDash: React.FC = () => {
             <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"
+                disabled={isReconcilingLog}
                 onClick={handleCloseLogEditor}
                 className="rounded border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-100"
               >
@@ -2008,10 +2401,19 @@ const StatDash: React.FC = () => {
               </button>
               <button
                 type="button"
+                disabled={isReconcilingLog}
+                onClick={handleReverseEditingLog}
+                className="rounded bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-700"
+              >
+                {isReconcilingLog ? 'Applying...' : 'Reverse'}
+              </button>
+              <button
+                type="button"
+                disabled={isReconcilingLog}
                 onClick={handleSaveEditingLog}
                 className="rounded bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700"
               >
-                Save
+                {isReconcilingLog ? 'Saving...' : 'Save'}
               </button>
             </div>
           </div>

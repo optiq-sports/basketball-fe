@@ -4,6 +4,7 @@ import { FiArrowLeft, FiArrowRight } from 'react-icons/fi';
 import StatisticianLayout from '../../components/StatisticianLayout';
 import { useStatisticianTeamColors } from '../../contexts/StatisticianTeamColorsContext';
 import { writeGameSetupOrientation } from '../gameSetupOrientation';
+import { readStoredSessionContext } from '../../features/statdash/sessionContextStorage';
 
 const FOOTER_BG = '#F3F4F6';
 
@@ -145,9 +146,10 @@ const ChooseSides: React.FC = () => {
   const { homeTeamColor, awayTeamColor } = useStatisticianTeamColors();
   const [swapped, setSwapped] = useState(false);
   const [courtType, setCourtType] = useState<1 | 2>(1);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (!sessionStorage.getItem('statistician_match_key')) {
+    if (!readStoredSessionContext()) {
       navigate('/match-key', { replace: true });
     }
   }, [navigate]);
@@ -165,9 +167,17 @@ const ChooseSides: React.FC = () => {
   const homeOnLeft = !swapped;
   const homeAttacksLeft = homeOnLeft ? leftDir === 'left' : rightDir === 'left';
 
-  const handleContinue = () => {
-    writeGameSetupOrientation({ homeOnLeft, homeAttacksLeft });
+  const handleContinue = async () => {
+    const orientation = { homeOnLeft, homeAttacksLeft };
+    writeGameSetupOrientation(orientation);
+    const context = readStoredSessionContext();
+    if (!context) {
+      navigate('/match-key', { replace: true });
+      return;
+    }
+    setIsSaving(true);
     navigate('/jump-ball');
+    setIsSaving(false);
   };
 
   return (
@@ -184,10 +194,11 @@ const ChooseSides: React.FC = () => {
           </button>
           <button
             type="button"
+            disabled={isSaving}
             onClick={handleContinue}
             className="flex items-center gap-1.5 text-sm font-medium text-gray-700 transition-colors hover:text-gray-900"
           >
-            <span>Continue</span>
+            <span>{isSaving ? 'Saving…' : 'Continue'}</span>
             <FiArrowRight size={16} />
           </button>
         </div>

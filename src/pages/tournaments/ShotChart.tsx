@@ -1,9 +1,15 @@
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { useShotChartProjection } from '../../services/statdash';
 
 const ShotChart: React.FC = () => {
   const { id, matchId } = useParams();
   const [activeQuarter, setActiveQuarter] = useState('all');
+  const shotChartQuery = useShotChartProjection(matchId, !!matchId);
+  const shots = shotChartQuery.data ?? [];
+  const filteredShots = activeQuarter === 'all'
+    ? shots
+    : shots.filter((shot) => shot.period === Number(activeQuarter.replace('q', '')));
 
   return (
     <div className="min-h-screen bg-white p-6">
@@ -64,10 +70,18 @@ const ShotChart: React.FC = () => {
 
         {/* Basketball Court with Shot Chart */}
         <div className="bg-gradient-to-b from-blue-100 to-blue-50 rounded-lg p-8 mb-6 border border-gray-200">
+          {shotChartQuery.isPending && (
+            <div className="mb-3 text-sm text-gray-600">Loading shot chart...</div>
+          )}
+          {shotChartQuery.error instanceof Error && (
+            <div className="mb-3 text-sm text-red-600">{shotChartQuery.error.message}</div>
+          )}
           <div className="bg-[#4A90E2] rounded-lg p-4 max-w-3xl mx-auto relative" style={{ aspectRatio: '16/10' }}>
             {/* Basketball court lines and circles would be SVG overlay */}
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-white text-sm opacity-50">Basketball Court Diagram</div>
+              <div className="text-white text-sm opacity-80">
+                {filteredShots.length} shot(s) in {activeQuarter.toUpperCase()}
+              </div>
             </div>
             {/* Shot markers would be positioned absolutely based on coordinates */}
           </div>
