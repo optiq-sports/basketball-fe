@@ -1,6 +1,8 @@
 import { API_BASE } from '../../config';
 import type { RealtimeSessionMessage } from './types';
 
+const TOKEN_KEY = 'access_token';
+
 export interface RealtimeClient {
   close: () => void;
 }
@@ -19,6 +21,10 @@ export function createSessionSseClient(
   const streamUrl = new URL(
     `${API_BASE}/statdash/realtime/sessions/${encodeURIComponent(sessionId)}/stream`,
   );
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null;
+  if (token) {
+    streamUrl.searchParams.set('access_token', token);
+  }
   const eventSource = new EventSource(streamUrl.toString(), { withCredentials: true });
 
   eventSource.addEventListener('open', () => {
