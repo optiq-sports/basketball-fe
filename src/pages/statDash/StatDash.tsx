@@ -97,6 +97,26 @@ function newLogId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function StatDashStatusLine(props: {
+  dotClassName: string;
+  blink: boolean;
+  textClassName?: string;
+  children: React.ReactNode;
+}) {
+  const { dotClassName, blink, textClassName = 'text-xs text-gray-700', children } = props;
+  return (
+    <div className={`flex items-center gap-2 px-4 pt-2 ${textClassName}`}>
+      <span
+        className={`inline-block size-2 shrink-0 rounded-full ${dotClassName} ${
+          blink ? 'motion-safe:animate-status-dot-blink' : ''
+        }`}
+        aria-hidden
+      />
+      <div className="min-w-0 leading-snug">{children}</div>
+    </div>
+  );
+}
+
 const StatDash: React.FC = () => {
   const navigate = useNavigate();
   const initialOrientation = useMemo(() => readGameSetupOrientation(), []);
@@ -2152,39 +2172,59 @@ const StatDash: React.FC = () => {
       />
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="px-4 pt-2 text-xs">
-          {realtimeReconnecting ? (
-            <span className="rounded bg-amber-100 px-2 py-1 text-amber-800">Realtime: reconnecting...</span>
-          ) : realtimeConnected ? (
-            <span className="rounded bg-emerald-100 px-2 py-1 text-emerald-800">Realtime: connected</span>
-          ) : (
-            <span className="rounded bg-gray-100 px-2 py-1 text-gray-700">Realtime: offline</span>
-          )}
-        </div>
-        <div className="px-4 pt-2 text-xs">
+        <StatDashStatusLine
+          dotClassName={
+            realtimeReconnecting ? 'bg-amber-500' : realtimeConnected ? 'bg-emerald-500' : 'bg-gray-400'
+          }
+          blink={realtimeReconnecting}
+        >
+          {realtimeReconnecting
+            ? 'Realtime: reconnecting…'
+            : realtimeConnected
+              ? 'Realtime: connected'
+              : 'Realtime: offline'}
+        </StatDashStatusLine>
+        <StatDashStatusLine
+          dotClassName={
+            !isOnline
+              ? 'bg-orange-500'
+              : failedCount > 0
+                ? 'bg-red-500'
+                : pendingCount > 0
+                  ? 'bg-amber-500'
+                  : 'bg-emerald-500'
+          }
+          blink={!isOnline || failedCount > 0 || pendingCount > 0}
+        >
           {!isOnline ? (
-            <span className="rounded bg-orange-100 px-2 py-1 text-orange-800">📵 Offline — recording locally</span>
+            'Offline — recording locally'
           ) : failedCount > 0 ? (
-            <span className="rounded bg-red-100 px-2 py-1 text-red-800">
-              ✗ {failedCount} event(s) failed to sync{' '}
+            <>
+              {failedCount} event(s) failed to sync{' '}
               <button type="button" className="underline" onClick={retryFailed}>
                 Retry
               </button>
-            </span>
+            </>
           ) : pendingCount > 0 ? (
-            <span className="rounded bg-amber-100 px-2 py-1 text-amber-800"> {pendingCount} event(s) queued</span>
+            <>{pendingCount} event(s) queued</>
           ) : (
-            <span className="rounded bg-emerald-100 px-2 py-1 text-emerald-800">All events synced</span>
+            'All events synced'
           )}
-        </div>
+        </StatDashStatusLine>
         {isBootstrapping && (
-          <div className="px-4 py-2 text-sm text-gray-600">Syncing game session...</div>
+          <StatDashStatusLine dotClassName="bg-amber-500" blink textClassName="text-sm text-gray-600">
+            Syncing game session…
+          </StatDashStatusLine>
         )}
         {bootError && (
-          <div className="px-4 py-2 text-sm text-red-600">{bootError}</div>
+          <StatDashStatusLine dotClassName="bg-red-500" blink textClassName="text-sm text-red-600">
+            {bootError}
+          </StatDashStatusLine>
         )}
         {syncNotice && (
-          <div className="px-4 py-2 text-sm text-amber-700">{syncNotice}</div>
+          <StatDashStatusLine dotClassName="bg-amber-500" blink textClassName="text-sm text-amber-800">
+            {syncNotice}
+          </StatDashStatusLine>
         )}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden py-4 pl-12 pr-12 sm:pl-14 sm:pr-14">
           <div className="flex min-w-0 shrink-0 items-center justify-evenly sm:gap-4">

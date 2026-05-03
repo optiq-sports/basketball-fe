@@ -11,11 +11,16 @@ export default {
           '0%': { opacity: 0, transform: 'scale(0.95)' },
           '100%': { opacity: 1, transform: 'scale(1)' },
         },
+        'status-dot-blink': {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0.22' },
+        },
       },
       animation: {
         'fade-in': 'fade-in 0.4s ease-out',
+        'status-dot-blink': 'status-dot-blink 1.1s ease-in-out infinite',
       },
     },
-      },
+  },
   plugins: [],
 }
