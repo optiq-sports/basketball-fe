@@ -253,8 +253,7 @@ const StatDash: React.FC = () => {
     return `${getTeamIdForSide(side)}_${jersey}`;
   }, [getTeamIdForSide]);
 
-  const { enqueue, clearQueue, queue, pendingCount, failedCount, isOnline, retryFailed } =
-    useEventQueue({
+  const { enqueue, queue, pendingCount, failedCount, isOnline, retryFailed } = useEventQueue({
     onCommandAccepted: (_event, response) => {
       writeStoredExpectedVersion(response.version);
       latestVersionRef.current = response.version;
@@ -2221,16 +2220,6 @@ const StatDash: React.FC = () => {
           ) : (
             'All events synced'
           )}
-        </StatDashStatusLine>
-        <StatDashStatusLine dotClassName="bg-gray-400" blink={false} textClassName="text-xs text-gray-600">
-          <button
-            type="button"
-            className="font-semibold text-amber-800 underline decoration-dotted underline-offset-2 hover:text-amber-950"
-            onClick={() => clearQueue()}
-          >
-            [TEMP] Clear queue
-          </button>
-          <span className="ml-2 text-gray-500">(local only — refresh session if versions drift)</span>
         </StatDashStatusLine>
         {isBootstrapping && (
           <StatDashStatusLine dotClassName="bg-amber-500" blink textClassName="text-sm text-gray-600">
