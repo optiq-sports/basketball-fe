@@ -79,6 +79,7 @@ import {
 } from '../../features/statdash/sessionContextStorage';
 import { generateIdempotencyKey } from '../../features/statdash/utils';
 import { useEventQueue } from '../../features/statdash/eventQueue/useEventQueue';
+import type { QueuedEvent } from '../../features/statdash/eventQueue/types';
 
 const DEFAULT_HOME = 'TEAM 1';
 const DEFAULT_AWAY = 'TEAM 2';
@@ -232,6 +233,7 @@ const StatDash: React.FC = () => {
   }, []);
   const latestVersionRef = useRef<number>(readStoredExpectedVersion());
   const pendingCountRef = useRef(0);
+  const queueRef = useRef<QueuedEvent[]>([]);
 
   const applyAuthoritativeState = useCallback((state: SessionStateSnapshot) => {
     setHomeScore(state.score.home);
@@ -270,7 +272,8 @@ const StatDash: React.FC = () => {
 
   useEffect(() => {
     pendingCountRef.current = pendingCount;
-  }, [pendingCount]);
+    queueRef.current = queue;
+  }, [pendingCount, queue]);
 
   const commitEventCommand = useCallback(
     async (
@@ -366,8 +369,8 @@ const StatDash: React.FC = () => {
         foulFlowRef.current !== 'idle' ||
         turnoverFlowRef.current !== 'idle' ||
         subModalOpenRef.current ||
-        pendingCount > 0 ||
-        queue.some((event) => event.status === 'inflight');
+        pendingCountRef.current > 0 ||
+        queueRef.current.some((event) => event.status === 'inflight');
 
       if (hasActiveDraft) {
         setSyncNotice('Live update received. Finish this step to auto-sync.');
@@ -419,7 +422,9 @@ const StatDash: React.FC = () => {
       client.close();
       setRealtimeConnected(false);
     };
-  }, [applyAuthoritativeState, pendingCount, queue]);
+    // Keep deps minimal: queue/pendingCount updates would tear down EventSource and show
+    // DevTools "(canceled)" after every command; draft checks use refs above.
+  }, [applyAuthoritativeState]);
 
   const handleStartGamePromptConfirm = useCallback(async () => {
     const context = readStoredSessionContext();
