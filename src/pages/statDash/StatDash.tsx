@@ -502,6 +502,7 @@ const StatDash: React.FC = () => {
             : undefined,
         foulType: draft.foulType,
         freeThrowsAwarded: 0,
+        freeThrows: [],
       });
       if (!committed) return;
       appendLog({
@@ -547,6 +548,10 @@ const StatDash: React.FC = () => {
             : undefined,
         foulType: draft.foulType,
         freeThrowsAwarded: draft.ftCount,
+        freeThrows: draft.ftResults.map((r, i) => ({
+          attemptNumber: i + 1,
+          result: r === 'made' ? 'made' : 'missed',
+        })),
       });
       if (!committed) return;
       const foulerTeamName = draft.foulerSide === 'home' ? homeName : awayName;
