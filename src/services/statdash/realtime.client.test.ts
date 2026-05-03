@@ -24,7 +24,7 @@ describe('realtime client', () => {
     const OriginalEventSource = globalThis.EventSource;
     const fake = new FakeEventSource('http://localhost');
     class MockEventSource {
-      constructor(_url: string, _init?: EventSourceInit) {
+      constructor(_url: string) {
         return fake as unknown as EventSource;
       }
     }

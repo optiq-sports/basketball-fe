@@ -25,7 +25,9 @@ export function createSessionSseClient(
   if (token) {
     streamUrl.searchParams.set('access_token', token);
   }
-  const eventSource = new EventSource(streamUrl.toString(), { withCredentials: true });
+  // Do not use withCredentials: auth is via query param, not cookies. Credentialed CORS is
+  // stricter (ACAC + non-* ACAO) and often breaks cross-origin SSE on serverless/CDN.
+  const eventSource = new EventSource(streamUrl.toString());
 
   eventSource.addEventListener('open', () => {
     handlers.onConnected?.();
