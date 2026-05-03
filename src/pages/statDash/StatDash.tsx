@@ -253,7 +253,8 @@ const StatDash: React.FC = () => {
     return `${getTeamIdForSide(side)}_${jersey}`;
   }, [getTeamIdForSide]);
 
-  const { enqueue, queue, pendingCount, failedCount, isOnline, retryFailed } = useEventQueue({
+  const { enqueue, clearQueue, queue, pendingCount, failedCount, isOnline, retryFailed } =
+    useEventQueue({
     onCommandAccepted: (_event, response) => {
       writeStoredExpectedVersion(response.version);
       latestVersionRef.current = response.version;
@@ -2221,12 +2222,22 @@ const StatDash: React.FC = () => {
             'All events synced'
           )}
         </StatDashStatusLine>
+        <StatDashStatusLine dotClassName="bg-gray-400" blink={false} textClassName="text-xs text-gray-600">
+          <button
+            type="button"
+            className="font-semibold text-amber-800 underline decoration-dotted underline-offset-2 hover:text-amber-950"
+            onClick={() => clearQueue()}
+          >
+            [TEMP] Clear queue
+          </button>
+          <span className="ml-2 text-gray-500">(local only — refresh session if versions drift)</span>
+        </StatDashStatusLine>
         {isBootstrapping && (
           <StatDashStatusLine dotClassName="bg-amber-500" blink textClassName="text-sm text-gray-600">
             Syncing game session…
           </StatDashStatusLine>
         )}
-        {bootError && (
+        {/* {bootError && (
           <StatDashStatusLine dotClassName="bg-red-500" blink textClassName="text-sm text-red-600">
             {bootError}
           </StatDashStatusLine>
@@ -2235,7 +2246,7 @@ const StatDash: React.FC = () => {
           <StatDashStatusLine dotClassName="bg-amber-500" blink textClassName="text-sm text-amber-800">
             {syncNotice}
           </StatDashStatusLine>
-        )}
+        )} */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden py-4 pl-12 pr-12 sm:pl-14 sm:pr-14">
           <div className="flex min-w-0 shrink-0 items-center justify-evenly sm:gap-4">
             <StatusStrip />

@@ -15,6 +15,8 @@ interface UseEventQueueOptions {
 
 export interface UseEventQueueReturn {
   enqueue: (event: EnqueueInput) => void;
+  /** TEMP/dev: empty queue + localStorage; does not fix session version vs server. */
+  clearQueue: () => void;
   queue: QueuedEvent[];
   pendingCount: number;
   failedCount: number;
@@ -91,6 +93,12 @@ export function useEventQueue(options: UseEventQueueOptions = {}): UseEventQueue
     );
   }, []);
 
+  const clearQueue = useCallback(() => {
+    clearDrainRetryTimer();
+    saveQueue([]);
+    setQueue([]);
+  }, []);
+
   useEffect(() => {
     const onOnline = () => setIsOnline(true);
     const onOffline = () => setIsOnline(false);
@@ -123,5 +131,5 @@ export function useEventQueue(options: UseEventQueueOptions = {}): UseEventQueue
     [queue],
   );
 
-  return { enqueue, queue, pendingCount, failedCount, isOnline, retryFailed };
+  return { enqueue, clearQueue, queue, pendingCount, failedCount, isOnline, retryFailed };
 }
