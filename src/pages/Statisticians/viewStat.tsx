@@ -5,20 +5,6 @@ import { useStatistician } from '../../api/hooks';
 import type { Statistician } from '../../types/api';
 import { resolvePlayerPhotoUrl } from '../../utils/playerPhotoPlaceholder';
 
-interface Game {
-  id: number;
-  teamA: string;
-  teamAScore: number;
-  teamAColor: string;
-  teamB: string;
-  teamBScore: number;
-  teamBColor: string;
-  venue: string;
-  date: string;
-  time: string;
-  datetime: string;
-}
-
 function buildDisplayStatistician(stat: Statistician | undefined): {
   fullName: string;
   email: string;
@@ -161,61 +147,9 @@ const ViewStat: React.FC = () => {
   }
 
   const display = buildDisplayStatistician(statQuery.data as Statistician);
-
-  const games: Game[] = [
-    {
-      id: 1,
-      teamA: 'TEAM A',
-      teamAScore: 120,
-      teamAColor: 'yellow',
-      teamB: 'TEAM B',
-      teamBScore: 98,
-      teamBColor: 'blue',
-      venue: 'Match Venue',
-      date: '11 November 2025',
-      time: '12:40PM',
-      datetime: '12:40PM, 11 November 2025',
-    },
-    {
-      id: 2,
-      teamA: 'TEAM A',
-      teamAScore: 120,
-      teamAColor: 'yellow',
-      teamB: 'TEAM B',
-      teamBScore: 98,
-      teamBColor: 'blue',
-      venue: 'Match Venue',
-      date: '11 November 2025',
-      time: '12:40PM',
-      datetime: '12:40PM, 11 November 2025',
-    },
-    {
-      id: 3,
-      teamA: 'TEAM A',
-      teamAScore: 120,
-      teamAColor: 'yellow',
-      teamB: 'TEAM B',
-      teamBScore: 98,
-      teamBColor: 'blue',
-      venue: 'Match Venue',
-      date: '11 November 2025',
-      time: '12:40PM',
-      datetime: '12:40PM, 11 November 2025',
-    },
-    {
-      id: 4,
-      teamA: 'TEAM A',
-      teamAScore: 120,
-      teamAColor: 'yellow',
-      teamB: 'TEAM B',
-      teamBScore: 98,
-      teamBColor: 'blue',
-      venue: 'Match Venue',
-      date: '11 November 2025',
-      time: '12:40PM',
-      datetime: '12:40PM, 11 November 2025',
-    },
-  ];
+  // GET /statistician/:id does not yet return match history — the backend
+  // needs to include gameEvents → gameSession → match in the findOne query.
+  const games: Game[] = [];
 
   return (
     <div className="min-h-screen bg-white">
@@ -307,10 +241,16 @@ const ViewStat: React.FC = () => {
         </div>
       </div>
 
-      {/* Games Officiated Section (placeholder until backend provides real data) */}
+      {/* Games Officiated Section */}
       <div className="px-8 py-8">
         <div className="max-w-7xl mx-auto">
           <h2 className="text-2xl font-bold text-gray-800 mb-6">Games Officiated</h2>
+
+          {games.length === 0 && (
+            <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
+              <p className="text-gray-500 text-sm">No games officiated yet.</p>
+            </div>
+          )}
 
           {/* Games List */}
           <div className="space-y-4">

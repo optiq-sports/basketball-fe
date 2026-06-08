@@ -43,6 +43,9 @@ const Players: React.FC = () => {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadResult, setUploadResult] = useState<import('../../types/api').PlayerUploadResult | null>(null);
   const [copiedToClipboard, setCopiedToClipboard] = useState(false);
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [mergeDuplicateId, setMergeDuplicateId] = useState('');
+  const [mergeTargetId, setMergeTargetId] = useState('');
   const itemsPerPage = 10;
 
   const playersQuery = usePlayers();
@@ -430,6 +433,13 @@ const Players: React.FC = () => {
           <FiUpload size={18} />
           Upload Excel
         </button>
+        <button
+          onClick={() => { setMergeDuplicateId(''); setMergeTargetId(''); setShowMergeModal(true); }}
+          disabled={players.length < 2}
+          className="px-6 py-3 bg-white text-gray-700 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Merge Players
+        </button>
         <div className="relative" style={{ width: '250px', minWidth: '200px' }}>
           <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
           <input
@@ -601,6 +611,80 @@ const Players: React.FC = () => {
           >
             Next
           </button>
+        </div>
+      )}
+
+      {/* Merge Players Modal */}
+      {showMergeModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-800">Merge Players</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                The duplicate player's stats and team assignments are moved to the target player, then the duplicate is removed.
+              </p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Duplicate player (will be removed)</label>
+                <select
+                  value={mergeDuplicateId}
+                  onChange={e => setMergeDuplicateId(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select duplicate…</option>
+                  {players.filter(p => p.id !== mergeTargetId).map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} {p.surname} {p.number ? `#${p.number}` : ''} — {p.teamName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Target player (will be kept)</label>
+                <select
+                  value={mergeTargetId}
+                  onChange={e => setMergeTargetId(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select target…</option>
+                  {players.filter(p => p.id !== mergeDuplicateId).map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} {p.surname} {p.number ? `#${p.number}` : ''} — {p.teamName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {mergeDuplicateId && mergeTargetId && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                  <strong>{players.find(p => p.id === mergeDuplicateId)?.name} {players.find(p => p.id === mergeDuplicateId)?.surname}</strong> will be merged into <strong>{players.find(p => p.id === mergeTargetId)?.name} {players.find(p => p.id === mergeTargetId)?.surname}</strong> and permanently deleted.
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-200">
+              <button
+                onClick={() => setShowMergeModal(false)}
+                className="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={!mergeDuplicateId || !mergeTargetId || mergePlayers.isPending}
+                onClick={() => {
+                  mergePlayers.mutate(
+                    { duplicatePlayerId: mergeDuplicateId, targetPlayerId: mergeTargetId },
+                    {
+                      onSuccess: () => { setShowMergeModal(false); setMergeDuplicateId(''); setMergeTargetId(''); },
+                      onError: (e) => alert(e.message),
+                    }
+                  );
+                }}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {mergePlayers.isPending ? 'Merging…' : 'Confirm Merge'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

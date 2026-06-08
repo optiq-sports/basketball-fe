@@ -383,6 +383,22 @@ export interface TournamentAddTeamsBody {
   teamIds: string[];
 }
 
+export interface MatchStatRecord {
+  id: string;
+  playerId: string;
+  teamId: string;
+  points: number;
+  rebounds: number;
+  assists: number;
+  blocks: number;
+  steals: number;
+  fouls: number;
+  turnovers: number;
+  minutesPlayed?: number;
+  player?: { id: string; firstName: string; lastName: string };
+  match?: { id: string; homeTeam?: { id: string; name: string }; awayTeam?: { id: string; name: string } };
+}
+
 // Match
 export type MatchStatus =
   | 'SCHEDULED'
@@ -399,6 +415,9 @@ export interface Match {
   scheduledDate: string;
   status: MatchStatus;
   venue?: string;
+  matchCode?: string;
+  homeScore?: number;
+  awayScore?: number;
   quarter1Home?: number;
   quarter1Away?: number;
   quarter2Home?: number;
@@ -409,6 +428,10 @@ export interface Match {
   quarter4Away?: number;
   totalHome?: number;
   totalAway?: number;
+  homeTeam?: Team & { playerTeams?: Array<{ playerId?: string; jerseyNumber?: number; isCaptain?: boolean; player?: { id: string; firstName: string; lastName: string; position?: string; dateOfBirth?: string; height?: string } }> };
+  awayTeam?: Team & { playerTeams?: Array<{ playerId?: string; jerseyNumber?: number; isCaptain?: boolean; player?: { id: string; firstName: string; lastName: string; position?: string; dateOfBirth?: string; height?: string } }> };
+  tournament?: Tournament;
+  stats?: MatchStatRecord[];
   [key: string]: unknown;
 }
 

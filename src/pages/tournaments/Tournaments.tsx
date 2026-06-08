@@ -11,6 +11,18 @@ const CopyIcon: React.FC<{ className?: string }> = ({ className }) => (
   </svg>
 );
 
+type LeaderStat = 'points' | 'rebounds' | 'assists' | 'blocks' | 'steals';
+
+const LEADER_STAT_LABELS: Record<LeaderStat, string> = {
+  points: 'PTS',
+  rebounds: 'REB',
+  assists: 'AST',
+  blocks: 'BLK',
+  steals: 'STL',
+};
+
+const LEADER_COLORS = ['#FFCA69', '#80B7D5', '#7FD99A'];
+
 interface DisplayTeam {
   id: string;
   name: string;
@@ -31,8 +43,8 @@ interface DisplayMatch {
   venue: string;
   time: string;
   hasStarted: boolean;
-  totalHome?: number;
-  totalAway?: number;
+  homeScore?: number;
+  awayScore?: number;
   matchCode?: string;
 }
 
@@ -50,7 +62,7 @@ const CompetitionDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const { id: tournamentId } = useParams<{ id: string }>();
   const [activeGroup, setActiveGroup] = useState('A');
-  const [matchCode] = useState('ABC123XYZ');
+  const [activeLeaderStat, setActiveLeaderStat] = useState<LeaderStat>('points');
   const [showSchedules, setShowSchedules] = useState(true);
 
   const tournamentQuery = useTournament(tournamentId);
@@ -95,9 +107,9 @@ const CompetitionDetailPage: React.FC = () => {
         venue: m.venue ?? '—',
         time: formatMatchTime(m.scheduledDate),
         hasStarted: m.status === 'LIVE' || m.status === 'COMPLETED',
-        totalHome: m.totalHome,
-        totalAway: m.totalAway,
-        matchCode: (m as { code?: string }).code ?? m.id,
+        homeScore: m.homeScore,
+        awayScore: m.awayScore,
+        matchCode: m.matchCode ?? m.id,
       };
     });
   }, [matchesRaw, teamMap]);
@@ -105,43 +117,78 @@ const CompetitionDetailPage: React.FC = () => {
   const ongoingMatch = useMemo(() => matches.find((m) => m.hasStarted) ?? null, [matches]);
 
   const teams: DisplayTeam[] = useMemo(() => {
-    const list = teamsQuery.data ?? [];
-    const tournamentTeamIds = (tournament as { teamIds?: string[] })?.teamIds;
-    const ids = Array.isArray(tournamentTeamIds) && tournamentTeamIds.length > 0 ? tournamentTeamIds : [];
-    const filtered = ids.length > 0 ? list.filter((t) => ids.includes(t.id)) : [];
-    return filtered.map((t, i) => ({
-      id: t.id,
-      name: t.name,
-      color: t.color === 'yellow' || t.color === 'blue' ? t.color : (i % 2 === 0 ? 'yellow' : 'blue'),
-      gp: 0,
-      w: 0,
-      l: 0,
-      percent: 0,
-      points: 0,
-    }));
-  }, [teamsQuery.data, tournament]);
+    if (!tournament) return [];
+    const tournamentTeams = (tournament as Record<string, unknown>).teams as Array<{ teamId: string; team: { id: string; name: string; color: string } }> ?? [];
+    const completedMatches = matchesRaw.filter(m => m.status === 'COMPLETED');
 
-  interface TournamentLeader {
-    id: number;
-    name: string;
-    surname: string;
-    stat: number;
-    statLabel: string;
-    bgColor: string;
-    image: string;
-  }
+    const statsMap: Record<string, { gp: number; w: number; l: number }> = {};
+    for (const tt of tournamentTeams) statsMap[tt.teamId] = { gp: 0, w: 0, l: 0 };
 
-  const tournamentLeaders: TournamentLeader[] = [
-    { id: 1, name: 'Name', surname: 'Surname', stat: 11, statLabel: 'PPG', bgColor: '#FFCA69', image: '/player1.png' },
-    { id: 2, name: 'Name', surname: 'Surname', stat: 23, statLabel: 'PPG', bgColor: '#80B7D5', image: '/player2.png' },
-    { id: 3, name: 'Name', surname: 'Surname', stat: 5, statLabel: 'PPG', bgColor: '#7FD99A', image: '/player3.png' },
-  ];
+    for (const m of completedMatches) {
+      const home = m.homeTeamId;
+      const away = m.awayTeamId;
+      if (!statsMap[home]) statsMap[home] = { gp: 0, w: 0, l: 0 };
+      if (!statsMap[away]) statsMap[away] = { gp: 0, w: 0, l: 0 };
+      statsMap[home].gp++;
+      statsMap[away].gp++;
+      const hs = m.homeScore ?? 0;
+      const as_ = m.awayScore ?? 0;
+      if (hs > as_) { statsMap[home].w++; statsMap[away].l++; }
+      else if (as_ > hs) { statsMap[away].w++; statsMap[home].l++; }
+    }
 
-  const handleCopyCode = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(matchCode);
-    alert('Match code copied!');
-  };
+    return tournamentTeams
+      .map((tt, i) => {
+        const s = statsMap[tt.teamId] ?? { gp: 0, w: 0, l: 0 };
+        const pct = s.gp > 0 ? Math.round((s.w / s.gp) * 1000) / 10 : 0;
+        return {
+          id: tt.team.id,
+          name: tt.team.name,
+          color: tt.team.color === 'yellow' || tt.team.color === 'blue' ? tt.team.color : (i % 2 === 0 ? 'yellow' : 'blue'),
+          gp: s.gp,
+          w: s.w,
+          l: s.l,
+          percent: pct,
+          points: s.w * 2,
+        };
+      })
+      .sort((a, b) => b.points - a.points || b.percent - a.percent);
+  }, [tournament, matchesRaw]);
+
+  const tournamentLeaders = useMemo(() => {
+    const playerMap: Record<string, {
+      playerId: string; name: string; matchId: string;
+      points: number; rebounds: number; assists: number; blocks: number; steals: number; gp: number;
+    }> = {};
+
+    for (const m of matchesRaw) {
+      const stats = (m as Record<string, unknown>).stats as Array<{
+        playerId: string; points: number; rebounds: number; assists: number; blocks: number; steals: number;
+        player?: { firstName: string; lastName: string };
+      }> | undefined;
+      if (!stats) continue;
+      for (const s of stats) {
+        if (!playerMap[s.playerId]) {
+          playerMap[s.playerId] = {
+            playerId: s.playerId,
+            name: s.player ? `${s.player.firstName} ${s.player.lastName}` : '—',
+            matchId: m.id,
+            points: 0, rebounds: 0, assists: 0, blocks: 0, steals: 0, gp: 0,
+          };
+        }
+        playerMap[s.playerId].points += s.points ?? 0;
+        playerMap[s.playerId].rebounds += s.rebounds ?? 0;
+        playerMap[s.playerId].assists += s.assists ?? 0;
+        playerMap[s.playerId].blocks += s.blocks ?? 0;
+        playerMap[s.playerId].steals += s.steals ?? 0;
+        playerMap[s.playerId].gp++;
+      }
+    }
+
+    return Object.values(playerMap)
+      .sort((a, b) => b[activeLeaderStat] - a[activeLeaderStat])
+      .slice(0, 3);
+  }, [matchesRaw, activeLeaderStat]);
 
   const openEditModal = () => {
     const t = tournamentQuery.data;
@@ -229,6 +276,12 @@ const CompetitionDetailPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
+        {tournament.flyer && (
+          <div className="mb-6 rounded-lg overflow-hidden border border-gray-200" style={{ maxHeight: '220px' }}>
+            <img src={tournament.flyer} alt="Tournament flyer" className="w-full object-cover object-top" style={{ maxHeight: '220px' }} />
+          </div>
+        )}
+
         <div className="mb-6 flex items-center justify-between gap-3 flex-wrap">
           <h1 className="text-2xl font-semibold text-gray-800">{tournament.name}</h1>
           <div className="flex gap-2">
@@ -388,7 +441,7 @@ const CompetitionDetailPage: React.FC = () => {
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-sm font-semibold text-gray-700">Ongoing Game</h2>
             <button
-              onClick={handleCopyCode}
+              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(ongoingMatch.matchCode ?? ongoingMatch.id); alert('Match code copied!'); }}
               className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800 transition-colors"
             >
               <span>Copy Match Code</span>
@@ -403,7 +456,7 @@ const CompetitionDetailPage: React.FC = () => {
               </div>
               <div>
                 <div className="text-xs text-gray-500 mb-1">{ongoingMatch.teamA}</div>
-                <div className="text-4xl font-bold text-gray-900">{ongoingMatch.totalHome ?? 0}</div>
+                <div className="text-4xl font-bold text-gray-900">{ongoingMatch.homeScore ?? 0}</div>
               </div>
             </div>
 
@@ -412,7 +465,7 @@ const CompetitionDetailPage: React.FC = () => {
             <div className="flex items-center gap-4">
               <div>
                 <div className="text-xs text-gray-500 mb-1 text-right">{ongoingMatch.teamB}</div>
-                <div className="text-4xl font-bold text-gray-900">{ongoingMatch.totalAway ?? 0}</div>
+                <div className="text-4xl font-bold text-gray-900">{ongoingMatch.awayScore ?? 0}</div>
               </div>
               <div className="flex items-center justify-center">
                 <img src="/ball2.png" alt="Basketball" style={{ width: '35px', height: '35px' }} className="object-contain" />
@@ -427,21 +480,21 @@ const CompetitionDetailPage: React.FC = () => {
         )}
 
         {/* Group Tabs */}
-          <div className="flex justify-center gap-2 mb-6">
-            {['A', 'B', 'C', 'D'].map((group) => (
-              <button
-                key={group}
-                onClick={() => setActiveGroup(group)}
-                className={`px-6 py-2.5 rounded-lg font-medium transition-all ${
-                  activeGroup === group
-                    ? 'bg-[#21409A] text-white shadow-md'
-                    : 'bg-white text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                Group {group}
-              </button>
-            ))}
-          </div>
+        <div className="flex justify-center gap-2 mb-6">
+          {['A', 'B', 'C', 'D'].map((group) => (
+            <button
+              key={group}
+              onClick={() => setActiveGroup(group)}
+              className={`px-6 py-2.5 rounded-lg font-medium transition-all ${
+                activeGroup === group
+                  ? 'bg-[#21409A] text-white shadow-md'
+                  : 'bg-white text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              Group {group}
+            </button>
+          ))}
+        </div>
 
         {/* Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -451,7 +504,9 @@ const CompetitionDetailPage: React.FC = () => {
             <div className="rounded-lg shadow-sm p-6 border" style={{ background: '#FCFEFF', border: '1px solid #A9A9A91A' }}>
             <div className="mb-6">
               <h2 className="text-xl font-semibold text-gray-800">Group {activeGroup}</h2>
-              <p className="text-sm text-gray-500">0/10 Games Played</p>
+              <p className="text-sm text-gray-500">
+                {matchesRaw.filter(m => m.status === 'COMPLETED').length}/{tournament.numberOfGames as number ?? '—'} Games Played
+              </p>
             </div>
 
             <div className="overflow-x-auto">
@@ -578,58 +633,48 @@ const CompetitionDetailPage: React.FC = () => {
           
           {/* Stats Tabs */}
           <div className="flex gap-2 mb-6">
-            <button className="px-6 py-2.5 rounded-lg font-medium bg-[#21409A] text-white shadow-md">
-              Points
-            </button>
-            <button className="px-6 py-2.5 rounded-lg font-medium bg-white text-gray-600 hover:bg-gray-100">
-              Rebounds
-            </button>
-            <button className="px-6 py-2.5 rounded-lg font-medium bg-white text-gray-600 hover:bg-gray-100">
-              Assists
-            </button>
-            <button className="px-6 py-2.5 rounded-lg font-medium bg-white text-gray-600 hover:bg-gray-100">
-              Block
-            </button>
-            <button className="px-6 py-2.5 rounded-lg font-medium bg-white text-gray-600 hover:bg-gray-100">
-              Steals
-            </button>
+            {(['points', 'rebounds', 'assists', 'blocks', 'steals'] as LeaderStat[]).map((stat) => (
+              <button
+                key={stat}
+                onClick={() => setActiveLeaderStat(stat)}
+                className={`px-6 py-2.5 rounded-lg font-medium transition-all ${
+                  activeLeaderStat === stat
+                    ? 'bg-[#21409A] text-white shadow-md'
+                    : 'bg-white text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {stat.charAt(0).toUpperCase() + stat.slice(1)}
+              </button>
+            ))}
           </div>
 
           {/* Player Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {tournamentLeaders.map((player) => {
-              const firstMatchId = matches.length > 0 ? matches[0].id : '';
-              return (
+          {tournamentLeaders.length === 0 ? (
+            <div className="text-center py-10 bg-gray-50 rounded-lg border border-gray-200">
+              <p className="text-gray-500 text-sm">No stats recorded yet for this tournament.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {tournamentLeaders.map((player, i) => (
                 <div
-                  key={player.id}
+                  key={player.playerId}
                   className="rounded-2xl overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
-                  style={{ width: '335px', height: '374px', backgroundColor: player.bgColor }}
-                  onClick={() => {
-                    if (firstMatchId) {
-                      navigate(`/tournaments/${tournamentId}/match/${firstMatchId}/player/${player.id}`, {
-                        state: { from: 'tournament-leaders', tournamentId }
-                      });
-                    }
-                  }}
+                  style={{ width: '335px', height: '200px', backgroundColor: LEADER_COLORS[i % LEADER_COLORS.length] }}
+                  onClick={() => navigate(
+                    `/tournaments/${tournamentId}/match/${player.matchId}/player/${player.playerId}`,
+                    { state: { from: 'tournament-leaders', tournamentId } }
+                  )}
                 >
                   <div className="p-4">
-                    <div className="text-white font-medium mb-1">{player.name}</div>
-                    <div className="text-white font-bold text-lg mb-1">{player.surname}</div>
+                    <div className="text-white font-bold text-lg mb-2">{player.name}</div>
                     <div className="bg-white text-gray-900 font-bold text-sm px-3 py-1 rounded-md inline-block">
-                      {player.stat} <span className='font-light'>{player.statLabel}</span>
+                      {player[activeLeaderStat]} <span className="font-light">{LEADER_STAT_LABELS[activeLeaderStat]}</span>
                     </div>
                   </div>
-                  <div className="relative" style={{ height: '400px' }}>
-                    <img
-                      src={player.image}
-                      alt={`${player.name} ${player.surname}`}
-                      className="w-[21rem] ml-0 mx-auto absolute mt-[-2rem]"
-                    />
-                  </div>
                 </div>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
