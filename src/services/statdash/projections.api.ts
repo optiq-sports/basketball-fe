@@ -23,4 +23,11 @@ export const projectionsApi = {
       `/statdash/projections/match/${encodeURIComponent(sessionId)}/summary`,
     );
   },
+
+  rebuild(sessionId: string): Promise<{ sessionId: string; version: number; score: { home: number; away: number }; projectionId: string }> {
+    return statdashRequest(
+      `/statdash/projections/match/${encodeURIComponent(sessionId)}/rebuild`,
+      { method: 'POST' },
+    );
+  },
 };

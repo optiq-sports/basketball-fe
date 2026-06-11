@@ -75,12 +75,19 @@ export function opponentOf(side: TeamSide): TeamSide {
 }
 
 /** Game log `player` column for the fouler. */
-export function foulerLogPlayerField(draft: FoulFlowDraft): string {
+export function foulerLogPlayerField(
+  draft: FoulFlowDraft,
+  getLabel?: (side: TeamSide | null, jersey: number) => string,
+): string {
   if (draft.foulerRole === 'bench') {
     return draft.foulerJersey !== null ? `#${draft.foulerJersey} (bench)` : 'Bench';
   }
   if (draft.foulerRole === 'coach') return 'Coach';
-  if (draft.foulerJersey !== null) return `#${draft.foulerJersey}`;
+  if (draft.foulerJersey !== null) {
+    return getLabel && draft.foulerSide
+      ? getLabel(draft.foulerSide, draft.foulerJersey)
+      : `#${draft.foulerJersey}`;
+  }
   return '—';
 }
 

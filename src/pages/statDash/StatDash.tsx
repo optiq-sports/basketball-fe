@@ -72,9 +72,11 @@ import {
   type SessionStateSnapshot,
   type RealtimeSessionMessage,
 } from '../../services/statdash';
+import { useMatch } from '../../api/hooks';
 import {
   readStoredExpectedVersion,
   readStoredSessionContext,
+  readStoredLineups,
   writeStoredExpectedVersion,
 } from '../../features/statdash/sessionContextStorage';
 import { generateIdempotencyKey } from '../../features/statdash/utils';
@@ -124,8 +126,10 @@ const StatDash: React.FC = () => {
   const [homeOnLeft, setHomeOnLeft] = useState(initialOrientation.homeOnLeft);
   const [homeAttacksLeft, setHomeAttacksLeft] = useState(initialOrientation.homeAttacksLeft);
   const { homeTeamColor, awayTeamColor } = useStatisticianTeamColors();
-  const [homeName] = useState(DEFAULT_HOME);
-  const [awayName] = useState(DEFAULT_AWAY);
+  const [homeName, setHomeName] = useState(DEFAULT_HOME);
+  const [awayName, setAwayName] = useState(DEFAULT_AWAY);
+  const sessionContextForMatch = useMemo(() => readStoredSessionContext(), []);
+  const matchForNamesQuery = useMatch(sessionContextForMatch?.matchId);
   const [homeScore, setHomeScore] = useState(0);
   const [awayScore, setAwayScore] = useState(0);
   const [quarter, setQuarter] = useState(1);
@@ -159,8 +163,22 @@ const StatDash: React.FC = () => {
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [realtimeReconnecting, setRealtimeReconnecting] = useState(false);
 
-  const [homeLineup, setHomeLineup] = useState<TeamLineup>(() => cloneLineup(DEFAULT_TEAM_LINEUP));
-  const [awayLineup, setAwayLineup] = useState<TeamLineup>(() => cloneLineup(DEFAULT_TEAM_LINEUP));
+  const [homeLineup, setHomeLineup] = useState<TeamLineup>(() => {
+    const saved = readStoredLineups();
+    if (saved) {
+      console.log('[StatDash] Lineup loaded from sessionStorage:', {
+        home: { onCourt: saved.home.onCourt, bench: saved.home.bench },
+        away: { onCourt: saved.away.onCourt, bench: saved.away.bench },
+      });
+      return cloneLineup(saved.home);
+    }
+    console.warn('[StatDash] No saved lineup found — using DEFAULT_TEAM_LINEUP');
+    return cloneLineup(DEFAULT_TEAM_LINEUP);
+  });
+  const [awayLineup, setAwayLineup] = useState<TeamLineup>(() => {
+    const saved = readStoredLineups();
+    return saved ? cloneLineup(saved.away) : cloneLineup(DEFAULT_TEAM_LINEUP);
+  });
 
   const [subModalOpen, setSubModalOpen] = useState(false);
   const [subDraftHome, setSubDraftHome] = useState<TeamLineup>(() => cloneLineup(DEFAULT_TEAM_LINEUP));
@@ -195,6 +213,28 @@ const StatDash: React.FC = () => {
   );
   const homeRosterList = useMemo(() => fullRoster(homeLineup), [homeLineup]);
   const awayRosterList = useMemo(() => fullRoster(awayLineup), [awayLineup]);
+
+  useEffect(() => {
+    console.log('[StatDash] Panel numbers updated:', {
+      home: { onCourt: homePanelNumbers, bench: homeLineup.bench },
+      away: { onCourt: awayPanelNumbers, bench: awayLineup.bench },
+    });
+  }, [homePanelNumbers, awayPanelNumbers, homeLineup.bench, awayLineup.bench]);
+
+  useEffect(() => {
+    if (!matchForNamesQuery.data) return;
+    const homeTeamPlayers = (matchForNamesQuery.data.homeTeam?.playerTeams ?? [])
+      .map((pt) => ({ jersey: pt.jerseyNumber, player: pt.player ? `${pt.player.firstName} ${pt.player.lastName}` : null }));
+    const awayTeamPlayers = (matchForNamesQuery.data.awayTeam?.playerTeams ?? [])
+      .map((pt) => ({ jersey: pt.jerseyNumber, player: pt.player ? `${pt.player.firstName} ${pt.player.lastName}` : null }));
+    console.log('[StatDash] Match roster from API:', {
+      homeTeam: matchForNamesQuery.data.homeTeam?.name,
+      homePlayers: homeTeamPlayers,
+      awayTeam: matchForNamesQuery.data.awayTeam?.name,
+      awayPlayers: awayTeamPlayers,
+    });
+  }, [matchForNamesQuery.data]);
+
   const activeRosterRef = useRef<{ home: number[]; away: number[] }>({
     home: compactOnCourt(cloneLineup(DEFAULT_TEAM_LINEUP)),
     away: compactOnCourt(cloneLineup(DEFAULT_TEAM_LINEUP)),
@@ -211,7 +251,7 @@ const StatDash: React.FC = () => {
   const [courtShotMarkers, setCourtShotMarkers] = useState<CourtMarker[]>([]);
   const [courtFoulMarkers, setCourtFoulMarkers] = useState<CourtMarker[]>([]);
 
-  const captureCourtPoint = useCallback((e: React.MouseEvent<HTMLElement>) => {
+  const captureCourtPoint = useCallback((e: React.MouseEvent<Element>) => {
     const el = e.currentTarget;
     const r = el.getBoundingClientRect();
     if (r.width <= 0 || r.height <= 0) return;
@@ -269,6 +309,61 @@ const StatDash: React.FC = () => {
       }
     },
   });
+
+  useEffect(() => {
+    if (matchForNamesQuery.data?.homeTeam?.name) setHomeName(matchForNamesQuery.data.homeTeam.name);
+    if (matchForNamesQuery.data?.awayTeam?.name) setAwayName(matchForNamesQuery.data.awayTeam.name);
+  }, [matchForNamesQuery.data]);
+
+  const homeRosterByJersey = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const pt of matchForNamesQuery.data?.homeTeam?.playerTeams ?? []) {
+      if (pt.player && pt.jerseyNumber != null) {
+        const initial = pt.player.firstName.charAt(0);
+        map.set(pt.jerseyNumber, `${initial}. ${pt.player.lastName}`);
+      }
+    }
+    return map;
+  }, [matchForNamesQuery.data]);
+
+  const awayRosterByJersey = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const pt of matchForNamesQuery.data?.awayTeam?.playerTeams ?? []) {
+      if (pt.player && pt.jerseyNumber != null) {
+        const initial = pt.player.firstName.charAt(0);
+        map.set(pt.jerseyNumber, `${initial}. ${pt.player.lastName}`);
+      }
+    }
+    return map;
+  }, [matchForNamesQuery.data]);
+
+  const getPlayerLabel = useCallback((side: TeamSide | null, jersey: number): string => {
+    if (side === null) return `#${jersey}`;
+    const name = (side === 'home' ? homeRosterByJersey : awayRosterByJersey).get(jersey);
+    return name ? `#${jersey} ${name}` : `#${jersey}`;
+  }, [homeRosterByJersey, awayRosterByJersey]);
+
+  // Full registered roster from match data — used for the edge drawers so every
+  // player shows regardless of which jersey numbers are currently in the lineup state.
+  // Set deduplicates in case the API returns duplicate PlayerTeam records (Gap #7).
+  const homeMatchRosterNumbers = useMemo(
+    () =>
+      [...new Set(
+        (matchForNamesQuery.data?.homeTeam?.playerTeams ?? [])
+          .filter((pt) => pt.jerseyNumber != null)
+          .map((pt) => pt.jerseyNumber as number),
+      )].sort((a, b) => a - b),
+    [matchForNamesQuery.data],
+  );
+  const awayMatchRosterNumbers = useMemo(
+    () =>
+      [...new Set(
+        (matchForNamesQuery.data?.awayTeam?.playerTeams ?? [])
+          .filter((pt) => pt.jerseyNumber != null)
+          .map((pt) => pt.jerseyNumber as number),
+      )].sort((a, b) => a - b),
+    [matchForNamesQuery.data],
+  );
 
   useEffect(() => {
     pendingCountRef.current = pendingCount;
@@ -488,7 +583,7 @@ const StatDash: React.FC = () => {
         return;
       }
       const foulerTeamName = draft.foulerSide === 'home' ? homeName : awayName;
-      const fouledSide = opponentOf(draft.foulerSide);
+      const fouledSide = opponentOf(draft.foulerSide!);
       const fouledTeamName = fouledSide === 'home' ? homeName : awayName;
       const committed = await commitEventCommand('foul', {
         teamId: draft.foulerSide ? getTeamIdForSide(draft.foulerSide) : undefined,
@@ -509,12 +604,12 @@ const StatDash: React.FC = () => {
         period: periodLabel,
         clock: clockLabel,
         team: foulerTeamName,
-        player: foulerLogPlayerField(draft),
+        player: foulerLogPlayerField(draft, getPlayerLabel),
         action: 'foul',
-        result: `${foulTypeLabel(draft.foulType)} on ${fouledTeamName} #${draft.fouledJersey}; No FT`,
+        result: `${foulTypeLabel(draft.foulType)} on ${fouledTeamName} ${getPlayerLabel(fouledSide, draft.fouledJersey)}; No FT`,
       });
     },
-    [appendLog, clockLabel, commitEventCommand, periodLabel, homeName, awayName]
+    [appendLog, clockLabel, commitEventCommand, getPlayerLabel, periodLabel, homeName, awayName]
   );
 
   const commitFoulWithFtSequence = useCallback(
@@ -555,7 +650,7 @@ const StatDash: React.FC = () => {
       });
       if (!committed) return;
       const foulerTeamName = draft.foulerSide === 'home' ? homeName : awayName;
-      const fouledSide = opponentOf(draft.foulerSide);
+      const fouledSide = opponentOf(draft.foulerSide!);
       const fouledTeamName = fouledSide === 'home' ? homeName : awayName;
       const makes = draft.ftResults.filter((r) => r === 'made').length;
       if (fouledSide === 'home') setHomeScore((s) => s + makes);
@@ -577,18 +672,18 @@ const StatDash: React.FC = () => {
       ) {
         const rebTeamName =
           draft.reboundSide === 'home' ? homeName : awayName;
-        rebSuffix = `; Reb ${rebTeamName} #${draft.reboundJersey}`;
+        rebSuffix = `; Reb ${rebTeamName} ${getPlayerLabel(draft.reboundSide, draft.reboundJersey)}`;
       }
       appendLog({
         period: periodLabel,
         clock: clockLabel,
         team: foulerTeamName,
-        player: foulerLogPlayerField(draft),
+        player: foulerLogPlayerField(draft, getPlayerLabel),
         action: 'foul',
-        result: `${foulTypeLabel(draft.foulType)} on ${fouledTeamName} #${draft.fouledJersey}; Shooter #${draft.fouledJersey}${assistPart}; FTs: ${ftStr}${rebSuffix}`,
+        result: `${foulTypeLabel(draft.foulType)} on ${fouledTeamName} ${getPlayerLabel(fouledSide, draft.fouledJersey)}; Shooter ${getPlayerLabel(fouledSide, draft.fouledJersey)}${assistPart}; FTs: ${ftStr}${rebSuffix}`,
       });
     },
-    [appendLog, clockLabel, commitEventCommand, periodLabel, homeName, awayName]
+    [appendLog, clockLabel, commitEventCommand, getPlayerLabel, periodLabel, homeName, awayName]
   );
 
   const openShotFlowFromPlayer = useCallback((side: TeamSide, jersey: number) => {
@@ -612,7 +707,7 @@ const StatDash: React.FC = () => {
     });
   }, []);
 
-  const openShotFlowFromCourt = useCallback((e: React.MouseEvent<HTMLElement>, result: 'made' | 'missed') => {
+  const openShotFlowFromCourt = useCallback((e: React.MouseEvent<Element>, result: 'made' | 'missed') => {
     if (
       foulPickerOpenRef.current ||
       subModalOpenRef.current ||
@@ -1072,7 +1167,7 @@ const StatDash: React.FC = () => {
           period: periodLabel,
           clock: clockLabel,
           team: teamName,
-          player: `#${jersey}`,
+          player: getPlayerLabel(side, jersey),
           action: 'rebound',
           result: 'Rebound',
         };
@@ -1198,7 +1293,7 @@ const StatDash: React.FC = () => {
         period: periodLabel,
         clock: clockLabel,
         team: teamName,
-        player: `#${jersey}`,
+        player: getPlayerLabel(side, jersey),
         action: 'block',
         result: 'Block',
       };
@@ -1208,7 +1303,6 @@ const StatDash: React.FC = () => {
         step: 'pickRebounder',
         draft: {
           ...prev.draft,
-          side: offenseSide,
           blockerSide: side,
           blockerJersey: jersey,
           rebounderSide: null,
@@ -1226,12 +1320,13 @@ const StatDash: React.FC = () => {
     });
 
     if (blockLogRow !== null) {
+      const shooter = blockedShooter as { side: TeamSide; jersey: number } | null;
       void (async () => {
-        if (!blockedShooter) return;
+        if (!shooter) return;
         const committed = await commitEventCommand('block', {
           teamId: getTeamIdForSide(side),
           blockerPlayerId: getPlayerId(side, jersey),
-          againstPlayerId: getPlayerId(blockedShooter.side, blockedShooter.jersey),
+          againstPlayerId: getPlayerId(shooter.side, shooter.jersey),
         });
         if (!committed) return;
         appendLog(blockLogRow);
@@ -1297,7 +1392,7 @@ const StatDash: React.FC = () => {
             period: periodLabel,
             clock: clockLabel,
             team: teamName,
-            player: `#${j}`,
+            player: getPlayerLabel(s, j),
             action: 'shot',
             result: shotTypeResultPhrase(shotType, result),
           });
@@ -1322,6 +1417,7 @@ const StatDash: React.FC = () => {
       awayName,
       awayTeamColor,
       clockLabel,
+      getPlayerLabel,
       getShotPoints,
       homeName,
       homeTeamColor,
@@ -1456,7 +1552,7 @@ const StatDash: React.FC = () => {
         period: periodLabel,
         clock: clockLabel,
         team: teamName,
-        player: `#${nextDraft.shooterJersey}`,
+        player: nextDraft.side ? getPlayerLabel(nextDraft.side, nextDraft.shooterJersey) : `#${nextDraft.shooterJersey}`,
         action: 'shot',
         result: shotTypeResultPhrase(shotType, 'missed'),
       });
@@ -1496,7 +1592,7 @@ const StatDash: React.FC = () => {
       step: 'assist',
       draft: nextDraft,
     });
-  }, [appendLog, awayName, awayTeamColor, clockLabel, commitEventCommand, homeName, homeTeamColor, periodLabel]);
+  }, [appendLog, awayName, awayTeamColor, clockLabel, commitEventCommand, getPlayerLabel, homeName, homeTeamColor, periodLabel]);
 
   const handleSetFastBreak = useCallback((fastBreak: boolean) => {
     setShotFlow((cur) => {
@@ -1552,16 +1648,16 @@ const StatDash: React.FC = () => {
           period: periodLabel,
           clock: clockLabel,
           team: teamName,
-          player: `#${assist}`,
+          player: getPlayerLabel(draft.side, assist),
           action: 'assist',
-          result: `To #${draft.shooterJersey}`,
+          result: `To ${getPlayerLabel(draft.side, draft.shooterJersey)}`,
         });
       }
       appendLog({
         period: periodLabel,
         clock: clockLabel,
         team: teamName,
-        player: `#${draft.shooterJersey}`,
+        player: getPlayerLabel(draft.side, draft.shooterJersey),
         action: 'shot',
         result: shotResult,
       });
@@ -1582,7 +1678,7 @@ const StatDash: React.FC = () => {
 
       setShotFlow('idle');
     },
-    [appendLog, awayName, awayTeamColor, clockLabel, commitEventCommand, homeAttacksLeft, homeName, homeTeamColor, periodLabel]
+    [appendLog, awayName, awayTeamColor, clockLabel, commitEventCommand, getPlayerLabel, homeAttacksLeft, homeName, homeTeamColor, periodLabel]
   );
 
   const commitTurnoverLog = useCallback(
@@ -1603,7 +1699,7 @@ const StatDash: React.FC = () => {
         period: periodLabel,
         clock: clockLabel,
         team: committingTeam,
-        player: `#${draft.committingJersey}`,
+        player: getPlayerLabel(draft.committingSide, draft.committingJersey),
         action: 'turnover',
         result: typeLabel,
       });
@@ -1613,13 +1709,13 @@ const StatDash: React.FC = () => {
           period: periodLabel,
           clock: clockLabel,
           team: stealTeam,
-          player: `#${steal.jersey}`,
+          player: getPlayerLabel(steal.side, steal.jersey),
           action: 'steal',
-          result: `Off #${draft.committingJersey} turnover`,
+          result: `Off ${getPlayerLabel(draft.committingSide, draft.committingJersey)} turnover`,
         });
       }
     },
-    [appendLog, clockLabel, commitEventCommand, periodLabel, homeName, awayName]
+    [appendLog, clockLabel, commitEventCommand, getPlayerLabel, periodLabel, homeName, awayName]
   );
 
   const handleTurnoverFlowBack = useCallback(() => {
@@ -2166,7 +2262,8 @@ const StatDash: React.FC = () => {
         edge="left"
         teamName={homeOnLeft ? homeName : awayName}
         teamColor={homeOnLeft ? homeTeamColor : awayTeamColor}
-        roster={homeOnLeft ? homeRosterList : awayRosterList}
+        roster={homeOnLeft ? homeMatchRosterNumbers : awayMatchRosterNumbers}
+        rosterByJersey={homeOnLeft ? homeRosterByJersey : awayRosterByJersey}
         entries={gameLog}
         open={activeDrawer === 'left'}
         onToggle={() => setActiveDrawer((cur) => (cur === 'left' ? null : 'left'))}
@@ -2175,7 +2272,8 @@ const StatDash: React.FC = () => {
         edge="right"
         teamName={homeOnLeft ? awayName : homeName}
         teamColor={homeOnLeft ? awayTeamColor : homeTeamColor}
-        roster={homeOnLeft ? awayRosterList : homeRosterList}
+        roster={homeOnLeft ? awayMatchRosterNumbers : homeMatchRosterNumbers}
+        rosterByJersey={homeOnLeft ? awayRosterByJersey : homeRosterByJersey}
         entries={gameLog}
         open={activeDrawer === 'right'}
         onToggle={() => setActiveDrawer((cur) => (cur === 'right' ? null : 'right'))}
@@ -2305,6 +2403,8 @@ const StatDash: React.FC = () => {
               onTurnoverPickStealer={handleTurnoverPickStealer}
               courtShotMarkers={courtShotMarkers}
               courtFoulMarkers={courtFoulMarkers}
+              homeRosterByJersey={homeRosterByJersey}
+              awayRosterByJersey={awayRosterByJersey}
               foulPickerOpen={foulPickerOpen}
               homeBench={homeLineup.bench}
               awayBench={awayLineup.bench}

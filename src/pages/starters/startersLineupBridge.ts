@@ -32,6 +32,24 @@ export function startersSetsToTeamLineup(playing: Set<number>, starters: Set<num
   return { onCourt, bench };
 }
 
+/**
+ * Like startersSetsToTeamLineup but uses the actual player roster so real jersey numbers
+ * (not hardcoded 1-N) end up in the lineup.
+ */
+export function startersSetsToTeamLineupWithPlayers(
+  indexedPlayers: { id: number; jersey: number }[],
+  playing: Set<number>,
+  starters: Set<number>,
+): TeamLineup {
+  const playingPlayers = indexedPlayers.filter((p) => playing.has(p.id));
+  const selectedFirstFive = playingPlayers.filter((p) => starters.has(p.id)).slice(0, 5);
+  const starterJerseys = new Set(selectedFirstFive.map((p) => p.jersey));
+  const onCourt: OnCourtSlots = [null, null, null, null, null];
+  selectedFirstFive.forEach((p, i) => { onCourt[i] = p.jersey; });
+  const bench = playingPlayers.filter((p) => !starterJerseys.has(p.jersey)).map((p) => p.jersey);
+  return { onCourt, bench };
+}
+
 /** Keep jerseys not represented in the 1–12 Starters grid (e.g. #15) on the bench. */
 export function mergeLineupPreserveExtraJerseys(baseline: TeamLineup, fromUi: TeamLineup): TeamLineup {
   const ui = new Set(fullRoster(fromUi));

@@ -58,6 +58,16 @@ export function useSummaryProjection(sessionId: string | undefined, enabled = tr
   });
 }
 
+export function useRebuildProjection() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (sessionId: string) => projectionsApi.rebuild(sessionId),
+    onSuccess: (_, sessionId) => {
+      queryClient.invalidateQueries({ queryKey: ['statdash', 'session', sessionId] });
+    },
+  });
+}
+
 export function useSendStatDashCommand() {
   const queryClient = useQueryClient();
   return useMutation({

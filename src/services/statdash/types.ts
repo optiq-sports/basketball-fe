@@ -111,7 +111,7 @@ export interface BoxScoreProjection {
     assists: number;
     blocks: number;
     steals: number;
-    points: number;
+    fouls: number;
     turnovers: number;
   };
   totalEvents: number;
@@ -137,6 +137,7 @@ export interface ShotChartProjection {
   x: number | null;
   y: number | null;
   sequence: number;
+  period?: number;
 }
 
 export interface SessionSummaryProjection {

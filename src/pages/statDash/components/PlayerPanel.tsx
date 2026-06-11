@@ -7,6 +7,8 @@ export interface PlayerPanelProps {
   side: TeamSide;
   accentColor: string;
   playerNumbers: number[];
+  /** Maps jersey number → abbreviated name (e.g. "J. Smith") for display below the jersey */
+  rosterByJersey?: Map<number, string>;
   /** When true, jersey numbers (and made-shot context menu) are disabled; FOUL/TURNOVER stay clickable. */
   interactionsLocked?: boolean;
   /** Left-click: primary action based on active flow state */
@@ -23,6 +25,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
   side,
   accentColor,
   playerNumbers,
+  rosterByJersey,
   interactionsLocked = false,
   onPlayerFoulClick,
   onPlayerShotContextMenu,
@@ -39,30 +42,52 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
         width: btnW,
       }}
     >
-      {playerNumbers.map((n, idx) => (
-        <button
-          key={`${side}-jersey-${idx}-${n}`}
-          type="button"
-          disabled={interactionsLocked}
-          onClick={() => onPlayerFoulClick(side, n)}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            if (interactionsLocked) return;
-            onPlayerShotContextMenu(side, n, e);
-          }}
-          className="flex shrink-0 cursor-pointer select-none items-center justify-center border-none font-bold hover:brightness-[1.03] focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
-          style={{
-            ...jerseyAccentSurfaceStyle(accentColor),
-            width: btnW,
-            aspectRatio: '1',
-            fontSize: cl('16px', '1.9vw', '28px'),
-            borderRadius: 6,
-          }}
-          aria-label={`${side} player ${n}. Left-click: select player. Right-click: made shot.`}
-        >
-          {n}
-        </button>
-      ))}
+      {playerNumbers.map((n, idx) => {
+        const name = rosterByJersey?.get(n);
+        return (
+          <button
+            key={`${side}-jersey-${idx}-${n}`}
+            type="button"
+            disabled={interactionsLocked}
+            onClick={() => onPlayerFoulClick(side, n)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              if (interactionsLocked) return;
+              onPlayerShotContextMenu(side, n, e);
+            }}
+            className="flex shrink-0 cursor-pointer select-none flex-col items-center justify-center border-none font-bold hover:brightness-[1.03] focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
+            style={{
+              ...jerseyAccentSurfaceStyle(accentColor),
+              width: btnW,
+              minHeight: btnW,
+              padding: name ? `${cl('4px', '0.4vh', '6px')} 2px` : undefined,
+              aspectRatio: name ? undefined : '1',
+              fontSize: cl('16px', '1.9vw', '28px'),
+              borderRadius: 6,
+            }}
+            aria-label={`${side} player ${n}${name ? ` (${name})` : ''}. Left-click: select player. Right-click: made shot.`}
+          >
+            {n}
+            {name && (
+              <span
+                style={{
+                  fontSize: cl('7px', '0.68vw', '10px'),
+                  fontWeight: 500,
+                  lineHeight: 1.2,
+                  marginTop: 2,
+                  maxWidth: '100%',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  display: 'block',
+                }}
+              >
+                {name}
+              </span>
+            )}
+          </button>
+        );
+      })}
       {EXTRA.map((lbl) => (
         <button
           key={lbl}

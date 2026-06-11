@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useMatch, useTeams, useUpdateMatch, useDeleteMatch } from '../../api/hooks';
 import type { MatchStatus } from '../../types/api';
-import { useBoxScoreProjection, useShotChartProjection, useSummaryProjection } from '../../services/statdash';
+import { useBoxScoreProjection, useShotChartProjection, useSummaryProjection, useRebuildProjection } from '../../services/statdash';
 
 interface QuarterScore {
   q1: number;
@@ -45,22 +45,26 @@ const GameScorePage: React.FC = () => {
   const [teamBSelectedPlayers, setTeamBSelectedPlayers] = useState<number[]>([]);
   const [showMade, setShowMade] = useState(true);
   const [showMissed, setShowMissed] = useState(true);
+  const [activeChartQuarter, setActiveChartQuarter] = useState<'all' | 'q1' | 'q2' | 'q3' | 'q4'>('all');
 
   const matchQuery = useMatch(matchId);
   const teamsQuery = useTeams();
   const updateMatch = useUpdateMatch();
   const deleteMatch = useDeleteMatch();
-  const boxScoreQuery = useBoxScoreProjection(matchId, !!matchId);
-  const summaryQuery = useSummaryProjection(matchId, !!matchId);
-  const shotChartQuery = useShotChartProjection(matchId, !!matchId);
+  const rebuildProjection = useRebuildProjection();
+
+  const match = matchQuery.data;
+  // Projection endpoints require GameSession.id, not Match.id (Backend Gap #5)
+  const sessionId = match?.gameSessions?.[0]?.id;
+  const boxScoreQuery = useBoxScoreProjection(sessionId, !!sessionId);
+  const summaryQuery = useSummaryProjection(sessionId, !!sessionId);
+  const shotChartQuery = useShotChartProjection(sessionId, !!sessionId);
 
   const teamMap = useMemo(() => {
     const map = new Map<string, string>();
     (teamsQuery.data ?? []).forEach((t) => map.set(t.id, t.name));
     return map;
   }, [teamsQuery.data]);
-
-  const match = matchQuery.data;
   const homeTeamName = match ? (teamMap.get(match.homeTeamId) ?? 'Home') : 'Home';
   const awayTeamName = match ? (teamMap.get(match.awayTeamId) ?? 'Away') : 'Away';
 
@@ -212,6 +216,15 @@ const GameScorePage: React.FC = () => {
                 className="text-sm px-3 py-1.5 rounded border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-70"
               >
                 {deleteMatch.isPending ? 'Deleting…' : 'Delete match'}
+              </button>
+              <button
+                type="button"
+                onClick={() => sessionId && rebuildProjection.mutate(sessionId)}
+                disabled={!sessionId || rebuildProjection.isPending}
+                title={!sessionId ? 'Requires session ID (Backend Gap #5)' : 'Rebuild live projection from all game events'}
+                className="text-sm px-3 py-1.5 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {rebuildProjection.isPending ? 'Rebuilding…' : 'Rebuild projection'}
               </button>
             </div>
           )}
@@ -384,26 +397,66 @@ const GameScorePage: React.FC = () => {
             )}
             {/* Quarter Filters */}
             <div className="flex justify-center gap-3 mb-6">
-              <button className="px-6 py-2.5 rounded-lg font-medium bg-[#21409A] text-white shadow-md cursor-pointer">
-                All
-              </button>
-              <button className="px-6 py-2.5 rounded-lg font-medium text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 cursor-pointer">
-                Q1
-              </button>
-              <button className="px-6 py-2.5 rounded-lg font-medium text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 cursor-pointer">
-                Q2
-              </button>
-              <button className="px-6 py-2.5 rounded-lg font-medium text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 cursor-pointer">
-                Q3
-              </button>
-              <button className="px-6 py-2.5 rounded-lg font-medium text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 cursor-pointer">
-                Q4
-              </button>
+              {(['all', 'q1', 'q2', 'q3', 'q4'] as const).map((q) => (
+                <button
+                  key={q}
+                  onClick={() => setActiveChartQuarter(q)}
+                  className={`px-6 py-2.5 rounded-lg font-medium cursor-pointer transition-all ${
+                    activeChartQuarter === q
+                      ? 'bg-[#21409A] text-white shadow-md'
+                      : 'text-gray-600 bg-white border border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {q === 'all' ? 'All' : q.toUpperCase()}
+                </button>
+              ))}
             </div>
 
             {/* Basketball Court with Shot Chart */}
+            {!sessionId && !matchQuery.isPending && (
+              <p className="mb-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 text-center">
+                Shot chart requires a session ID from the match record (Backend Gap #5).
+              </p>
+            )}
             <div className="bg-gradient-to-b from-blue-100 to-blue-50 rounded-lg p-8 mb-6 border border-gray-200 flex flex-col items-center">
-              <img src="/court.png" alt="Basketball Court" className="w-2xl h-w-3xl-lg mb-6 object-cover" />
+              {(() => {
+                const allShots = shotChartQuery.data ?? [];
+                const filteredShots = allShots.filter((shot) => {
+                  if (activeChartQuarter !== 'all') {
+                    const q = Number(activeChartQuarter.replace('q', ''));
+                    if (shot.period !== q) return false;
+                  }
+                  if (!showMade && shot.result === 'made') return false;
+                  if (!showMissed && shot.result !== 'made') return false;
+                  return true;
+                });
+                return (
+                  <div className="relative w-full max-w-2xl mb-6" style={{ aspectRatio: '16/10' }}>
+                    <img src="/court.png" alt="Basketball Court" className="w-full h-full object-cover rounded" />
+                    <svg
+                      className="absolute inset-0 w-full h-full pointer-events-none"
+                      viewBox="0 0 100 100"
+                      preserveAspectRatio="none"
+                    >
+                      {filteredShots.map((shot) => {
+                        if (shot.x === null || shot.y === null) return null;
+                        const isHome = shot.teamId === match?.homeTeamId;
+                        const color = isHome ? '#FFCA69' : '#80B7D5';
+                        const x = shot.x * 100;
+                        const y = shot.y * 100;
+                        return shot.result === 'made' ? (
+                          <circle key={shot.eventId} cx={x} cy={y} r={2.5} fill={color} stroke="#1e3a8a" strokeWidth={0.5} />
+                        ) : (
+                          <g key={shot.eventId}>
+                            <line x1={x - 2} y1={y - 2} x2={x + 2} y2={y + 2} stroke={color} strokeWidth={1.5} />
+                            <line x1={x + 2} y1={y - 2} x2={x - 2} y2={y + 2} stroke={color} strokeWidth={1.5} />
+                          </g>
+                        );
+                      })}
+                    </svg>
+                  </div>
+                );
+              })()}
               <p className="text-sm text-gray-600">
                 Total projected shots: {shotChartQuery.data?.length ?? 0}
               </p>
@@ -523,28 +576,35 @@ const GameScorePage: React.FC = () => {
                   </>
                 )}
 
-                {/* Team A Players Selection List */}
+                {/* Home Team Players Selection List */}
                 <div className="space-y-3" style={{ width: '335px' }}>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{homeTeamName}</p>
                   <label className="flex items-center gap-3 p-3 bg-yellow-50 rounded-lg cursor-pointer hover:bg-yellow-100">
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       checked={teamAAllPlayers}
                       onChange={(e) => handleTeamAAllPlayersChange(e.target.checked)}
-                      className="w-4 h-4 rounded border-gray-300 text-yellow-500 focus:ring-yellow-500" 
+                      className="w-4 h-4 rounded border-gray-300 text-yellow-500 focus:ring-yellow-500"
                     />
                     <span className="text-sm font-medium text-gray-700">All Players</span>
                   </label>
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <label key={i} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
-                      <input 
-                        type="checkbox" 
+                  {(match?.homeTeam?.playerTeams ?? []).map((pt, i) => (
+                    <label key={pt.playerId ?? i} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
+                      <input
+                        type="checkbox"
                         checked={teamASelectedPlayers.includes(i)}
                         onChange={(e) => handleTeamAPlayerChange(i, e.target.checked)}
-                        className="w-4 h-4 rounded border-gray-300 text-yellow-500 focus:ring-yellow-500" 
+                        className="w-4 h-4 rounded border-gray-300 text-yellow-500 focus:ring-yellow-500"
                       />
-                      <span className="text-sm text-gray-700">Name Surname</span>
+                      <span className="text-sm text-gray-700">
+                        {pt.jerseyNumber != null ? `#${pt.jerseyNumber} ` : ''}
+                        {pt.player ? `${pt.player.firstName} ${pt.player.lastName}` : 'Player'}
+                      </span>
                     </label>
                   ))}
+                  {(match?.homeTeam?.playerTeams ?? []).length === 0 && (
+                    <p className="text-sm text-gray-400 px-3">No roster data</p>
+                  )}
                 </div>
               </div>
 
@@ -612,28 +672,35 @@ const GameScorePage: React.FC = () => {
                   </>
                 )}
 
-                {/* Team B Players Selection List */}
+                {/* Away Team Players Selection List */}
                 <div className="space-y-3" style={{ width: '335px' }}>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 text-right">{awayTeamName}</p>
                   <label className="flex items-center justify-end gap-3 p-3 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100">
                     <span className="text-sm font-medium text-gray-700">All Players</span>
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       checked={teamBAllPlayers}
                       onChange={(e) => handleTeamBAllPlayersChange(e.target.checked)}
-                      className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500" 
+                      className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500"
                     />
                   </label>
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <label key={i} className="flex items-center justify-end gap-3 p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
-                      <span className="text-sm text-gray-700">Name Surname</span>
-                      <input 
-                        type="checkbox" 
+                  {(match?.awayTeam?.playerTeams ?? []).map((pt, i) => (
+                    <label key={pt.playerId ?? i} className="flex items-center justify-end gap-3 p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
+                      <span className="text-sm text-gray-700">
+                        {pt.player ? `${pt.player.firstName} ${pt.player.lastName}` : 'Player'}
+                        {pt.jerseyNumber != null ? ` #${pt.jerseyNumber}` : ''}
+                      </span>
+                      <input
+                        type="checkbox"
                         checked={teamBSelectedPlayers.includes(i)}
                         onChange={(e) => handleTeamBPlayerChange(i, e.target.checked)}
-                        className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500" 
+                        className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500"
                       />
                     </label>
                   ))}
+                  {(match?.awayTeam?.playerTeams ?? []).length === 0 && (
+                    <p className="text-sm text-gray-400 px-3 text-right">No roster data</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -807,54 +874,63 @@ const GameScorePage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {[1, 2, 3, 4, 5, 6].map((playerNum) => (
-                    <tr 
-                      key={playerNum}
-                      className={`${playerNum % 2 === 1 ? 'bg-gray-50' : 'bg-white'} hover:bg-blue-50 cursor-pointer transition-colors`}
-                      onClick={() => handlePlayerClick(playerNum)}
-                    >
-                      <td className="py-3 px-3 text-sm font-bold text-blue-900">8</td>
-                      <td className="py-3 px-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full overflow-hidden">
-                            <img 
-                              src="/player1.png" 
-                              alt="Player" 
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                          <span className="text-sm font-bold text-blue-900">Name Surname</span>
-                        </div>
-                      </td>
-                      <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
-                      <td className="text-center py-3 px-3 text-sm text-gray-700">
-                        <div>3/6</div>
-                        <div>(50%)</div>
-                      </td>
-                      <td className="text-center py-3 px-3 text-sm text-gray-700">
-                        <div>3/6</div>
-                        <div>(50%)</div>
-                      </td>
-                      <td className="text-center py-3 px-3 text-sm text-gray-700">
-                        <div>3/6</div>
-                        <div>(50%)</div>
-                      </td>
-                      <td className="text-center py-3 px-3 text-sm text-gray-700">
-                        <div>3/6</div>
-                        <div>(50%)</div>
-                      </td>
-                      <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
-                      <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
-                      <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
-                      <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
-                      <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
-                      <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
-                      <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
-                      <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
-                      <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
-                      <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
-                    </tr>
-                  ))}
+                  {(() => {
+                    if (!match) return null;
+                    const teamId = activeTeam === 'A' ? match.homeTeamId : match.awayTeamId;
+                    const teamRoster = activeTeam === 'A'
+                      ? (match.homeTeam?.playerTeams ?? [])
+                      : (match.awayTeam?.playerTeams ?? []);
+                    const teamStats = (match.stats ?? []).filter((s) => s.teamId === teamId);
+                    if (teamStats.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={17} className="py-6 text-center text-sm text-gray-500">
+                            No recorded stats for this team yet.
+                          </td>
+                        </tr>
+                      );
+                    }
+                    return teamStats.map((stat, idx) => {
+                      const rosterEntry = teamRoster.find((pt) => (pt.playerId ?? pt.player?.id) === stat.playerId);
+                      const name = stat.player
+                        ? `${stat.player.firstName} ${stat.player.lastName}`
+                        : (rosterEntry?.player ? `${rosterEntry.player.firstName} ${rosterEntry.player.lastName}` : stat.playerId);
+                      const jersey = rosterEntry?.jerseyNumber ?? '—';
+                      const D = '—';
+                      return (
+                        <tr
+                          key={stat.id}
+                          className={`${idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'} hover:bg-blue-50 cursor-pointer transition-colors`}
+                          onClick={() => navigate(`/tournaments/${tournamentId}/match/${matchId}/player/${stat.playerId}`)}
+                        >
+                          <td className="py-3 px-3 text-sm font-bold text-blue-900">{jersey}</td>
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center">
+                                <span className="text-xs text-gray-500">{typeof jersey === 'number' ? jersey : '?'}</span>
+                              </div>
+                              <span className="text-sm font-bold text-blue-900">{name}</span>
+                            </div>
+                          </td>
+                          <td className="text-center py-3 px-3 text-sm text-gray-700">{stat.points}</td>
+                          <td className="text-center py-3 px-3 text-sm text-gray-400">{D}</td>
+                          <td className="text-center py-3 px-3 text-sm text-gray-400">{D}</td>
+                          <td className="text-center py-3 px-3 text-sm text-gray-400">{D}</td>
+                          <td className="text-center py-3 px-3 text-sm text-gray-400">{D}</td>
+                          <td className="text-center py-3 px-3 text-sm text-gray-700">{stat.rebounds}</td>
+                          <td className="text-center py-3 px-3 text-sm text-gray-400">{D}</td>
+                          <td className="text-center py-3 px-3 text-sm text-gray-400">{D}</td>
+                          <td className="text-center py-3 px-3 text-sm text-gray-700">{stat.assists}</td>
+                          <td className="text-center py-3 px-3 text-sm text-gray-700">{stat.steals}</td>
+                          <td className="text-center py-3 px-3 text-sm text-gray-700">{stat.blocks}</td>
+                          <td className="text-center py-3 px-3 text-sm text-gray-700">{stat.fouls}</td>
+                          <td className="text-center py-3 px-3 text-sm text-gray-700">{stat.turnovers}</td>
+                          <td className="text-center py-3 px-3 text-sm text-gray-400">{D}</td>
+                          <td className="text-center py-3 px-3 text-sm text-gray-400">{D}</td>
+                        </tr>
+                      );
+                    });
+                  })()}
                   {/* Total Row */}
                   <tr style={{ background: '#F5F8FF' }}>
                     <td className="py-3 px-3 text-sm font-bold text-blue-900"></td>
@@ -911,7 +987,7 @@ const GameScorePage: React.FC = () => {
           {summaryQuery.isPending && <p className="mb-3 text-sm text-gray-600">Loading game summary projection...</p>}
           {summaryQuery.data && (
             <p className="mb-3 text-xs text-gray-500">
-              Events: {summaryQuery.data.totalEvents} · Lead changes: {summaryQuery.data.leadChanges} · Biggest lead: {summaryQuery.data.biggestLead}
+              Events recorded: {summaryQuery.data.totalEvents}
             </p>
           )}
           <h2 className="text-lg font-semibold text-gray-800 mb-4">Game Stats</h2>

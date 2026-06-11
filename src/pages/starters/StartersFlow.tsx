@@ -9,6 +9,7 @@ import type { TeamLineup } from '../statDash/substitutionLineupUtils';
 import {
   mergeLineupPreserveExtraJerseys,
   startersSetsToTeamLineup,
+  startersSetsToTeamLineupWithPlayers,
   STARTER_ROW_COUNT,
   teamLineupToStartersSets,
 } from './startersLineupBridge';
@@ -155,6 +156,8 @@ function MainStyleStarterCheckbox({
   );
 }
 
+type PlayerEntry = { jersey: number; name: string };
+
 function TeamColumn({
   side,
   playingSet,
@@ -164,6 +167,8 @@ function TeamColumn({
   teamColor,
   onTeamColorChange,
   listScrollClassName,
+  teamName,
+  players,
 }: {
   side: TeamSide;
   playingSet: Set<number>;
@@ -173,16 +178,23 @@ function TeamColumn({
   teamColor: string;
   onTeamColorChange: (hex: string) => void;
   listScrollClassName: string;
+  teamName?: string;
+  players?: PlayerEntry[];
 }) {
-  const playingPlayers = MOCK_PLAYERS.filter((p) => playingSet.has(p.id));
+  const indexedPlayers = useMemo(
+    () => (players ?? MOCK_PLAYERS).map((p, i) => ({ id: i, jersey: p.jersey, name: p.name })),
+    [players],
+  );
+  const playingPlayers = indexedPlayers.filter((p) => playingSet.has(p.id));
   const selectedFirstFive = playingPlayers.filter((p) => starterSet.has(p.id)).slice(0, 5);
   const headerBg = normalizeHex(teamColor) ?? teamColor;
   const headerFg = contrastTextOnBg(headerBg);
+  const displayTeamName = teamName ?? (side === 'home' ? 'Home' : 'Away');
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <h2 className="mb-2 text-center text-sm font-bold uppercase tracking-widest text-gray-800 sm:mb-3">
-        TEAM NAME
+        {displayTeamName}
       </h2>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
@@ -216,10 +228,10 @@ function TeamColumn({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-              {MOCK_PLAYERS.map((player, index) => (
+              {indexedPlayers.map((player, index) => (
                 <div
                   key={`${side}-row-${player.id}`}
-                  className={`grid items-center px-4 py-2.5 ${index < ROWS - 1 ? 'border-b border-gray-100' : ''}`}
+                  className={`grid items-center px-4 py-2.5 ${index < indexedPlayers.length - 1 ? 'border-b border-gray-100' : ''}`}
                   style={{ gridTemplateColumns: '40px 1fr 72px 72px' }}
                 >
                   <span className="text-sm font-medium text-gray-700">{player.jersey}</span>
@@ -254,7 +266,7 @@ function TeamColumn({
 
           <div className="mt-2 shrink-0 rounded-md border border-gray-200 bg-white p-2">
             <p className="text-[10px] font-semibold uppercase text-gray-600">
-              Players Playing ({playingPlayers.length}) {'->'} First 5 ({selectedFirstFive.length})
+              {displayTeamName} — Playing ({playingPlayers.length}) {'->'} First 5 ({selectedFirstFive.length})
             </p>
             <p className="mt-1 text-xs text-gray-700">
               Playing: {playingPlayers.map((p) => `#${p.jersey}`).join(', ') || 'None'} | First 5:{' '}
@@ -279,11 +291,17 @@ export interface StartersFlowProps {
   baselineAwayLineup?: TeamLineup;
   onApplyLineups?: (lineups: { home: TeamLineup; away: TeamLineup }) => void;
   onCancel?: () => void;
+  homeName?: string;
+  awayName?: string;
+  homePlayers?: PlayerEntry[];
+  awayPlayers?: PlayerEntry[];
 }
 
 export type StartersFlowHandle = {
   /** If lineups are complete, returns true (caller may navigate). Otherwise opens the reminder modal and returns false. */
   attemptContinue: () => boolean;
+  /** Returns the computed lineups with real jersey numbers, or null if the first-five gate isn't ready. */
+  getLineups: () => { home: TeamLineup; away: TeamLineup } | null;
 };
 
 const StartersFlow = forwardRef<StartersFlowHandle, StartersFlowProps>(function StartersFlow(
@@ -295,6 +313,10 @@ const StartersFlow = forwardRef<StartersFlowHandle, StartersFlowProps>(function 
     baselineAwayLineup,
     onApplyLineups,
     onCancel,
+    homeName,
+    awayName,
+    homePlayers,
+    awayPlayers,
   },
   ref
 ) {
@@ -324,6 +346,16 @@ const StartersFlow = forwardRef<StartersFlowHandle, StartersFlowProps>(function 
   const [firstFiveLimitSide, setFirstFiveLimitSide] = useState<TeamSide | null>(null);
   const [incompleteFirstFiveModalOpen, setIncompleteFirstFiveModalOpen] = useState(false);
 
+  // Lift indexedPlayers to component level so getLineups() can use real jersey numbers.
+  const homeIndexedPlayers = useMemo(
+    () => (homePlayers ?? MOCK_PLAYERS).map((p, i) => ({ id: i, jersey: p.jersey })),
+    [homePlayers],
+  );
+  const awayIndexedPlayers = useMemo(
+    () => (awayPlayers ?? MOCK_PLAYERS).map((p, i) => ({ id: i, jersey: p.jersey })),
+    [awayPlayers],
+  );
+
   const listScrollClassName =
     variant === 'embedded' ? 'max-h-[min(380px,44dvh)]' : 'h-[max(70dvh,360px)]';
 
@@ -341,8 +373,20 @@ const StartersFlow = forwardRef<StartersFlowHandle, StartersFlowProps>(function 
         setIncompleteFirstFiveModalOpen(true);
         return false;
       },
+      getLineups: () => {
+        const gate = computeFirstFiveGate(homePlaying, homeStarters, awayPlaying, awayStarters);
+        if (!gate.ready) return null;
+        const homeUi = startersSetsToTeamLineupWithPlayers(homeIndexedPlayers, homePlaying, homeStarters);
+        const awayUi = startersSetsToTeamLineupWithPlayers(awayIndexedPlayers, awayPlaying, awayStarters);
+        const baseH = baselineHomeLineup ?? homeUi;
+        const baseA = baselineAwayLineup ?? awayUi;
+        return {
+          home: mergeLineupPreserveExtraJerseys(baseH, homeUi),
+          away: mergeLineupPreserveExtraJerseys(baseA, awayUi),
+        };
+      },
     }),
-    [awayPlaying, awayStarters, homePlaying, homeStarters]
+    [awayIndexedPlayers, awayPlaying, awayStarters, baselineAwayLineup, baselineHomeLineup, homeIndexedPlayers, homePlaying, homeStarters]
   );
 
   const toggleHome = useCallback(
@@ -415,8 +459,8 @@ const StartersFlow = forwardRef<StartersFlowHandle, StartersFlowProps>(function 
       setIncompleteFirstFiveModalOpen(true);
       return;
     }
-    const homeUi = startersSetsToTeamLineup(homePlaying, homeStarters);
-    const awayUi = startersSetsToTeamLineup(awayPlaying, awayStarters);
+    const homeUi = startersSetsToTeamLineupWithPlayers(homeIndexedPlayers, homePlaying, homeStarters);
+    const awayUi = startersSetsToTeamLineupWithPlayers(awayIndexedPlayers, awayPlaying, awayStarters);
     const baseH = baselineHomeLineup ?? homeUi;
     const baseA = baselineAwayLineup ?? awayUi;
     onApplyLineups({
@@ -424,11 +468,13 @@ const StartersFlow = forwardRef<StartersFlowHandle, StartersFlowProps>(function 
       away: mergeLineupPreserveExtraJerseys(baseA, awayUi),
     });
   }, [
+    awayIndexedPlayers,
     awayPlaying,
     awayStarters,
     baselineAwayLineup,
     baselineHomeLineup,
     firstFiveGate.ready,
+    homeIndexedPlayers,
     homePlaying,
     homeStarters,
     onApplyLineups,
@@ -450,6 +496,8 @@ const StartersFlow = forwardRef<StartersFlowHandle, StartersFlowProps>(function 
           teamColor={homeTeamColor}
           onTeamColorChange={setHomeTeamColor}
           listScrollClassName={listScrollClassName}
+          teamName={homeName}
+          players={homePlayers}
         />
         <TeamColumn
           side="away"
@@ -460,6 +508,8 @@ const StartersFlow = forwardRef<StartersFlowHandle, StartersFlowProps>(function 
           teamColor={awayTeamColor}
           onTeamColorChange={setAwayTeamColor}
           listScrollClassName={listScrollClassName}
+          teamName={awayName}
+          players={awayPlayers}
         />
       </div>
 

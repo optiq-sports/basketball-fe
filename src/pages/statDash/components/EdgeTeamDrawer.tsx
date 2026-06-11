@@ -60,11 +60,13 @@ function TeamStatsTable({
   teamName,
   teamColor,
   roster,
+  rosterByJersey,
   entries,
 }: {
   teamName: string;
   teamColor: string;
   roster: number[];
+  rosterByJersey?: Map<number, string>;
   entries: GameLogEntry[];
 }) {
   const rosterSorted = useMemo(() => [...roster].sort((a, b) => a - b), [roster]);
@@ -151,7 +153,9 @@ function TeamStatsTable({
             {rosterSorted.map((n) => (
               <tr key={n} className={n % 2 === 0 ? 'bg-[#F8FAFC]' : 'bg-white'}>
                 <td className="px-4 py-3.5 font-medium text-[#1E40AF]">{n}</td>
-                <td className="px-4 py-3.5 font-medium text-[#1E40AF]">{`#${n}`}</td>
+                <td className="px-4 py-3.5 font-medium text-[#1E40AF]">
+                  {rosterByJersey?.get(n) ?? '—'}
+                </td>
                 <td className="px-4 py-3.5 text-right font-medium text-[#1F2937]">
                   {statsByJersey.pf[n] ?? 0}
                 </td>
@@ -172,6 +176,7 @@ export interface EdgeTeamDrawerProps {
   teamName: string;
   teamColor: string;
   roster: number[];
+  rosterByJersey?: Map<number, string>;
   entries: GameLogEntry[];
   open: boolean;
   onToggle: () => void;
@@ -185,6 +190,7 @@ const EdgeTeamDrawer: React.FC<EdgeTeamDrawerProps> = ({
   teamName,
   teamColor,
   roster,
+  rosterByJersey,
   entries,
   open,
   onToggle,
@@ -213,7 +219,7 @@ const EdgeTeamDrawer: React.FC<EdgeTeamDrawerProps> = ({
       }`}
     >
       <div className="flex h-auto min-w-0 w-[min(100vw-2.5rem,22rem)] shrink-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg ring-1 ring-black/5">
-        <TeamStatsTable teamName={teamName} teamColor={teamColor} roster={roster} entries={entries} />
+        <TeamStatsTable teamName={teamName} teamColor={teamColor} roster={roster} rosterByJersey={rosterByJersey} entries={entries} />
       </div>
     </div>
   );

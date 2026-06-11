@@ -1,3 +1,5 @@
+import type { TeamLineup } from '../../pages/statDash/substitutionLineupUtils';
+
 const SESSION_ID_KEY = 'statdash_session_id';
 const MATCH_ID_KEY = 'statdash_match_id';
 const VERSION_KEY = 'statdash_expected_version';
@@ -43,4 +45,20 @@ export function readStoredExpectedVersion(): number {
     return 0;
   }
   return parsed;
+}
+
+const LINEUPS_KEY = 'statdash_lineups';
+
+export function writeStoredLineups(lineups: { home: TeamLineup; away: TeamLineup }): void {
+  sessionStorage.setItem(LINEUPS_KEY, JSON.stringify(lineups));
+}
+
+export function readStoredLineups(): { home: TeamLineup; away: TeamLineup } | null {
+  try {
+    const raw = sessionStorage.getItem(LINEUPS_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as { home: TeamLineup; away: TeamLineup };
+  } catch {
+    return null;
+  }
 }

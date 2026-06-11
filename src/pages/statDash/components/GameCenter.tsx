@@ -61,6 +61,8 @@ export interface GameCenterProps {
   onTurnoverPickStealer: (side: TeamSide, jersey: number) => void;
   courtShotMarkers: CourtMarker[];
   courtFoulMarkers: CourtMarker[];
+  homeRosterByJersey?: Map<number, string>;
+  awayRosterByJersey?: Map<number, string>;
   /** FOUL strip: initial picker inside court (same placement as shot flow) */
   foulPickerOpen: boolean;
   homeBench: number[];
@@ -120,6 +122,8 @@ const GameCenter: React.FC<GameCenterProps> = ({
   onTurnoverPickStealer,
   courtShotMarkers,
   courtFoulMarkers,
+  homeRosterByJersey,
+  awayRosterByJersey,
   foulPickerOpen,
   homeBench,
   awayBench,
@@ -189,6 +193,7 @@ const GameCenter: React.FC<GameCenterProps> = ({
           side="home"
           accentColor={homeColor}
           playerNumbers={homeActivePlayers}
+          rosterByJersey={homeRosterByJersey}
           interactionsLocked={homePanelLocked}
           onPlayerFoulClick={onPlayerFoulClick}
           onPlayerShotContextMenu={onPlayerShotContextMenu}
@@ -351,6 +356,7 @@ const GameCenter: React.FC<GameCenterProps> = ({
           side="away"
           accentColor={awayColor}
           playerNumbers={awayActivePlayers}
+          rosterByJersey={awayRosterByJersey}
           interactionsLocked={awayPanelLocked}
           onPlayerFoulClick={onPlayerFoulClick}
           onPlayerShotContextMenu={onPlayerShotContextMenu}

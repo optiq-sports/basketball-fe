@@ -216,7 +216,7 @@ export interface PlayerBulkItem {
   lastName: string;
   jerseyNumber?: number;
   email?: string;
-  position: PlayerPosition | string;
+  position?: PlayerPosition | string;
   height?: string;
   nationality?: string;
 }
@@ -432,6 +432,7 @@ export interface Match {
   awayTeam?: Team & { playerTeams?: Array<{ playerId?: string; jerseyNumber?: number; isCaptain?: boolean; player?: { id: string; firstName: string; lastName: string; position?: string; dateOfBirth?: string; height?: string } }> };
   tournament?: Tournament;
   stats?: MatchStatRecord[];
+  gameSessions?: Array<{ id: string; status: string }>;
   [key: string]: unknown;
 }
 

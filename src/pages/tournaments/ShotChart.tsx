@@ -1,186 +1,180 @@
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { useMatch } from '../../api/hooks';
 import { useShotChartProjection } from '../../services/statdash';
+
+const QUARTERS = ['all', 'q1', 'q2', 'q3', 'q4'] as const;
+type Quarter = (typeof QUARTERS)[number];
 
 const ShotChart: React.FC = () => {
   const { id, matchId } = useParams();
-  const [activeQuarter, setActiveQuarter] = useState('all');
-  const shotChartQuery = useShotChartProjection(matchId, !!matchId);
+  const [activeQuarter, setActiveQuarter] = useState<Quarter>('all');
+  const [showMade, setShowMade] = useState(true);
+  const [showMissed, setShowMissed] = useState(true);
+
+  const matchQuery = useMatch(matchId);
+  const match = matchQuery.data;
+  // Session ID required for live shot chart — available once Backend Gap #5 is resolved
+  const sessionId = match?.gameSessions?.[0]?.id;
+  const shotChartQuery = useShotChartProjection(sessionId, !!sessionId);
   const shots = shotChartQuery.data ?? [];
-  const filteredShots = activeQuarter === 'all'
-    ? shots
-    : shots.filter((shot) => shot.period === Number(activeQuarter.replace('q', '')));
+
+  // Quarter filter: backend shot events don't include a period field (Backend Gap #6)
+  // so Q1-Q4 filters will show 0 until that's added to the shot payload
+  const filteredShots = shots.filter((shot) => {
+    if (activeQuarter !== 'all') {
+      const q = Number(activeQuarter.replace('q', ''));
+      if ((shot as Record<string, unknown>).period !== q) return false;
+    }
+    if (!showMade && shot.result === 'made') return false;
+    if (!showMissed && shot.result !== 'made') return false;
+    return true;
+  });
+
+  const homeTeamId = match?.homeTeamId;
+  const homeRoster = match?.homeTeam?.playerTeams ?? [];
+  const awayRoster = match?.awayTeam?.playerTeams ?? [];
+  const homeName = match?.homeTeam?.name ?? 'Home';
+  const awayName = match?.awayTeam?.name ?? 'Away';
 
   return (
     <div className="min-h-screen bg-white p-6">
       <div className="max-w-7xl mx-auto">
         {/* Quarter Filters */}
         <div className="flex justify-center gap-3 mb-6">
-          <button 
-            onClick={() => setActiveQuarter('all')}
-            className={`px-6 py-2.5 rounded-lg font-medium cursor-pointer transition-all ${
-              activeQuarter === 'all'
-                ? 'bg-[#21409A] text-white shadow-md'
-                : 'text-gray-600 bg-white border border-gray-300 hover:bg-gray-50'
-            }`}
-          >
-            All
-          </button>
-          <button 
-            onClick={() => setActiveQuarter('q1')}
-            className={`px-6 py-2.5 rounded-lg font-medium cursor-pointer transition-all ${
-              activeQuarter === 'q1'
-                ? 'bg-[#21409A] text-white shadow-md'
-                : 'text-gray-600 bg-white border border-gray-300 hover:bg-gray-50'
-            }`}
-          >
-            Q1
-          </button>
-          <button 
-            onClick={() => setActiveQuarter('q2')}
-            className={`px-6 py-2.5 rounded-lg font-medium cursor-pointer transition-all ${
-              activeQuarter === 'q2'
-                ? 'bg-[#21409A] text-white shadow-md'
-                : 'text-gray-600 bg-white border border-gray-300 hover:bg-gray-50'
-            }`}
-          >
-            Q2
-          </button>
-          <button 
-            onClick={() => setActiveQuarter('q3')}
-            className={`px-6 py-2.5 rounded-lg font-medium cursor-pointer transition-all ${
-              activeQuarter === 'q3'
-                ? 'bg-[#21409A] text-white shadow-md'
-                : 'text-gray-600 bg-white border border-gray-300 hover:bg-gray-50'
-            }`}
-          >
-            Q3
-          </button>
-          <button 
-            onClick={() => setActiveQuarter('q4')}
-            className={`px-6 py-2.5 rounded-lg font-medium cursor-pointer transition-all ${
-              activeQuarter === 'q4'
-                ? 'bg-[#21409A] text-white shadow-md'
-                : 'text-gray-600 bg-white border border-gray-300 hover:bg-gray-50'
-            }`}
-          >
-            Q4
-          </button>
+          {QUARTERS.map((q) => (
+            <button
+              key={q}
+              onClick={() => setActiveQuarter(q)}
+              className={`px-6 py-2.5 rounded-lg font-medium cursor-pointer transition-all ${
+                activeQuarter === q
+                  ? 'bg-[#21409A] text-white shadow-md'
+                  : 'text-gray-600 bg-white border border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              {q === 'all' ? 'All' : q.toUpperCase()}
+            </button>
+          ))}
         </div>
 
-        {/* Basketball Court with Shot Chart */}
+        {/* Basketball Court with Shot Markers */}
         <div className="bg-gradient-to-b from-blue-100 to-blue-50 rounded-lg p-8 mb-6 border border-gray-200">
-          {shotChartQuery.isPending && (
+          {!sessionId && !matchQuery.isPending && (
+            <p className="mb-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+              Shot chart requires a session ID from the match record (Backend Gap #5).
+            </p>
+          )}
+          {shotChartQuery.isPending && sessionId && (
             <div className="mb-3 text-sm text-gray-600">Loading shot chart...</div>
           )}
           {shotChartQuery.error instanceof Error && (
             <div className="mb-3 text-sm text-red-600">{shotChartQuery.error.message}</div>
           )}
-          <div className="bg-[#4A90E2] rounded-lg p-4 max-w-3xl mx-auto relative" style={{ aspectRatio: '16/10' }}>
-            {/* Basketball court lines and circles would be SVG overlay */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-white text-sm opacity-80">
-                {filteredShots.length} shot(s) in {activeQuarter.toUpperCase()}
+
+          <div className="relative max-w-3xl mx-auto" style={{ aspectRatio: '16/10' }}>
+            <div className="bg-[#4A90E2] rounded-lg w-full h-full" />
+            {/* Shot markers overlaid as SVG */}
+            <svg
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+            >
+              {filteredShots.map((shot) => {
+                if (shot.x === null || shot.y === null) return null;
+                const isHome = shot.teamId === homeTeamId;
+                const color = isHome ? '#FFCA69' : '#80B7D5';
+                const x = shot.x * 100;
+                const y = shot.y * 100;
+                return shot.result === 'made' ? (
+                  <circle
+                    key={shot.eventId}
+                    cx={x}
+                    cy={y}
+                    r={2.5}
+                    fill={color}
+                    stroke="#1e3a8a"
+                    strokeWidth={0.5}
+                  />
+                ) : (
+                  <g key={shot.eventId}>
+                    <line x1={x - 2} y1={y - 2} x2={x + 2} y2={y + 2} stroke={color} strokeWidth={1.5} />
+                    <line x1={x + 2} y1={y - 2} x2={x - 2} y2={y + 2} stroke={color} strokeWidth={1.5} />
+                  </g>
+                );
+              })}
+            </svg>
+            {filteredShots.length === 0 && !shotChartQuery.isPending && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-white text-sm opacity-80">
+                  {sessionId ? `0 shots in ${activeQuarter.toUpperCase()}` : 'No session data'}
+                </span>
               </div>
-            </div>
-            {/* Shot markers would be positioned absolutely based on coordinates */}
+            )}
           </div>
-          
+
           {/* Legend */}
           <div className="flex justify-center gap-6 mt-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" defaultChecked className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500" />
-              <span className="w-3 h-3 bg-orange-400 rounded-full"></span>
+            <button
+              onClick={() => setShowMade((v) => !v)}
+              className={`flex items-center gap-2 cursor-pointer transition-opacity ${showMade ? 'opacity-100' : 'opacity-40'} hover:opacity-80`}
+            >
+              <span className="w-3 h-3 rounded-full bg-[#FFCA69] border border-blue-900 inline-block" />
               <span className="text-sm text-gray-700">Made</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" defaultChecked className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500" />
-              <span className="text-gray-600 text-lg">✕</span>
+            </button>
+            <button
+              onClick={() => setShowMissed((v) => !v)}
+              className={`flex items-center gap-2 cursor-pointer transition-opacity ${showMissed ? 'opacity-100' : 'opacity-40'} hover:opacity-80`}
+            >
+              <span className="text-gray-600 text-lg leading-none">✕</span>
               <span className="text-sm text-gray-700">Missed</span>
-            </label>
-          </div>
-        </div>
-
-        {/* Player Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          {/* Player 1 - Yellow */}
-          <div className="rounded-2xl overflow-hidden bg-[#FFCA69]" style={{ width: '335px', height: '374px' }}>
-            <div className="p-4">
-              <div className="text-white font-medium mb-1">Name</div>
-              <div className="text-white font-bold text-lg mb-1">Surname</div>
-              <div className="bg-white text-gray-900 font-bold text-sm px-3 py-1 rounded-md inline-block mb-4">
-                11
-              </div>
-              <div className="bg-white rounded-full px-4 py-2 inline-block">
-                <div className="text-xs text-gray-500">FG%</div>
-                <div className="text-sm font-bold text-gray-800">50%</div>
-                <div className="text-xs text-gray-500">(10/20)</div>
-              </div>
-            </div>
-            <div className="relative" style={{ height: '400px' }}>
-              <img
-                src="/player1.png"
-                alt="Player"
-                className="w-[21rem] ml-0 mx-auto absolute mt-[-3.5rem]"
-              />
-            </div>
-          </div>
-
-          {/* Player 2 - Blue */}
-          <div className="rounded-2xl overflow-hidden bg-[#80B7D5]" style={{ width: '335px', height: '374px' }}>
-            <div className="p-4">
-              <div className="text-white font-medium mb-1">Name</div>
-              <div className="text-white font-bold text-lg mb-1">Surname</div>
-              <div className="bg-white text-gray-900 font-bold text-sm px-3 py-1 rounded-md inline-block mb-4">
-                23
-              </div>
-              <div className="bg-white rounded-full px-4 py-2 inline-block">
-                <div className="text-xs text-gray-500">FG%</div>
-                <div className="text-sm font-bold text-gray-800">50%</div>
-                <div className="text-xs text-gray-500">(10/20)</div>
-              </div>
-            </div>
-            <div className="relative" style={{ height: '400px' }}>
-              <img
-                src="/player2.png"
-                alt="Player"
-                className="w-[21rem] ml-0 mx-auto absolute mt-[-3.5rem]"
-              />
-            </div>
+            </button>
           </div>
         </div>
 
         {/* Player Selection Lists */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Team A Players */}
+          {/* Home Team */}
           <div className="space-y-3">
+            <p className="text-sm font-semibold text-gray-700 mb-1">{homeName}</p>
             <label className="flex items-center gap-3 p-3 bg-yellow-50 rounded-lg cursor-pointer hover:bg-yellow-100">
               <input type="checkbox" defaultChecked className="w-4 h-4 rounded border-gray-300 text-yellow-500 focus:ring-yellow-500" />
               <span className="text-sm font-medium text-gray-700">All Players</span>
             </label>
-            {[1, 2, 3, 4, 5].map((i) => (
-              <label key={i} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
+            {homeRoster.map((pt, i) => (
+              <label key={pt.playerId ?? i} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
                 <input type="checkbox" defaultChecked className="w-4 h-4 rounded border-gray-300 text-yellow-500 focus:ring-yellow-500" />
-                <span className="text-sm text-gray-700">Name Surname</span>
+                <span className="text-sm text-gray-700">
+                  {pt.jerseyNumber != null ? `#${pt.jerseyNumber} ` : ''}
+                  {pt.player ? `${pt.player.firstName} ${pt.player.lastName}` : 'Player'}
+                </span>
               </label>
             ))}
+            {homeRoster.length === 0 && (
+              <p className="text-sm text-gray-400 px-3">No roster data</p>
+            )}
           </div>
 
-          {/* Team B Players */}
+          {/* Away Team */}
           <div className="space-y-3">
-            <label className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100">
-              <input type="checkbox" defaultChecked className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500" />
+            <p className="text-sm font-semibold text-gray-700 mb-1 text-right">{awayName}</p>
+            <label className="flex items-center justify-end gap-3 p-3 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100">
               <span className="text-sm font-medium text-gray-700">All Players</span>
+              <input type="checkbox" defaultChecked className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500" />
             </label>
-            {[1, 2, 3, 4, 5].map((i) => (
-              <label key={i} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
+            {awayRoster.map((pt, i) => (
+              <label key={pt.playerId ?? i} className="flex items-center justify-end gap-3 p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
+                <span className="text-sm text-gray-700">
+                  {pt.player ? `${pt.player.firstName} ${pt.player.lastName}` : 'Player'}
+                  {pt.jerseyNumber != null ? ` #${pt.jerseyNumber}` : ''}
+                </span>
                 <input type="checkbox" defaultChecked className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500" />
-                <span className="text-sm text-gray-700">Name Surname</span>
               </label>
             ))}
+            {awayRoster.length === 0 && (
+              <p className="text-sm text-gray-400 px-3 text-right">No roster data</p>
+            )}
           </div>
         </div>
-
       </div>
     </div>
   );
