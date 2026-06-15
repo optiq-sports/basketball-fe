@@ -67,6 +67,7 @@ import { clearJumpBallWinner, readJumpBallWinner } from '../jumpBallWinner';
 import {
   commandsApi,
   createSessionSseClient,
+  projectionsApi,
   sessionsApi,
   type CommandAcceptedResponse,
   type SessionStateSnapshot,
@@ -274,6 +275,7 @@ const StatDash: React.FC = () => {
   const latestVersionRef = useRef<number>(readStoredExpectedVersion());
   const pendingCountRef = useRef(0);
   const queueRef = useRef<QueuedEvent[]>([]);
+  const markersRestoredRef = useRef(false);
 
   const applyAuthoritativeState = useCallback((state: SessionStateSnapshot) => {
     setHomeScore(state.score.home);
@@ -289,9 +291,33 @@ const StatDash: React.FC = () => {
     return context?.awayTeamId ?? 'away_team';
   }, []);
 
+  // Jersey → real player UUID maps, built from the match roster data.
+  // Used so event commands carry actual DB player IDs instead of synthetic composites.
+  const homePlayerIdByJersey = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const pt of matchForNamesQuery.data?.homeTeam?.playerTeams ?? []) {
+      if (pt.player?.id && pt.jerseyNumber != null) {
+        map.set(pt.jerseyNumber, pt.player.id);
+      }
+    }
+    return map;
+  }, [matchForNamesQuery.data]);
+
+  const awayPlayerIdByJersey = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const pt of matchForNamesQuery.data?.awayTeam?.playerTeams ?? []) {
+      if (pt.player?.id && pt.jerseyNumber != null) {
+        map.set(pt.jerseyNumber, pt.player.id);
+      }
+    }
+    return map;
+  }, [matchForNamesQuery.data]);
+
   const getPlayerId = useCallback((side: TeamSide, jersey: number): string => {
-    return `${getTeamIdForSide(side)}_${jersey}`;
-  }, [getTeamIdForSide]);
+    const map = side === 'home' ? homePlayerIdByJersey : awayPlayerIdByJersey;
+    // Fall back to synthetic ID if match data hasn't loaded yet
+    return map.get(jersey) ?? `${getTeamIdForSide(side)}_${jersey}`;
+  }, [homePlayerIdByJersey, awayPlayerIdByJersey, getTeamIdForSide]);
 
   const { enqueue, queue, pendingCount, failedCount, isOnline, retryFailed } = useEventQueue({
     onCommandAccepted: (_event, response) => {
@@ -451,6 +477,32 @@ const StatDash: React.FC = () => {
     };
     void bootstrap();
   }, [applyAuthoritativeState, navigate]);
+
+  // After bootstrap, restore shot markers from the server-side shot chart projection.
+  // Runs once — the ref guard prevents re-runs if homeTeamColor/awayTeamColor update later.
+  useEffect(() => {
+    if (isBootstrapping) return;
+    if (markersRestoredRef.current) return;
+    markersRestoredRef.current = true;
+    const context = readStoredSessionContext();
+    if (!context) return;
+    void (async () => {
+      try {
+        const shots = await projectionsApi.getShotChart(context.sessionId);
+        const markers = shots
+          .filter((s) => s.x != null && s.y != null)
+          .map((s) => ({
+            nx: s.x as number,
+            ny: s.y as number,
+            color: s.teamId === context.homeTeamId ? homeTeamColor : awayTeamColor,
+            kind: s.result === 'made' ? ('made' as const) : ('missed' as const),
+          }));
+        if (markers.length > 0) setCourtShotMarkers(markers);
+      } catch {
+        // Court markers are cosmetic — silently ignore fetch failures on reconnect
+      }
+    })();
+  }, [isBootstrapping, homeTeamColor, awayTeamColor]);
 
   useEffect(() => {
     const context = readStoredSessionContext();
