@@ -2,9 +2,12 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiSearch, FiFilter, FiChevronDown, FiEdit2, FiTrash, FiUserMinus, FiUpload, FiCopy, FiCheck } from 'react-icons/fi';
 import { MdCancel } from 'react-icons/md';
+import { Country } from 'country-state-city';
 import { usePlayers, useTeams, useCreatePlayerForTeam, useUpdatePlayer, useDeletePlayer, useRemovePlayerFromTeam, useUploadPlayersExcel, useUploadFile, useMergePlayers } from '../../api/hooks';
 import type { Player as ApiPlayer } from '../../types/api';
 import { resolvePlayerPhotoUrl } from '../../utils/playerPhotoPlaceholder';
+
+const allCountries = Country.getAllCountries().sort((a, b) => a.name.localeCompare(b.name));
 
 const POSITION_OPTIONS = [
   { value: 'POINT_GUARD', label: 'Point Guard' },
@@ -1041,13 +1044,16 @@ const Players: React.FC = () => {
                 {/* Country */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Country</label>
-                  <input
-                    type="text"
-                    placeholder="Enter country"
+                  <select
                     value={formData.country}
                     onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                  >
+                    <option value="">Select country</option>
+                    {allCountries.map((c) => (
+                      <option key={c.isoCode} value={c.name}>{c.name}</option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Height */}
