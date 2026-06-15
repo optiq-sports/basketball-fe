@@ -46,9 +46,10 @@ function freeThrowMakesFromFoulResult(resultField: string): {
   return { shooterJersey: jersey, makes };
 }
 
-/** Text between "on " and " #12;" in foul log lines — the fouled team label. */
+/** Text between "on " and " #12" in foul log lines — the fouled team label.
+ *  Handles both "#12;" (no name) and "#12 J. Smith;" (name after jersey). */
 function fouledTeamLabelFromFoulResult(resultField: string): string | null {
-  const m = resultField.match(/\bon\s+(.+)\s+#\d+\s*;/i);
+  const m = resultField.match(/\bon\s+(.+?)\s+#\d+[^;]*;/i);
   return m?.[1]?.trim() ?? null;
 }
 

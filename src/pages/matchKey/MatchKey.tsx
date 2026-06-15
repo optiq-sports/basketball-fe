@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import StatisticianLayout from '../../components/StatisticianLayout';
-import { useMatches, useTeams } from '../../api/hooks';
+import { queryKeys, useMatches, useTeams } from '../../api/hooks';
 import type { Match } from '../../types/api';
 import { sessionsApi } from '../../services/statdash';
 import { apiClient } from '../../api/ApiClient';
@@ -9,6 +10,8 @@ import {
   writeStoredExpectedVersion,
   writeStoredSessionContext,
 } from '../../features/statdash/sessionContextStorage';
+
+const TOKEN_KEY = 'access_token';
 
 const RECENT_LIMIT = 8;
 
@@ -47,9 +50,17 @@ function teamColor(map: Map<string, { name: string; color: string }>, id: string
 
 const MatchKey: React.FC = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [matchKey, setMatchKey] = useState('');
   const [keyError, setKeyError] = useState<string | null>(null);
   const [isResolving, setIsResolving] = useState(false);
+
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem('user_name');
+    queryClient.removeQueries({ queryKey: queryKeys.auth.profile });
+    navigate('/login');
+  }, [navigate, queryClient]);
 
   const completedQuery = useMatches(undefined, 'COMPLETED');
   const teamsQuery = useTeams();
@@ -114,6 +125,15 @@ const MatchKey: React.FC = () => {
     <StatisticianLayout>
       <div className="flex-1 flex flex-col items-center justify-center px-[5vw] sm:px-6 pb-10 sm:pb-12 pt-2 sm:pt-4">
         <div className="w-full max-w-md lg:max-w-lg mx-auto flex flex-col items-center">
+          <div className="self-start mb-4">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="rounded text-sm text-gray-500 underline-offset-2 transition-colors hover:text-gray-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            >
+              ← Log out
+            </button>
+          </div>
           {/* Logo */}
           <div className="mb-6 sm:mb-8 rounded-xl overflow-hidden shadow-sm ring-1 ring-black/5 bg-[#3B5998]">
             <img

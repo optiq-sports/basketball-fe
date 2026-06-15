@@ -3,14 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { FiSearch, FiFilter, FiChevronDown, FiMapPin, FiEdit2, FiTrash } from 'react-icons/fi';
 import { GiBasketballBall } from 'react-icons/gi';
 import { MdCancel } from 'react-icons/md';
+import { Country, State } from 'country-state-city';
 import { useTeams, useCreateTeam, useUpdateTeam, useDeleteTeam } from '../../api/hooks';
 import type { Team as ApiTeam } from '../../types/api';
 
-const countriesData: Record<string, string[]> = {
-  'United States': ['California', 'Texas', 'Florida', 'New York', 'Illinois', 'Massachusetts', 'Oklahoma'],
-  'Canada': ['Ontario', 'Quebec', 'British Columbia', 'Alberta'],
-  'United Kingdom': ['England', 'Scotland', 'Wales'],
-};
+const allCountries = Country.getAllCountries().sort((a, b) => a.name.localeCompare(b.name));
+const countryNameToIso = new Map(allCountries.map((c) => [c.name, c.isoCode]));
 
 const Teams: React.FC = () => {
   const navigate = useNavigate();
@@ -350,8 +348,8 @@ const Teams: React.FC = () => {
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
                   >
                     <option value="">Select country</option>
-                    {Object.keys(countriesData).map((country) => (
-                      <option key={country} value={country}>{country}</option>
+                    {allCountries.map((c) => (
+                      <option key={c.isoCode} value={c.name}>{c.name}</option>
                     ))}
                   </select>
                 </div>
@@ -364,8 +362,8 @@ const Teams: React.FC = () => {
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
                   >
                     <option value="">Select state</option>
-                    {formData.country && countriesData[formData.country]?.map((stateName) => (
-                      <option key={stateName} value={stateName}>{stateName}</option>
+                    {formData.country && State.getStatesOfCountry(countryNameToIso.get(formData.country) ?? '').map((s) => (
+                      <option key={s.isoCode} value={s.name}>{s.name}</option>
                     ))}
                   </select>
                 </div>

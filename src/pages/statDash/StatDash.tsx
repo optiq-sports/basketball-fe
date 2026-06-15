@@ -1614,17 +1614,6 @@ const StatDash: React.FC = () => {
       }
 
 
-      const committed = await commitEventCommand('shot', {
-        teamId: draft.side ? getTeamIdForSide(draft.side) : undefined,
-        shooterPlayerId:
-          draft.side && typeof draft.shooterJersey === 'number'
-            ? getPlayerId(draft.side, draft.shooterJersey)
-            : undefined,
-        shotValue: draft.shotType ? getShotPoints(draft.shotType) : 2,
-        result: draft.result,
-      });
-      if (!committed) return;
-      const teamName = draft.side === 'home' ? homeName : awayName;
       const pt = pendingCourtClickRef.current;
       const isThreeFromCourt =
         cur.entry === 'court' &&
@@ -1632,6 +1621,18 @@ const StatDash: React.FC = () => {
         draft.side !== null &&
         isCourtClickThreePointer(pt.nx, pt.ny, draft.side, homeAttacksLeft);
       const points = isThreeFromCourt ? 3 : getShotPoints(draft.shotType);
+
+      const committed = await commitEventCommand('shot', {
+        teamId: draft.side ? getTeamIdForSide(draft.side) : undefined,
+        shooterPlayerId:
+          draft.side && typeof draft.shooterJersey === 'number'
+            ? getPlayerId(draft.side, draft.shooterJersey)
+            : undefined,
+        shotValue: points,
+        result: draft.result,
+      });
+      if (!committed) return;
+      const teamName = draft.side === 'home' ? homeName : awayName;
       if (draft.result === 'made') {
         if (draft.side === 'home') setHomeScore((s) => s + points);
         else setAwayScore((s) => s + points);
