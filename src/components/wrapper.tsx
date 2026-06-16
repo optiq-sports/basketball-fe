@@ -27,6 +27,7 @@ const TeamDetails = lazy(() => import('../pages/Teams/TeamDetails'))
 const PlayersManagement = lazy(() => import('../pages/Players/Players'))
 const PlayerProfile = lazy(() => import('../pages/Players/PlayerProfile'))
 const Users = lazy(() => import('../pages/Users/Users'))
+const QueueDashboard = lazy(() => import('../pages/Ops/QueueDashboard'))
 
 const TOKEN_KEY = 'access_token';
 
@@ -85,6 +86,7 @@ const Wrapper: React.FC = () => {
     if (path.startsWith('/teams-management')) return 'teams';
     if (path.startsWith('/players-management')) return 'players';
     if (path.startsWith('/users')) return 'users';
+    if (path.startsWith('/ops')) return 'ops';
     return '';
   };
 
@@ -143,6 +145,7 @@ const Wrapper: React.FC = () => {
             <Route path="/players-management" element={<PlayersManagement />} />
             <Route path="/players-management/:playerId" element={<PlayerProfile />} />
             <Route path="/users" element={<UsersRouteGuard rawRole={rawRole} />} />
+            <Route path="/ops/queues" element={<QueueDashboard />} />
             <Route path="/" element={<Dashboard />} />
           </Routes>
           </Suspense>

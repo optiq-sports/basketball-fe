@@ -52,6 +52,10 @@ export const queryKeys = {
   admin: (id: string) => ['admin', id] as const,
   statisticians: () => ['statisticians'] as const,
   statistician: (id: string) => ['statistician', id] as const,
+  ops: {
+    health: ['ops', 'health'] as const,
+    lag: ['ops', 'lag'] as const,
+  },
 };
 
 // Auth hooks
@@ -755,5 +759,39 @@ export function useDeleteStatistician() {
       queryClient.invalidateQueries({ queryKey: queryKeys.statisticians() });
       queryClient.invalidateQueries({ queryKey: queryKeys.statistician(id) });
     },
+  });
+}
+
+// Ops / Queue hooks
+export function useQueueHealth() {
+  return useQuery({
+    queryKey: queryKeys.ops.health,
+    queryFn: () => apiClient.ops.getHealth(),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useQueueLag() {
+  return useQuery({
+    queryKey: queryKeys.ops.lag,
+    queryFn: () => apiClient.ops.getLag(),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useRequeueDeadLetter() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (limit: number) => apiClient.ops.requeueDeadLetter(limit),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.ops.health });
+      queryClient.invalidateQueries({ queryKey: queryKeys.ops.lag });
+    },
+  });
+}
+
+export function useWarmSession() {
+  return useMutation({
+    mutationFn: (sessionId: string) => apiClient.ops.warmSession(sessionId),
   });
 }

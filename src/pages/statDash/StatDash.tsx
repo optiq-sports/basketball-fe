@@ -1590,6 +1590,7 @@ const StatDash: React.FC = () => {
       nextDraft.shooterJersey !== null
     ) {
       const teamName = nextDraft.side === 'home' ? homeName : awayName;
+      const missedPt = cur.entry === 'court' ? pendingCourtClickRef.current : null;
       const committed = await commitEventCommand('shot', {
         teamId: nextDraft.side ? getTeamIdForSide(nextDraft.side) : undefined,
         shooterPlayerId:
@@ -1598,6 +1599,7 @@ const StatDash: React.FC = () => {
             : undefined,
         shotValue: getShotPoints(shotType),
         result: 'missed',
+        ...(missedPt ? { x: missedPt.nx, y: missedPt.ny } : {}),
       });
       if (!committed) return;
       appendLog({
@@ -1682,6 +1684,7 @@ const StatDash: React.FC = () => {
             : undefined,
         shotValue: points,
         result: draft.result,
+        ...(cur.entry === 'court' && pt ? { x: pt.nx, y: pt.ny } : {}),
       });
       if (!committed) return;
       const teamName = draft.side === 'home' ? homeName : awayName;

@@ -116,6 +116,11 @@ const CompetitionDetailPage: React.FC = () => {
 
   const ongoingMatch = useMemo(() => matches.find((m) => m.hasStarted) ?? null, [matches]);
 
+  const existingTeamIds = useMemo<Set<string>>(() => {
+    const tournamentTeams = (tournament as Record<string, unknown> | undefined)?.teams as Array<{ teamId: string }> | undefined ?? [];
+    return new Set(tournamentTeams.map((tt) => tt.teamId));
+  }, [tournament]);
+
   const teams: DisplayTeam[] = useMemo(() => {
     if (!tournament) return [];
     const tournamentTeams = (tournament as Record<string, unknown>).teams as Array<{ teamId: string; team: { id: string; name: string; color: string } }> ?? [];
@@ -320,7 +325,7 @@ const CompetitionDetailPage: React.FC = () => {
                 <h2 className="text-xl font-semibold text-gray-800">Add Teams to Tournament</h2>
               </div>
               <div className="p-6 space-y-2 max-h-64 overflow-y-auto">
-                {(teamsQuery.data ?? []).map((team) => (
+                {(teamsQuery.data ?? []).filter((team) => !existingTeamIds.has(team.id)).map((team) => (
                   <label key={team.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer">
                     <input
                       type="checkbox"
@@ -337,8 +342,12 @@ const CompetitionDetailPage: React.FC = () => {
                     <span className="text-sm font-medium text-gray-800">{team.name}</span>
                   </label>
                 ))}
-                {(teamsQuery.data ?? []).length === 0 && (
-                  <p className="text-sm text-gray-500">No teams available. Create teams first from Teams Management.</p>
+                {(teamsQuery.data ?? []).filter((team) => !existingTeamIds.has(team.id)).length === 0 && (
+                  <p className="text-sm text-gray-500">
+                    {(teamsQuery.data ?? []).length === 0
+                      ? 'No teams available. Create teams first from Teams Management.'
+                      : 'All teams are already in this tournament.'}
+                  </p>
                 )}
               </div>
               <div className="flex justify-end gap-3 p-6 border-t border-gray-200">

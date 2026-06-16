@@ -2,7 +2,7 @@ import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FiPlusCircle, FiLogOut, FiUsers } from 'react-icons/fi'
 import { MdSportsBasketball, MdLeaderboard, MdGroup } from 'react-icons/md'
-import { IoStatsChart } from 'react-icons/io5'
+import { IoStatsChart, IoServerOutline } from 'react-icons/io5'
 import { HiUsers } from 'react-icons/hi'
 import { BiHome } from 'react-icons/bi'
 
@@ -64,11 +64,17 @@ const Sidebar: React.FC<SidebarProps> = ({ activeItem = '', onNavigate, userRole
       icon: <HiUsers className="text-xl" />,
       path: '/users',
     },
+    {
+      id: 'ops',
+      label: 'Queue Ops',
+      icon: <IoServerOutline className="text-xl" />,
+      path: '/ops/queues',
+    },
   ];
 
   const menuItems = userRole === 'SUPER_ADMIN'
     ? allMenuItems
-    : allMenuItems.filter((item) => item.id !== 'users');
+    : allMenuItems.filter((item) => item.id !== 'users' && item.id !== 'ops');
 
   const handleNavigation = (path: string) => {
     navigate(path);

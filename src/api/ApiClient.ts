@@ -603,6 +603,34 @@ class ApiClient {
       };
     },
   };
+
+  ops = {
+    getHealth: async (): Promise<{
+      enabled: boolean;
+      queues: Record<string, { active?: number; waiting?: number; completed?: number; failed?: number; delayed?: number; paused?: number }>;
+    }> => {
+      const res = await this.request<{ enabled: boolean; queues: Record<string, Record<string, number>> }>('/ops/queues/health');
+      return res.data!;
+    },
+
+    getLag: async (): Promise<{
+      enabled: boolean;
+      lag: Record<string, { waiting: number; oldestWaitingMs: number }>;
+    }> => {
+      const res = await this.request<{ enabled: boolean; lag: Record<string, { waiting: number; oldestWaitingMs: number }> }>('/ops/queues/lag');
+      return res.data!;
+    },
+
+    requeueDeadLetter: async (limit = 25): Promise<{ requeued: number }> => {
+      const res = await this.request<{ requeued: number }>(`/ops/queues/dead-letter/requeue?limit=${limit}`, { method: 'POST' });
+      return res.data!;
+    },
+
+    warmSession: async (sessionId: string): Promise<{ warmed: boolean; sessionId: string }> => {
+      const res = await this.request<{ warmed: boolean; sessionId: string }>(`/ops/queues/warm/session?sessionId=${encodeURIComponent(sessionId)}`, { method: 'POST' });
+      return res.data!;
+    },
+  };
 }
 
 export const apiClient = new ApiClient();
