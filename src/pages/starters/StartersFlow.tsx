@@ -156,7 +156,7 @@ function MainStyleStarterCheckbox({
   );
 }
 
-type PlayerEntry = { jersey: number; name: string };
+export type PlayerEntry = { jersey: number; name: string };
 
 function TeamColumn({
   side,

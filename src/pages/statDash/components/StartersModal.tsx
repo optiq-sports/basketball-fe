@@ -1,12 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import type { TeamLineup } from '../substitutionLineupUtils';
-import StartersFlow from '../../starters/StartersFlow';
+import StartersFlow, { type PlayerEntry } from '../../starters/StartersFlow';
 
 export interface StartersModalProps {
   open: boolean;
   onClose: () => void;
   homeLineup: TeamLineup;
   awayLineup: TeamLineup;
+  homePlayers?: PlayerEntry[];
+  awayPlayers?: PlayerEntry[];
+  homeName?: string;
+  awayName?: string;
   onApply: (lineups: { home: TeamLineup; away: TeamLineup }) => void;
 }
 
@@ -16,6 +20,10 @@ const StartersModal: React.FC<StartersModalProps> = ({
   onClose,
   homeLineup,
   awayLineup,
+  homePlayers,
+  awayPlayers,
+  homeName,
+  awayName,
   onApply,
 }) => {
   const [resetKey, setResetKey] = useState(0);
@@ -50,6 +58,10 @@ const StartersModal: React.FC<StartersModalProps> = ({
             initialAwayLineup={awayLineup}
             baselineHomeLineup={homeLineup}
             baselineAwayLineup={awayLineup}
+            homePlayers={homePlayers}
+            awayPlayers={awayPlayers}
+            homeName={homeName}
+            awayName={awayName}
             onApplyLineups={(lineups) => {
               onApply(lineups);
               onClose();

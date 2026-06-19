@@ -105,7 +105,13 @@ const MatchKey: React.FC = () => {
         awayTeamId: (await apiClient.matches.getById(snapshot.matchId)).data?.awayTeamId,
       });
       writeStoredExpectedVersion(snapshot.version);
-      navigate('/starters');
+      // Game already started (starters/sides/jump-ball already done) — resume straight into
+      // Stat Dash instead of re-running the one-time setup flow.
+      if (snapshot.status === 'IN_PROGRESS' || snapshot.status === 'PAUSED') {
+        navigate('/stat-dash');
+      } else {
+        navigate('/starters');
+      }
     } catch (error) {
       setKeyError(error instanceof Error ? error.message : 'Unable to resolve match key');
     } finally {
