@@ -183,82 +183,85 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
             <h2 id="shot-flow-title" className={titleClass} style={titleStyle}>
               Select rebounder
             </h2>
-            {draft.reboundBranch !== null && (
+            {draft.reboundBranch !== null ? (
+              // Outcome already chosen — only the jersey tap is left. Hiding the outcome
+              // buttons here prevents re-tapping one of them, which would just reset the
+              // branch and make it look like the rebounder prompt is repeating itself.
               <p className="mx-auto mb-2 max-w-[360px] text-center text-[11px] leading-snug text-gray-600 sm:text-xs">
                 Now tap the rebounder&apos;s jersey in the <strong>{homeName}</strong> or <strong>{awayName}</strong> side
-                column.
+                column. Use <strong>Back</strong> to change the outcome.
               </p>
+            ) : (
+              <div className="mx-auto grid max-w-[360px] grid-cols-1 gap-2">
+                <div className="rounded-lg bg-gray-200 px-3 py-2.5">
+                  <div className="text-center text-[11px] font-bold uppercase text-gray-700">Offensive rebound (miss)</div>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onSelectReboundOutcome('tipin_layup_miss')}
+                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                    >
+                      Layup Miss
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onSelectReboundOutcome('tipin_dunk_miss')}
+                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                    >
+                      Dunk Miss
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-lg bg-gray-200 px-3 py-2.5">
+                  <div className="text-center text-[11px] font-bold uppercase text-gray-700">Offensive rebound (made)</div>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onSelectReboundOutcome('tipin_layup_made')}
+                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                    >
+                      Layup Made
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onSelectReboundOutcome('tipin_dunk_made')}
+                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                    >
+                      Dunk Made
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => onSelectReboundOutcome('block_involved')}
+                  className="rounded-lg bg-gray-200 px-3 py-3 text-center text-[12px] font-medium text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:text-[13px]"
+                >
+                  Defensive action (block involved)
+                </button>
+
+                <div className="rounded-lg bg-gray-200 px-3 py-2.5">
+                  <div className="text-center text-[11px] font-bold uppercase text-gray-700">Dead ball</div>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onSelectReboundOutcome('dead_out_of_bounds')}
+                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                    >
+                      Out of bounds
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onSelectReboundOutcome('dead_shot_clock_violation')}
+                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                    >
+                      24 sec violation
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
-
-            <div className="mx-auto grid max-w-[360px] grid-cols-1 gap-2">
-              <div className="rounded-lg bg-gray-200 px-3 py-2.5">
-                <div className="text-center text-[11px] font-bold uppercase text-gray-700">Offensive rebound (miss)</div>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onSelectReboundOutcome('tipin_layup_miss')}
-                    className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
-                  >
-                    Layup Miss
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onSelectReboundOutcome('tipin_dunk_miss')}
-                    className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
-                  >
-                    Dunk Miss
-                  </button>
-                </div>
-              </div>
-
-              <div className="rounded-lg bg-gray-200 px-3 py-2.5">
-                <div className="text-center text-[11px] font-bold uppercase text-gray-700">Offensive rebound (made)</div>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onSelectReboundOutcome('tipin_layup_made')}
-                    className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
-                  >
-                    Layup Made
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onSelectReboundOutcome('tipin_dunk_made')}
-                    className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
-                  >
-                    Dunk Made
-                  </button>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => onSelectReboundOutcome('block_involved')}
-                className="rounded-lg bg-gray-200 px-3 py-3 text-center text-[12px] font-medium text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:text-[13px]"
-              >
-                Defensive action (block involved)
-              </button>
-
-              <div className="rounded-lg bg-gray-200 px-3 py-2.5">
-                <div className="text-center text-[11px] font-bold uppercase text-gray-700">Dead ball</div>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onSelectReboundOutcome('dead_out_of_bounds')}
-                    className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
-                  >
-                    Out of bounds
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onSelectReboundOutcome('dead_shot_clock_violation')}
-                    className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
-                  >
-                    24 sec violation
-                  </button>
-                </div>
-              </div>
-            </div>
           </>
         )}
 
