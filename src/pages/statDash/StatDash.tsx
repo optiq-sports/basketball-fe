@@ -1089,6 +1089,10 @@ const StatDash: React.FC = () => {
           fastBreak: pm.fastBreak,
           reboundBranch: null,
           priorMiss: pm,
+          // Restore block context so the post-block screen shows correctly on Back.
+          // For non-block tip-ins cur.draft.blockerSide is already null.
+          blockerSide: cur.draft.blockerSide,
+          blockerJersey: cur.draft.blockerJersey,
         },
       });
       return;
@@ -1561,7 +1565,9 @@ const StatDash: React.FC = () => {
         case 'tipin_dunk_made': tipInShotType = 'dunk'; tipInResult = 'made'; break;
         default: return;
       }
-      const priorMiss = snapshotPriorMiss(prev.draft);
+      // In a post-block context side/shooterJersey are cleared, so snapshotPriorMiss returns
+      // null. Fall back to the already-stored priorMiss so Back navigation still works.
+      const priorMiss = snapshotPriorMiss(prev.draft) ?? prev.draft.priorMiss;
       setShotFlow({
         ...prev,
         step: 'pickShooter',
@@ -1578,8 +1584,9 @@ const StatDash: React.FC = () => {
           shooterJersey: null,
           deadBallReason: null,
           fastBreak: false,
-          blockerSide: null,
-          blockerJersey: null,
+          // blockerSide/blockerJersey intentionally preserved from prev.draft:
+          // - non-block tip-ins: already null, no change
+          // - post-block tip-ins: kept so handleModalBack can restore the post-block screen
           lastOffensiveRebound: null,
         },
       });

@@ -184,11 +184,66 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
               Select rebounder
             </h2>
             {draft.blockerSide !== null ? (
-              <p className="mx-auto mb-2 max-w-[360px] text-center text-[11px] leading-snug text-gray-600 sm:text-xs">
-                Block recorded. Now tap the defensive rebounder&apos;s jersey in the{' '}
-                <strong>{homeName}</strong> or <strong>{awayName}</strong> side column.
-                Use <strong>Back</strong> to change the blocker.
-              </p>
+              // Post-block: three possibilities — defensive rebound (jersey tap), offensive
+              // rebound (tip-in attempt), or out of bounds (dead ball).
+              <div className="mx-auto grid max-w-[360px] grid-cols-1 gap-2">
+                <p className="text-center text-[11px] leading-snug text-gray-500">
+                  Tap a jersey to record a defensive rebound, or select what happened:
+                </p>
+
+                <div className="rounded-lg bg-gray-200 px-3 py-2.5">
+                  <div className="text-center text-[11px] font-bold uppercase text-gray-700">Offensive rebound (miss)</div>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onSelectReboundOutcome('tipin_layup_miss')}
+                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                    >
+                      Layup Miss
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onSelectReboundOutcome('tipin_dunk_miss')}
+                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                    >
+                      Dunk Miss
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-lg bg-gray-200 px-3 py-2.5">
+                  <div className="text-center text-[11px] font-bold uppercase text-gray-700">Offensive rebound (made)</div>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onSelectReboundOutcome('tipin_layup_made')}
+                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                    >
+                      Layup Made
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onSelectReboundOutcome('tipin_dunk_made')}
+                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                    >
+                      Dunk Made
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-lg bg-gray-200 px-3 py-2.5">
+                  <div className="text-center text-[11px] font-bold uppercase text-gray-700">Dead ball</div>
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => onSelectReboundOutcome('dead_out_of_bounds')}
+                      className="w-full rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                    >
+                      Out of bounds
+                    </button>
+                  </div>
+                </div>
+              </div>
             ) : (
               <div className="mx-auto grid max-w-[360px] grid-cols-1 gap-2">
                 <div className="rounded-lg bg-gray-200 px-3 py-2.5">
