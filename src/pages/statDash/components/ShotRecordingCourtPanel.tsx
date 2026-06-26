@@ -183,13 +183,11 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
             <h2 id="shot-flow-title" className={titleClass} style={titleStyle}>
               Select rebounder
             </h2>
-            {draft.reboundBranch !== null ? (
-              // Outcome already chosen — only the jersey tap is left. Hiding the outcome
-              // buttons here prevents re-tapping one of them, which would just reset the
-              // branch and make it look like the rebounder prompt is repeating itself.
+            {draft.blockerSide !== null ? (
               <p className="mx-auto mb-2 max-w-[360px] text-center text-[11px] leading-snug text-gray-600 sm:text-xs">
-                Now tap the rebounder&apos;s jersey in the <strong>{homeName}</strong> or <strong>{awayName}</strong> side
-                column. Use <strong>Back</strong> to change the outcome.
+                Block recorded. Now tap the defensive rebounder&apos;s jersey in the{' '}
+                <strong>{homeName}</strong> or <strong>{awayName}</strong> side column.
+                Use <strong>Back</strong> to change the blocker.
               </p>
             ) : (
               <div className="mx-auto grid max-w-[360px] grid-cols-1 gap-2">

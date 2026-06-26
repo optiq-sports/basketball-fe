@@ -1071,36 +1071,27 @@ const StatDash: React.FC = () => {
     const cur = shotFlowRef.current;
     if (cur === 'idle') return;
 
-    // Tip-in putback picker: undo offensive rebound log; restore branch + original miss.
+    // Tip-in putback picker: return to the outcome buttons (reboundBranch: null).
+    // No rebound log to undo — rebound is committed only when the shooter jersey is tapped,
+    // not when the outcome type (Layup Made / Dunk Miss / etc.) is selected.
     if (cur.step === 'pickShooter' && cur.draft.tipInCommit && cur.draft.priorMiss !== null) {
       const pm = cur.draft.priorMiss;
-      const st = cur.draft.shotType;
-      if (st !== null) {
-        const branch = reboundBranchFromTipShot(st, cur.draft.result === 'made' ? 'made' : 'missed');
-        if (branch !== null) {
-          setGameLog((prev) => {
-            const head = prev[0];
-            if (head && head.action === 'rebound') return prev.slice(1);
-            return prev;
-          });
-          setShotFlow({
-            entry: cur.entry,
-            step: 'pickRebounder',
-            draft: {
-              ...emptyShotDraft(),
-              result: 'missed',
-              tipInCommit: false,
-              side: pm.side,
-              shooterJersey: pm.shooterJersey,
-              shotType: pm.shotType,
-              fastBreak: pm.fastBreak,
-              reboundBranch: branch,
-              priorMiss: pm,
-            },
-          });
-          return;
-        }
-      }
+      setShotFlow({
+        entry: cur.entry,
+        step: 'pickRebounder',
+        draft: {
+          ...emptyShotDraft(),
+          result: 'missed',
+          tipInCommit: false,
+          side: pm.side,
+          shooterJersey: pm.shooterJersey,
+          shotType: pm.shotType,
+          fastBreak: pm.fastBreak,
+          reboundBranch: null,
+          priorMiss: pm,
+        },
+      });
+      return;
     }
 
     // Court: initial shooter pick — leave flow (same as cancel for this step).
@@ -1404,21 +1395,49 @@ const StatDash: React.FC = () => {
       if (!active.includes(jersey)) return;
 
       if (prev.draft.tipInCommit) {
-        const { shotType, rebounderSide, result } = prev.draft;
+        const { shotType, result } = prev.draft;
         if (shotType === null) return;
-        if (rebounderSide !== null && side !== rebounderSide) return;
 
+        // Missed tip-in → next rebound screen. Carry the shooter's identity so
+        // snapshotPriorMiss works correctly at the next rebound level.
         setShotFlow(
           result === 'made'
             ? 'idle'
             : {
                 entry: 'court',
                 step: 'pickRebounder',
-                draft: { ...emptyShotDraft(), result: 'missed', tipInCommit: false },
+                draft: {
+                  ...emptyShotDraft(),
+                  result: 'missed',
+                  tipInCommit: false,
+                  side,
+                  shooterJersey: jersey,
+                  shotType,
+                },
               }
         );
 
         void (async () => {
+          const teamName = side === 'home' ? homeName : awayName;
+          const playerLabel = getPlayerLabel(side, jersey);
+
+          // Rebounder = shooter — commit the offensive rebound first.
+          const reboundCommitted = await commitEventCommand('rebound', {
+            teamId: getTeamIdForSide(side),
+            playerId: getPlayerId(side, jersey),
+            reboundType: 'offensive',
+          });
+          if (reboundCommitted) {
+            appendLog({
+              period: periodLabel,
+              clock: clockLabel,
+              team: teamName,
+              player: playerLabel,
+              action: 'rebound',
+              result: 'Rebound',
+            });
+          }
+
           const committed = await commitEventCommand('shot', {
             teamId: getTeamIdForSide(side),
             shooterPlayerId: getPlayerId(side, jersey),
@@ -1426,7 +1445,6 @@ const StatDash: React.FC = () => {
             result,
           });
           if (!committed) return;
-          const teamName = side === 'home' ? homeName : awayName;
           const points = getShotPoints(shotType);
           if (result === 'made') {
             if (side === 'home') setHomeScore((x) => x + points);
@@ -1437,7 +1455,7 @@ const StatDash: React.FC = () => {
             period: periodLabel,
             clock: clockLabel,
             team: teamName,
-            player: getPlayerLabel(side, jersey),
+            player: playerLabel,
             action: 'shot',
             result: shotTypeResultPhrase(shotType, result),
           });
@@ -1509,13 +1527,61 @@ const StatDash: React.FC = () => {
         return;
       }
 
-      // block_involved and tipin_* outcomes are recorded as `reboundBranch` only.
-      // The rebounder's jersey tap (handlePickRebounder) is what actually logs the
-      // rebound, commits the `rebound` event, and advances to pickBlocker/pickShooter —
-      // this keeps the "who got the rebound" step from being skipped.
+      // Block: go directly to pickBlocker — skip the "tap offensive rebounder jersey" step.
+      // Preserve side/shooterJersey so handlePickBlocker can identify the blocked player.
+      if (outcome === 'block_involved') {
+        const priorMiss = snapshotPriorMiss(prev.draft);
+        setShotFlow({
+          ...prev,
+          step: 'pickBlocker',
+          draft: {
+            ...prev.draft,
+            priorMiss,
+            rebounderSide: null,
+            rebounderJersey: null,
+            reboundBranch: null,
+            blockerSide: null,
+            blockerJersey: null,
+            tipInCommit: false,
+            lastOffensiveRebound: null,
+          },
+        });
+        return;
+      }
+
+      // Tip-in outcomes: rebounder = shooter. Skip the intermediate "tap rebounder jersey"
+      // step and go directly to pickShooter. A single jersey tap will commit both the
+      // offensive rebound and the tip-in shot to the same player.
+      let tipInShotType: ShotTypeId;
+      let tipInResult: 'made' | 'missed';
+      switch (outcome) {
+        case 'tipin_layup_miss': tipInShotType = 'layup'; tipInResult = 'missed'; break;
+        case 'tipin_dunk_miss': tipInShotType = 'dunk'; tipInResult = 'missed'; break;
+        case 'tipin_layup_made': tipInShotType = 'layup'; tipInResult = 'made'; break;
+        case 'tipin_dunk_made': tipInShotType = 'dunk'; tipInResult = 'made'; break;
+        default: return;
+      }
+      const priorMiss = snapshotPriorMiss(prev.draft);
       setShotFlow({
         ...prev,
-        draft: { ...prev.draft, reboundBranch: outcome },
+        step: 'pickShooter',
+        draft: {
+          ...prev.draft,
+          priorMiss,
+          rebounderSide: null,
+          rebounderJersey: null,
+          reboundBranch: null,
+          tipInCommit: true,
+          shotType: tipInShotType,
+          result: tipInResult,
+          side: null,
+          shooterJersey: null,
+          deadBallReason: null,
+          fastBreak: false,
+          blockerSide: null,
+          blockerJersey: null,
+          lastOffensiveRebound: null,
+        },
       });
     },
     [appendLog, clockLabel, commitEventCommand, periodLabel]
