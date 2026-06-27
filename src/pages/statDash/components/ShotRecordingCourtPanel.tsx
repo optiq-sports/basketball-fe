@@ -233,13 +233,20 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
 
                 <div className="rounded-lg bg-gray-200 px-3 py-2.5">
                   <div className="text-center text-[11px] font-bold uppercase text-gray-700">Dead ball</div>
-                  <div className="mt-2">
+                  <div className="mt-2 grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => onSelectReboundOutcome('dead_out_of_bounds')}
-                      className="w-full rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
                     >
                       Out of bounds
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onSelectReboundOutcome('dead_shot_clock_violation')}
+                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                    >
+                      24 sec violation
                     </button>
                   </div>
                 </div>
