@@ -1235,7 +1235,7 @@ const StatDash: React.FC = () => {
       team: teamName,
       player: getPlayerLabel(side, jersey),
       action: 'rebound',
-      result: 'Rebound',
+      result: 'Def Rebound',
     };
 
     let nextFlow: ShotFlowState;
@@ -1438,7 +1438,7 @@ const StatDash: React.FC = () => {
               team: teamName,
               player: playerLabel,
               action: 'rebound',
-              result: 'Rebound',
+              result: 'Off Rebound',
             });
           }
 

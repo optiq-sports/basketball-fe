@@ -75,6 +75,13 @@ export async function drainQueue(options: {
     saveQueue(currentQueue);
 
     try {
+      console.groupCollapsed(`[statdash] ▶ ${inflight.commandType}`);
+      console.log('sessionId      :', inflight.sessionId);
+      console.log('commandType    :', inflight.commandType);
+      console.log('expectedVersion:', inflight.expectedVersion);
+      console.log('idempotencyKey :', inflight.localId);
+      console.log('payload        :', inflight.payload);
+      console.groupEnd();
       const response = await sendCommand(inflight);
       currentQueue = updateQueue(currentQueue, inflight.localId, { status: 'sent', lastError: undefined });
       onQueueChange(currentQueue);
