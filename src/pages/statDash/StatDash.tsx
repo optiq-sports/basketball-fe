@@ -197,6 +197,7 @@ const StatDash: React.FC = () => {
   /** After "Not yet" on quarter-ended modal: show yellow Finish to reopen that modal. */
   const [quarterEndAwaitingFinish, setQuarterEndAwaitingFinish] = useState(false);
   const [editingLog, setEditingLog] = useState<GameLogEntry | null>(null);
+  const [editDraft, setEditDraft] = useState<Record<string, unknown>>({});
   const [isReconcilingLog, setIsReconcilingLog] = useState(false);
   const [switchSidesOpen, setSwitchSidesOpen] = useState(false);
   const [startersModalOpen, setStartersModalOpen] = useState(false);
@@ -321,13 +322,22 @@ const StatDash: React.FC = () => {
   }, [homePlayerIdByJersey, awayPlayerIdByJersey, getTeamIdForSide]);
 
   const { enqueue, queue, pendingCount, failedCount, isOnline, retryFailed } = useEventQueue({
-    onCommandAccepted: (_event, response) => {
+    onCommandAccepted: (event, response) => {
       writeStoredExpectedVersion(response.version);
       latestVersionRef.current = response.version;
       setHomeScore(response.score.home);
       setAwayScore(response.score.away);
       if (pendingCountRef.current === 0) {
         setSyncNotice(null);
+      }
+      // Link log entries to the real backend event ID so the edit modal can call correctEvent
+      const backendEventId = response.emittedEvents?.[0]?.id;
+      if (backendEventId && event.localId) {
+        setGameLog((prev) =>
+          prev.map((entry) =>
+            entry.localId === event.localId ? { ...entry, backendEventId } : entry
+          )
+        );
       }
     },
     onCommandFailed: (_event, error) => {
@@ -392,25 +402,27 @@ const StatDash: React.FC = () => {
     [matchForNamesQuery.data],
   );
 
-  // Real roster for the in-game Starters modal — same shape Starters.tsx builds for the standalone page.
+  // Real roster for the in-game Starters modal — only players in the active lineup (marked Playing during /starters).
   const homePlayersForStartersModal = useMemo(() => {
     const roster = matchForNamesQuery.data?.homeTeam?.playerTeams ?? [];
+    const activeJerseys = new Set(homeRosterList);
     return roster
-      .filter((pt) => pt.player)
+      .filter((pt) => pt.player && activeJerseys.has(pt.jerseyNumber ?? 0))
       .map((pt) => ({
         jersey: pt.jerseyNumber ?? 0,
         name: `${pt.player!.firstName} ${pt.player!.lastName}`,
       }));
-  }, [matchForNamesQuery.data]);
+  }, [matchForNamesQuery.data, homeRosterList]);
   const awayPlayersForStartersModal = useMemo(() => {
     const roster = matchForNamesQuery.data?.awayTeam?.playerTeams ?? [];
+    const activeJerseys = new Set(awayRosterList);
     return roster
-      .filter((pt) => pt.player)
+      .filter((pt) => pt.player && activeJerseys.has(pt.jerseyNumber ?? 0))
       .map((pt) => ({
         jersey: pt.jerseyNumber ?? 0,
         name: `${pt.player!.firstName} ${pt.player!.lastName}`,
       }));
-  }, [matchForNamesQuery.data]);
+  }, [matchForNamesQuery.data, awayRosterList]);
 
   useEffect(() => {
     pendingCountRef.current = pendingCount;
@@ -421,7 +433,7 @@ const StatDash: React.FC = () => {
     async (
       commandType: string,
       payload: Record<string, unknown>,
-    ): Promise<CommandAcceptedResponse | null> => {
+    ): Promise<(CommandAcceptedResponse & { localId: string }) | null> => {
       const context = readStoredSessionContext();
       if (!context) {
         navigate('/match-key', { replace: true });
@@ -446,6 +458,7 @@ const StatDash: React.FC = () => {
         version: expectedVersion + 1,
         score: { home: homeScore, away: awayScore },
         emittedEvents: [],
+        localId: idempotencyKey,
       };
     },
     [enqueue, homeScore, awayScore, navigate],
@@ -658,21 +671,25 @@ const StatDash: React.FC = () => {
       const foulerTeamName = draft.foulerSide === 'home' ? homeName : awayName;
       const fouledSide = opponentOf(draft.foulerSide!);
       const fouledTeamName = fouledSide === 'home' ? homeName : awayName;
-      const committed = await commitEventCommand('foul', {
-        teamId: draft.foulerSide ? getTeamIdForSide(draft.foulerSide) : undefined,
-        foulerPlayerId:
-          draft.foulerSide && typeof draft.foulerJersey === 'number'
-            ? getPlayerId(draft.foulerSide, draft.foulerJersey)
-            : undefined,
-        fouledPlayerId:
-          draft.foulerSide !== null && typeof draft.fouledJersey === 'number'
-            ? getPlayerId(opponentOf(draft.foulerSide), draft.fouledJersey)
-            : undefined,
-        foulType: draft.foulType,
-        freeThrowsAwarded: 0,
-        freeThrows: [],
-      });
-      if (!committed) return;
+      // Bench/coach fouls: backend requires foulerPlayerId so we can't submit them
+      let committed = null;
+      if (draft.foulerRole === 'player') {
+        committed = await commitEventCommand('foul', {
+          teamId: draft.foulerSide ? getTeamIdForSide(draft.foulerSide) : undefined,
+          foulerPlayerId:
+            draft.foulerSide && typeof draft.foulerJersey === 'number'
+              ? getPlayerId(draft.foulerSide, draft.foulerJersey)
+              : undefined,
+          fouledPlayerId:
+            draft.foulerSide !== null && typeof draft.fouledJersey === 'number'
+              ? getPlayerId(opponentOf(draft.foulerSide), draft.fouledJersey)
+              : undefined,
+          foulType: draft.foulType,
+          freeThrowsAwarded: 0,
+          freeThrows: [],
+        });
+        if (!committed) return;
+      }
       appendLog({
         period: periodLabel,
         clock: clockLabel,
@@ -680,9 +697,22 @@ const StatDash: React.FC = () => {
         player: foulerLogPlayerField(draft, getPlayerLabel),
         action: 'foul',
         result: `${foulTypeLabel(draft.foulType)} on ${fouledTeamName} ${getPlayerLabel(fouledSide, draft.fouledJersey)}; No FT`,
+        localId: committed?.localId,
+        meta: {
+          foulerSide: draft.foulerSide,
+          foulerJersey: draft.foulerJersey,
+          foulerRole: draft.foulerRole,
+          foulType: draft.foulType,
+          fouledJersey: draft.fouledJersey,
+          ftCount: 0,
+          ftResults: [],
+          ftAssistJersey: null,
+          reboundSide: null,
+          reboundJersey: null,
+        },
       });
     },
-    [appendLog, clockLabel, commitEventCommand, getPlayerLabel, periodLabel, homeName, awayName]
+    [appendLog, clockLabel, commitEventCommand, getPlayerId, getPlayerLabel, getTeamIdForSide, periodLabel, homeName, awayName]
   );
 
   const commitFoulWithFtSequence = useCallback(
@@ -704,59 +734,120 @@ const StatDash: React.FC = () => {
       ) {
         return;
       }
-      const committed = await commitEventCommand('foul', {
-        teamId: draft.foulerSide ? getTeamIdForSide(draft.foulerSide) : undefined,
-        foulerPlayerId:
-          draft.foulerSide && typeof draft.foulerJersey === 'number'
-            ? getPlayerId(draft.foulerSide, draft.foulerJersey)
-            : undefined,
-        fouledPlayerId:
-          draft.foulerSide !== null && typeof draft.fouledJersey === 'number'
-            ? getPlayerId(opponentOf(draft.foulerSide), draft.fouledJersey)
-            : undefined,
-        foulType: draft.foulType,
-        freeThrowsAwarded: draft.ftCount,
-        freeThrows: draft.ftResults.map((r, i) => ({
-          attemptNumber: i + 1,
-          result: r === 'made' ? 'made' : 'missed',
-        })),
-      });
-      if (!committed) return;
+      // Bench/coach fouls: backend requires foulerPlayerId so we can't submit them
+      let foulCmd = null;
+      if (draft.foulerRole === 'player') {
+        foulCmd = await commitEventCommand('foul', {
+          teamId: draft.foulerSide ? getTeamIdForSide(draft.foulerSide) : undefined,
+          foulerPlayerId:
+            draft.foulerSide && typeof draft.foulerJersey === 'number'
+              ? getPlayerId(draft.foulerSide, draft.foulerJersey)
+              : undefined,
+          fouledPlayerId:
+            draft.foulerSide !== null && typeof draft.fouledJersey === 'number'
+              ? getPlayerId(opponentOf(draft.foulerSide), draft.fouledJersey)
+              : undefined,
+          foulType: draft.foulType,
+          freeThrowsAwarded: draft.ftCount,
+          freeThrows: draft.ftResults.map((r, i) => ({
+            attemptNumber: i + 1,
+            result: r === 'made' ? 'made' : 'missed',
+          })),
+        });
+        if (!foulCmd) return;
+      }
       const foulerTeamName = draft.foulerSide === 'home' ? homeName : awayName;
       const fouledSide = opponentOf(draft.foulerSide!);
       const fouledTeamName = fouledSide === 'home' ? homeName : awayName;
       const makes = draft.ftResults.filter((r) => r === 'made').length;
       if (fouledSide === 'home') setHomeScore((s) => s + makes);
       else setAwayScore((s) => s + makes);
-      const ftStr = draft.ftResults.map((r) => (r === 'made' ? 'Made' : 'Miss')).join(', ');
-      const firstFtMade = draft.ftResults[0] === 'made';
-      const assistPart = !firstFtMade
-        ? ''
-        : draft.ftAssistJersey === 'none'
-          ? ' · No assist'
-          : typeof draft.ftAssistJersey === 'number'
-            ? ` · Assist #${draft.ftAssistJersey}`
-            : '';
-      let rebSuffix = '';
-      if (
-        !skipRebound &&
-        draft.reboundSide !== null &&
-        draft.reboundJersey !== null
-      ) {
-        const rebTeamName =
-          draft.reboundSide === 'home' ? homeName : awayName;
-        rebSuffix = `; Reb ${rebTeamName} ${getPlayerLabel(draft.reboundSide, draft.reboundJersey)}`;
-      }
+
+      const foulMeta = {
+        foulerSide: draft.foulerSide,
+        foulerJersey: draft.foulerJersey,
+        foulerRole: draft.foulerRole,
+        foulType: draft.foulType,
+        fouledJersey: draft.fouledJersey,
+        ftCount: draft.ftCount,
+        ftResults: draft.ftResults,
+        ftAssistJersey: draft.ftAssistJersey,
+        reboundSide: draft.reboundSide,
+        reboundJersey: draft.reboundJersey,
+      };
+
+      // Foul row
       appendLog({
         period: periodLabel,
         clock: clockLabel,
         team: foulerTeamName,
         player: foulerLogPlayerField(draft, getPlayerLabel),
         action: 'foul',
-        result: `${foulTypeLabel(draft.foulType)} on ${fouledTeamName} ${getPlayerLabel(fouledSide, draft.fouledJersey)}; Shooter ${getPlayerLabel(fouledSide, draft.fouledJersey)}${assistPart}; FTs: ${ftStr}${rebSuffix}`,
+        result: `${foulTypeLabel(draft.foulType)} on ${fouledTeamName} ${getPlayerLabel(fouledSide, draft.fouledJersey)}`,
+        localId: foulCmd?.localId,
+        meta: foulMeta,
       });
+
+      // Per-FT rows (share the foul's localId so reversing the foul removes them all)
+      for (let i = 0; i < draft.ftResults.length; i++) {
+        const isMade = draft.ftResults[i] === 'made';
+        appendLog({
+          period: periodLabel,
+          clock: clockLabel,
+          team: fouledTeamName,
+          player: getPlayerLabel(fouledSide, draft.fouledJersey),
+          action: 'free throw',
+          result: `${isMade ? 'Made' : 'Missed'} (${i + 1}/${draft.ftResults.length})`,
+          localId: foulCmd?.localId,
+          meta: foulMeta,
+        });
+      }
+
+      // Assist row if first FT was made and an assister was chosen
+      const firstFtMade = draft.ftResults[0] === 'made';
+      if (firstFtMade && typeof draft.ftAssistJersey === 'number') {
+        const assistCmd = await commitEventCommand('assist', {
+          teamId: getTeamIdForSide(fouledSide),
+          playerId: getPlayerId(fouledSide, draft.ftAssistJersey),
+          assistedPlayerId: getPlayerId(fouledSide, draft.fouledJersey!),
+        });
+        if (assistCmd) {
+          appendLog({
+            period: periodLabel,
+            clock: clockLabel,
+            team: fouledTeamName,
+            player: getPlayerLabel(fouledSide, draft.ftAssistJersey),
+            action: 'assist',
+            result: `To ${getPlayerLabel(fouledSide, draft.fouledJersey)} (FT)`,
+            localId: assistCmd.localId,
+            meta: {
+              side: fouledSide,
+              assistJersey: draft.ftAssistJersey,
+              assistedJersey: draft.fouledJersey,
+            },
+          });
+        }
+      }
+
+      // Rebound row (local only — FT rebound backend commit is tracked separately)
+      if (!skipRebound && draft.reboundSide !== null && draft.reboundJersey !== null) {
+        const rebTeamName = draft.reboundSide === 'home' ? homeName : awayName;
+        appendLog({
+          period: periodLabel,
+          clock: clockLabel,
+          team: rebTeamName,
+          player: getPlayerLabel(draft.reboundSide, draft.reboundJersey),
+          action: 'rebound',
+          result: `${draft.reboundSide === fouledSide ? 'Off' : 'Def'} Rebound`,
+          meta: {
+            side: draft.reboundSide,
+            jersey: draft.reboundJersey,
+            reboundType: draft.reboundSide === fouledSide ? 'offensive' : 'defensive',
+          },
+        });
+      }
     },
-    [appendLog, clockLabel, commitEventCommand, getPlayerLabel, periodLabel, homeName, awayName]
+    [appendLog, clockLabel, commitEventCommand, getPlayerId, getPlayerLabel, getTeamIdForSide, periodLabel, homeName, awayName]
   );
 
   const openShotFlowFromPlayer = useCallback((side: TeamSide, jersey: number) => {
@@ -1236,6 +1327,7 @@ const StatDash: React.FC = () => {
       player: getPlayerLabel(side, jersey),
       action: 'rebound',
       result: 'Def Rebound',
+      meta: { side, jersey, reboundType: 'defensive' },
     };
 
     let nextFlow: ShotFlowState;
@@ -1324,7 +1416,7 @@ const StatDash: React.FC = () => {
         reboundType: 'defensive',
       });
       if (!committed) return;
-      appendLog(reboundLogRow);
+      appendLog({ ...reboundLogRow, localId: committed.localId });
     })();
   }, [appendLog, awayName, clockLabel, commitEventCommand, getPlayerId, getPlayerLabel, getTeamIdForSide, homeName, periodLabel]);
 
@@ -1355,6 +1447,7 @@ const StatDash: React.FC = () => {
       player: getPlayerLabel(side, jersey),
       action: 'block',
       result: 'Block',
+      meta: { side, jersey },
     };
 
     setShotFlow({
@@ -1385,7 +1478,7 @@ const StatDash: React.FC = () => {
           againstPlayerId: getPlayerId(blockedShooter.side, blockedShooter.jersey),
         });
         if (!committed) return;
-        appendLog(blockLogRow);
+        appendLog({ ...blockLogRow, localId: committed.localId });
       })();
     }
   }, [appendLog, awayName, clockLabel, commitEventCommand, getPlayerId, getPlayerLabel, getTeamIdForSide, homeName, periodLabel]);
@@ -1439,6 +1532,8 @@ const StatDash: React.FC = () => {
               player: playerLabel,
               action: 'rebound',
               result: 'Off Rebound',
+              localId: reboundCommitted.localId,
+              meta: { side, jersey, reboundType: 'offensive' },
             });
           }
 
@@ -1462,6 +1557,8 @@ const StatDash: React.FC = () => {
             player: playerLabel,
             action: 'shot',
             result: shotTypeResultPhrase(shotType, result),
+            localId: committed.localId,
+            meta: { side, shooterJersey: jersey, shotType, shotValue: getShotPoints(shotType), result },
           });
 
           const clickPt = pendingCourtClickRef.current;
@@ -1623,6 +1720,15 @@ const StatDash: React.FC = () => {
         player: nextDraft.side ? getPlayerLabel(nextDraft.side, nextDraft.shooterJersey) : `#${nextDraft.shooterJersey}`,
         action: 'shot',
         result: shotTypeResultPhrase(shotType, 'missed'),
+        localId: committed.localId,
+        meta: {
+          side: nextDraft.side,
+          shooterJersey: nextDraft.shooterJersey,
+          shotType,
+          shotValue: getShotPoints(shotType),
+          result: 'missed',
+          ...(missedPt ? { x: missedPt.nx, y: missedPt.ny } : {}),
+        },
       });
       if (cur.entry === 'court') {
         const clickPt = pendingCourtClickRef.current;
@@ -1690,7 +1796,7 @@ const StatDash: React.FC = () => {
         isCourtClickThreePointer(pt.nx, pt.ny, draft.side, homeAttacksLeft);
       const points = isThreeFromCourt ? 3 : getShotPoints(draft.shotType);
 
-      const committed = await commitEventCommand('shot', {
+      const shotCmd = await commitEventCommand('shot', {
         teamId: draft.side ? getTeamIdForSide(draft.side) : undefined,
         shooterPlayerId:
           draft.side && typeof draft.shooterJersey === 'number'
@@ -1700,7 +1806,18 @@ const StatDash: React.FC = () => {
         result: draft.result,
         ...(cur.entry === 'court' && pt ? { x: pt.nx, y: pt.ny } : {}),
       });
-      if (!committed) return;
+      if (!shotCmd) return;
+
+      // Fix A: send assist command when a shot is made with an assister
+      let assistCmd: typeof shotCmd | null = null;
+      if (assist !== 'none' && draft.result === 'made') {
+        assistCmd = await commitEventCommand('assist', {
+          teamId: getTeamIdForSide(draft.side),
+          playerId: getPlayerId(draft.side, assist),
+          assistedPlayerId: getPlayerId(draft.side, draft.shooterJersey),
+        });
+      }
+
       const teamName = draft.side === 'home' ? homeName : awayName;
       if (draft.result === 'made') {
         if (draft.side === 'home') setHomeScore((s) => s + points);
@@ -1721,6 +1838,12 @@ const StatDash: React.FC = () => {
           player: getPlayerLabel(draft.side, assist),
           action: 'assist',
           result: `To ${getPlayerLabel(draft.side, draft.shooterJersey)}`,
+          localId: assistCmd?.localId,
+          meta: {
+            side: draft.side,
+            assistJersey: assist,
+            assistedJersey: draft.shooterJersey,
+          },
         });
       }
       appendLog({
@@ -1730,6 +1853,15 @@ const StatDash: React.FC = () => {
         player: getPlayerLabel(draft.side, draft.shooterJersey),
         action: 'shot',
         result: shotResult,
+        localId: shotCmd.localId,
+        meta: {
+          side: draft.side,
+          shooterJersey: draft.shooterJersey,
+          shotType: draft.shotType,
+          shotValue: points,
+          result: draft.result,
+          ...(cur.entry === 'court' && pt ? { x: pt.nx, y: pt.ny } : {}),
+        },
       });
 
       if (cur.entry === 'court') {
@@ -1748,7 +1880,7 @@ const StatDash: React.FC = () => {
 
       setShotFlow('idle');
     },
-    [appendLog, awayName, awayTeamColor, clockLabel, commitEventCommand, getPlayerLabel, homeAttacksLeft, homeName, homeTeamColor, periodLabel]
+    [appendLog, awayName, awayTeamColor, clockLabel, commitEventCommand, getPlayerId, getPlayerLabel, getTeamIdForSide, homeAttacksLeft, homeName, homeTeamColor, periodLabel]
   );
 
   const commitTurnoverLog = useCallback(
@@ -1772,9 +1904,20 @@ const StatDash: React.FC = () => {
         player: getPlayerLabel(draft.committingSide, draft.committingJersey),
         action: 'turnover',
         result: typeLabel,
+        localId: committed.localId,
+        meta: {
+          side: draft.committingSide,
+          jersey: draft.committingJersey,
+          turnoverType: draft.turnoverType,
+        },
       });
       if (steal !== null) {
         const stealTeam = steal.side === 'home' ? homeName : awayName;
+        const stealCmd = await commitEventCommand('steal', {
+          teamId: getTeamIdForSide(steal.side),
+          playerId: getPlayerId(steal.side, steal.jersey),
+          againstPlayerId: getPlayerId(draft.committingSide, draft.committingJersey),
+        });
         appendLog({
           period: periodLabel,
           clock: clockLabel,
@@ -1782,10 +1925,15 @@ const StatDash: React.FC = () => {
           player: getPlayerLabel(steal.side, steal.jersey),
           action: 'steal',
           result: `Off ${getPlayerLabel(draft.committingSide, draft.committingJersey)} turnover`,
+          localId: stealCmd?.localId,
+          meta: {
+            side: steal.side,
+            jersey: steal.jersey,
+          },
         });
       }
     },
-    [appendLog, clockLabel, commitEventCommand, getPlayerLabel, periodLabel, homeName, awayName]
+    [appendLog, clockLabel, commitEventCommand, getPlayerId, getPlayerLabel, getTeamIdForSide, periodLabel, homeName, awayName]
   );
 
   const handleTurnoverFlowBack = useCallback(() => {
@@ -2041,43 +2189,46 @@ const StatDash: React.FC = () => {
   const handleTimeoutSelect = useCallback(
     (choice: TimeoutChoice) => {
       void (async () => {
-        const committed = await commitEventCommand('timeout', {
-          teamId: choice === 'away' ? getTeamIdForSide('away') : getTeamIdForSide('home'),
-          timeoutType: choice === 'officials' ? 'official' : 'full',
-        });
-        if (!committed) return;
-      if (choice === 'home') {
-        appendLog({
-          period: periodLabel,
-          clock: clockLabel,
-          team: homeName,
-          player: '—',
-          action: 'timeout',
-          result: 'full',
-        });
-      } else if (choice === 'away') {
-        appendLog({
-          period: periodLabel,
-          clock: clockLabel,
-          team: awayName,
-          player: '—',
-          action: 'timeout',
-          result: 'full',
-        });
-      } else {
-        appendLog({
-          period: periodLabel,
-          clock: clockLabel,
-          team: 'Officials',
-          player: '—',
-          action: 'timeout',
-          result: 'official / media',
-        });
-      }
-      setTimeoutModalOpen(false);
+        // Official timeouts have no owning team — backend requires teamId so we skip the command
+        if (choice !== 'officials') {
+          const committed = await commitEventCommand('timeout', {
+            teamId: getTeamIdForSide(choice),
+            timeoutType: 'full',
+          });
+          if (!committed) return;
+        }
+        if (choice === 'home') {
+          appendLog({
+            period: periodLabel,
+            clock: clockLabel,
+            team: homeName,
+            player: '—',
+            action: 'timeout',
+            result: 'full',
+          });
+        } else if (choice === 'away') {
+          appendLog({
+            period: periodLabel,
+            clock: clockLabel,
+            team: awayName,
+            player: '—',
+            action: 'timeout',
+            result: 'full',
+          });
+        } else {
+          appendLog({
+            period: periodLabel,
+            clock: clockLabel,
+            team: 'Officials',
+            player: '—',
+            action: 'timeout',
+            result: 'official / media',
+          });
+        }
+        setTimeoutModalOpen(false);
       })();
     },
-    [appendLog, clockLabel, commitEventCommand, periodLabel, homeName, awayName]
+    [appendLog, clockLabel, commitEventCommand, getTeamIdForSide, periodLabel, homeName, awayName]
   );
 
   const handleTimeoutModalCancel = useCallback(() => {
@@ -2143,18 +2294,20 @@ const StatDash: React.FC = () => {
 
   const handleOpenLogEditor = useCallback((entry: GameLogEntry) => {
     setEditingLog(entry);
+    setEditDraft(entry.meta ? { ...entry.meta } : {});
   }, []);
 
   const handleCloseLogEditor = useCallback(() => {
     setEditingLog(null);
-  }, []);
-
-  const handleChangeEditingLog = useCallback((field: keyof GameLogEntry, value: string) => {
-    setEditingLog((cur) => (cur ? { ...cur, [field]: value } : cur));
+    setEditDraft({});
   }, []);
 
   const handleSaveEditingLog = useCallback(() => {
     if (editingLog === null) return;
+    if (!editingLog.backendEventId) {
+      setSyncNotice('Waiting for sync confirmation. Try again in a moment.');
+      return;
+    }
     const context = readStoredSessionContext();
     if (!context) {
       navigate('/match-key', { replace: true });
@@ -2163,33 +2316,102 @@ const StatDash: React.FC = () => {
     setIsReconcilingLog(true);
     void (async () => {
       try {
-        const response = await commandsApi.correctEvent(editingLog.id, {
+        let correctedPayload: Record<string, unknown>;
+        const action = editingLog.action;
+        if (action === 'shot') {
+          const side = editDraft.side as TeamSide;
+          correctedPayload = {
+            teamId: getTeamIdForSide(side),
+            shooterPlayerId: getPlayerId(side, editDraft.shooterJersey as number),
+            shotValue: editDraft.shotValue as number,
+            result: editDraft.result as string,
+            ...(editDraft.x != null ? { x: editDraft.x } : {}),
+            ...(editDraft.y != null ? { y: editDraft.y } : {}),
+          };
+        } else if (action === 'assist') {
+          const side = editDraft.side as TeamSide;
+          correctedPayload = {
+            teamId: getTeamIdForSide(side),
+            playerId: getPlayerId(side, editDraft.assistJersey as number),
+            assistedPlayerId: getPlayerId(side, editDraft.assistedJersey as number),
+          };
+        } else if (action === 'foul' || action === 'free throw') {
+          const foulerSide = editDraft.foulerSide as TeamSide;
+          const fouledSide = opponentOf(foulerSide);
+          correctedPayload = {
+            teamId: getTeamIdForSide(foulerSide),
+            foulerPlayerId:
+              typeof editDraft.foulerJersey === 'number'
+                ? getPlayerId(foulerSide, editDraft.foulerJersey)
+                : undefined,
+            fouledPlayerId:
+              typeof editDraft.fouledJersey === 'number'
+                ? getPlayerId(fouledSide, editDraft.fouledJersey)
+                : undefined,
+            foulType: editDraft.foulType as string,
+            freeThrowsAwarded: editDraft.ftCount as number,
+            freeThrows: ((editDraft.ftResults as string[]) ?? []).map((r, i) => ({
+              attemptNumber: i + 1,
+              result: r,
+            })),
+          };
+        } else if (action === 'turnover') {
+          const side = editDraft.side as TeamSide;
+          correctedPayload = {
+            teamId: getTeamIdForSide(side),
+            playerId: getPlayerId(side, editDraft.jersey as number),
+            turnoverType: editDraft.turnoverType as string,
+          };
+        } else if (action === 'steal') {
+          const side = editDraft.side as TeamSide;
+          correctedPayload = {
+            teamId: getTeamIdForSide(side),
+            playerId: getPlayerId(side, editDraft.jersey as number),
+          };
+        } else if (action === 'rebound') {
+          const side = editDraft.side as TeamSide;
+          correctedPayload = {
+            teamId: getTeamIdForSide(side),
+            playerId: getPlayerId(side, editDraft.jersey as number),
+            reboundType: editDraft.reboundType as string,
+          };
+        } else if (action === 'block') {
+          const side = editDraft.side as TeamSide;
+          correctedPayload = {
+            teamId: getTeamIdForSide(side),
+            blockerPlayerId: getPlayerId(side, editDraft.jersey as number),
+          };
+        } else {
+          setSyncNotice('This event type cannot be edited. Use Reverse to undo it.');
+          setIsReconcilingLog(false);
+          return;
+        }
+
+        const response = await commandsApi.correctEvent(editingLog.backendEventId, {
           reason: 'Corrected from StatDash log editor',
-          correctedPayload: {
-            period: editingLog.period,
-            clock: editingLog.clock,
-            team: editingLog.team,
-            player: editingLog.player,
-            action: editingLog.action,
-            result: editingLog.result,
-          },
+          correctedPayload,
         });
         writeStoredExpectedVersion(response.version);
         latestVersionRef.current = response.version;
         const latest = await sessionsApi.getSessionState(context.sessionId);
         applyAuthoritativeState(latest);
         setEditingLog(null);
-        setSyncNotice('Event correction submitted and synced.');
+        setEditDraft({});
+        setSyncNotice('Correction submitted and synced.');
       } catch (error) {
         setSyncNotice(error instanceof Error ? error.message : 'Failed to correct event.');
       } finally {
         setIsReconcilingLog(false);
       }
     })();
-  }, [applyAuthoritativeState, editingLog, navigate]);
+  }, [applyAuthoritativeState, editDraft, editingLog, getPlayerId, getTeamIdForSide, navigate]);
 
   const handleReverseEditingLog = useCallback(() => {
     if (editingLog === null) return;
+    if (!editingLog.backendEventId) {
+      setSyncNotice('Waiting for sync confirmation. Try again in a moment.');
+      return;
+    }
     const context = readStoredSessionContext();
     if (!context) {
       navigate('/match-key', { replace: true });
@@ -2198,15 +2420,22 @@ const StatDash: React.FC = () => {
     setIsReconcilingLog(true);
     void (async () => {
       try {
-        const response = await commandsApi.reverseEvent(editingLog.id, {
+        const response = await commandsApi.reverseEvent(editingLog.backendEventId!, {
           reason: 'Reversed from StatDash log editor',
         });
         writeStoredExpectedVersion(response.version);
         latestVersionRef.current = response.version;
         const latest = await sessionsApi.getSessionState(context.sessionId);
         applyAuthoritativeState(latest);
+        // Remove this entry and any sibling entries sharing the same localId (e.g. foul + FTs)
+        setGameLog((prev) =>
+          editingLog.localId
+            ? prev.filter((e) => e.localId !== editingLog.localId)
+            : prev.filter((e) => e.id !== editingLog.id)
+        );
         setEditingLog(null);
-        setSyncNotice('Event reversal submitted and synced.');
+        setEditDraft({});
+        setSyncNotice('Event reversed and synced.');
       } catch (error) {
         setSyncNotice(error instanceof Error ? error.message : 'Failed to reverse event.');
       } finally {
@@ -2215,32 +2444,6 @@ const StatDash: React.FC = () => {
     })();
   }, [applyAuthoritativeState, editingLog, navigate]);
 
-  const periodOptions = ['Q1', 'Q2', 'Q3', 'Q4'];
-  const actionOptions = [
-    'shot',
-    'assist',
-    'foul',
-    'turnover',
-    'steal',
-    'timeout',
-    'jump ball',
-    'substitution',
-    'rebound',
-    'block',
-    'dead ball',
-  ];
-  const teamOptions = useMemo(
-    () => Array.from(new Set([homeName, awayName, 'Officials', '—', ...gameLog.map((entry) => entry.team)])),
-    [awayName, gameLog, homeName]
-  );
-  const playerOptions = useMemo(
-    () => Array.from(new Set(['—', ...gameLog.map((entry) => entry.player)])),
-    [gameLog]
-  );
-  const resultOptions = useMemo(
-    () => Array.from(new Set(gameLog.map((entry) => entry.result))),
-    [gameLog]
-  );
 
   useEffect(() => {
     const onEscape = (e: KeyboardEvent) => {
@@ -2583,111 +2786,220 @@ const StatDash: React.FC = () => {
         </div>
       )}
 
-      {editingLog && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/35 px-3">
-          <div className="w-full max-w-xl rounded-lg border border-gray-200 bg-white p-4 shadow-lg">
-            <h3 className="text-base font-bold text-gray-900">Edit Game Log Entry</h3>
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <label className="flex flex-col gap-1 text-xs font-semibold text-gray-700">
-                Period
-                <select
-                  className="rounded border border-gray-300 px-2 py-1 text-sm"
-                  value={editingLog.period}
-                  onChange={(e) => handleChangeEditingLog('period', e.target.value)}
-                >
-                  {periodOptions.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-xs font-semibold text-gray-700">
-                Team
-                <select
-                  className="rounded border border-gray-300 px-2 py-1 text-sm"
-                  value={editingLog.team}
-                  onChange={(e) => handleChangeEditingLog('team', e.target.value)}
-                >
-                  {teamOptions.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-xs font-semibold text-gray-700">
-                Player
-                <select
-                  className="rounded border border-gray-300 px-2 py-1 text-sm"
-                  value={editingLog.player}
-                  onChange={(e) => handleChangeEditingLog('player', e.target.value)}
-                >
-                  {playerOptions.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-xs font-semibold text-gray-700">
-                Action
-                <select
-                  className="rounded border border-gray-300 px-2 py-1 text-sm"
-                  value={editingLog.action}
-                  onChange={(e) => handleChangeEditingLog('action', e.target.value)}
-                >
-                  {actionOptions.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="col-span-2 flex flex-col gap-1 text-xs font-semibold text-gray-700">
-                Result
-                <select
-                  className="rounded border border-gray-300 px-2 py-1 text-sm"
-                  value={editingLog.result}
-                  onChange={(e) => handleChangeEditingLog('result', e.target.value)}
-                >
-                  {resultOptions.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                disabled={isReconcilingLog}
-                onClick={handleCloseLogEditor}
-                className="rounded border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-100"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={isReconcilingLog}
-                onClick={handleReverseEditingLog}
-                className="rounded bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-700"
-              >
-                {isReconcilingLog ? 'Applying...' : 'Reverse'}
-              </button>
-              <button
-                type="button"
-                disabled={isReconcilingLog}
-                onClick={handleSaveEditingLog}
-                className="rounded bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700"
-              >
-                {isReconcilingLog ? 'Saving...' : 'Save'}
-              </button>
+      {editingLog && (() => {
+        const action = editingLog.action;
+        const hasSyncId = Boolean(editingLog.backendEventId);
+        // Determine team side from meta for player roster lookups
+        const editSide = (editDraft.side ?? editDraft.foulerSide) as TeamSide | undefined;
+        const editRosterNums = editSide === 'home' ? homeRosterList : editSide === 'away' ? awayRosterList : [];
+        const foulerSideEdit = editDraft.foulerSide as TeamSide | undefined;
+        const fouledSideEdit = foulerSideEdit ? opponentOf(foulerSideEdit) : undefined;
+        const foulerRoster = foulerSideEdit === 'home' ? homeRosterList : foulerSideEdit === 'away' ? awayRosterList : [];
+        const fouledRoster = fouledSideEdit === 'home' ? homeRosterList : fouledSideEdit === 'away' ? awayRosterList : [];
+
+        const sel = 'rounded border border-gray-300 px-2 py-1.5 text-sm w-full';
+        const lbl = 'flex flex-col gap-1 text-xs font-semibold text-gray-700';
+
+        const canEdit = ['shot','assist','foul','free throw','turnover','steal','rebound','block'].includes(action);
+
+        return (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/35 px-3">
+            <div className="w-full max-w-lg rounded-lg border border-gray-200 bg-white p-4 shadow-lg">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <h3 className="text-base font-bold text-gray-900 capitalize">{action} — Edit</h3>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    {editingLog.period} · {editingLog.clock} · {editingLog.team}
+                  </p>
+                </div>
+                {!hasSyncId && (
+                  <span className="shrink-0 rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                    Pending sync
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-3 flex flex-col gap-3">
+                {action === 'shot' && editSide && (
+                  <>
+                    <label className={lbl}>
+                      Shooter
+                      <select className={sel} value={editDraft.shooterJersey as number ?? ''}
+                        onChange={e => setEditDraft(d => ({...d, shooterJersey: +e.target.value}))}>
+                        {editRosterNums.map(j => (
+                          <option key={j} value={j}>{getPlayerLabel(editSide, j)}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className={lbl}>
+                      Result
+                      <select className={sel} value={editDraft.result as string ?? 'made'}
+                        onChange={e => setEditDraft(d => ({...d, result: e.target.value}))}>
+                        <option value="made">Made</option>
+                        <option value="missed">Missed</option>
+                      </select>
+                    </label>
+                    <label className={lbl}>
+                      Shot value
+                      <select className={sel} value={editDraft.shotValue as number ?? 2}
+                        onChange={e => setEditDraft(d => ({...d, shotValue: +e.target.value}))}>
+                        <option value={1}>1 pt (Free throw)</option>
+                        <option value={2}>2 pt</option>
+                        <option value={3}>3 pt</option>
+                      </select>
+                    </label>
+                  </>
+                )}
+
+                {action === 'assist' && editSide && (
+                  <>
+                    <label className={lbl}>
+                      Assister
+                      <select className={sel} value={editDraft.assistJersey as number ?? ''}
+                        onChange={e => setEditDraft(d => ({...d, assistJersey: +e.target.value}))}>
+                        {editRosterNums.map(j => (
+                          <option key={j} value={j}>{getPlayerLabel(editSide, j)}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className={lbl}>
+                      Assisted player
+                      <select className={sel} value={editDraft.assistedJersey as number ?? ''}
+                        onChange={e => setEditDraft(d => ({...d, assistedJersey: +e.target.value}))}>
+                        {editRosterNums.map(j => (
+                          <option key={j} value={j}>{getPlayerLabel(editSide, j)}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </>
+                )}
+
+                {(action === 'foul' || action === 'free throw') && foulerSideEdit && fouledSideEdit && (
+                  <>
+                    <p className="text-xs text-gray-500 -mb-1">
+                      Foul type: <span className="font-semibold text-gray-700">{foulTypeLabel(editDraft.foulType as FoulTypeId)}</span>
+                    </p>
+                    <label className={lbl}>
+                      Fouler
+                      <select className={sel} value={editDraft.foulerJersey as number ?? ''}
+                        onChange={e => setEditDraft(d => ({...d, foulerJersey: +e.target.value}))}>
+                        {foulerRoster.map(j => (
+                          <option key={j} value={j}>{getPlayerLabel(foulerSideEdit, j)}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className={lbl}>
+                      Fouled player
+                      <select className={sel} value={editDraft.fouledJersey as number ?? ''}
+                        onChange={e => setEditDraft(d => ({...d, fouledJersey: +e.target.value}))}>
+                        {fouledRoster.map(j => (
+                          <option key={j} value={j}>{getPlayerLabel(fouledSideEdit, j)}</option>
+                        ))}
+                      </select>
+                    </label>
+                    {Array.isArray(editDraft.ftResults) && (editDraft.ftResults as string[]).length > 0 && (
+                      <div className={lbl}>
+                        Free throw results
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          {(editDraft.ftResults as string[]).map((r, i) => (
+                            <button key={i} type="button"
+                              onClick={() => setEditDraft(d => {
+                                const next = [...(d.ftResults as string[])];
+                                next[i] = next[i] === 'made' ? 'missed' : 'made';
+                                return { ...d, ftResults: next };
+                              })}
+                              className={`rounded px-3 py-1 text-sm font-semibold ${r === 'made' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}
+                            >
+                              FT {i + 1}: {r === 'made' ? 'Made' : 'Missed'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {action === 'turnover' && editSide && (
+                  <>
+                    <label className={lbl}>
+                      Player
+                      <select className={sel} value={editDraft.jersey as number ?? ''}
+                        onChange={e => setEditDraft(d => ({...d, jersey: +e.target.value}))}>
+                        {editRosterNums.map(j => (
+                          <option key={j} value={j}>{getPlayerLabel(editSide, j)}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <p className="text-xs text-gray-500">
+                      Type: <span className="font-semibold text-gray-700">{turnoverTypeLabel(editDraft.turnoverType as TurnoverTypeId)}</span>
+                    </p>
+                  </>
+                )}
+
+                {(action === 'steal' || action === 'block') && editSide && (
+                  <label className={lbl}>
+                    Player
+                    <select className={sel} value={editDraft.jersey as number ?? ''}
+                      onChange={e => setEditDraft(d => ({...d, jersey: +e.target.value}))}>
+                      {editRosterNums.map(j => (
+                        <option key={j} value={j}>{getPlayerLabel(editSide, j)}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+
+                {action === 'rebound' && editSide && (
+                  <>
+                    <label className={lbl}>
+                      Player
+                      <select className={sel} value={editDraft.jersey as number ?? ''}
+                        onChange={e => setEditDraft(d => ({...d, jersey: +e.target.value}))}>
+                        {editRosterNums.map(j => (
+                          <option key={j} value={j}>{getPlayerLabel(editSide, j)}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className={lbl}>
+                      Type
+                      <select className={sel} value={editDraft.reboundType as string ?? 'defensive'}
+                        onChange={e => setEditDraft(d => ({...d, reboundType: e.target.value}))}>
+                        <option value="offensive">Offensive</option>
+                        <option value="defensive">Defensive</option>
+                      </select>
+                    </label>
+                  </>
+                )}
+
+                {!canEdit && (
+                  <p className="text-sm text-gray-600 rounded bg-gray-50 p-3">
+                    This event type cannot be edited directly. Use <strong>Reverse</strong> to undo it.
+                  </p>
+                )}
+              </div>
+
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="button" disabled={isReconcilingLog}
+                  onClick={handleCloseLogEditor}
+                  className="rounded border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-100">
+                  Cancel
+                </button>
+                <button type="button" disabled={isReconcilingLog || !hasSyncId}
+                  onClick={handleReverseEditingLog}
+                  className="rounded bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-40">
+                  {isReconcilingLog ? 'Applying…' : 'Reverse'}
+                </button>
+                {canEdit && (
+                  <button type="button" disabled={isReconcilingLog || !hasSyncId}
+                    onClick={handleSaveEditingLog}
+                    className="rounded bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-40">
+                    {isReconcilingLog ? 'Saving…' : 'Save'}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       <SwitchSidesModal
         open={switchSidesOpen}
