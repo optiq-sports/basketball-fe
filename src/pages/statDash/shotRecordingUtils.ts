@@ -67,6 +67,17 @@ export function getShotPoints(_shotType: ShotTypeId): number {
   return 2;
 }
 
+/** Maps frontend ShotTypeId to the backend's expected shot type string. */
+export function shotTypeToApiType(id: ShotTypeId): string {
+  const m: Record<ShotTypeId, string> = {
+    jump: 'jump_shot',
+    layup: 'layup',
+    dunk: 'dunk',
+    post: 'post_shot',
+  };
+  return m[id];
+}
+
 export const SHOT_TYPE_OPTIONS: { id: ShotTypeId; label: string }[] = [
   { id: 'jump', label: 'Jump Shot' },
   { id: 'layup', label: 'Layup' },

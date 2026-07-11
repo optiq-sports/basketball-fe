@@ -23,6 +23,7 @@ import {
   getShotPoints,
   reboundBranchFromTipShot,
   shotTypeResultPhrase,
+  shotTypeToApiType,
   snapshotPriorMiss,
 } from './shotRecordingUtils';
 import type {
@@ -1320,14 +1321,17 @@ const StatDash: React.FC = () => {
 
     const teamName = side === 'home' ? homeName : awayName;
     const branch = prev.draft.reboundBranch;
+    const shooterSide = prev.draft.side ?? prev.draft.priorMiss?.side ?? null;
+    const reboundType: 'offensive' | 'defensive' =
+      shooterSide !== null && side === shooterSide ? 'offensive' : 'defensive';
     const reboundLogRow: Omit<GameLogEntry, 'id'> = {
       period: periodLabel,
       clock: clockLabel,
       team: teamName,
       player: getPlayerLabel(side, jersey),
       action: 'rebound',
-      result: 'Def Rebound',
-      meta: { side, jersey, reboundType: 'defensive' },
+      result: reboundType === 'offensive' ? 'Off Rebound' : 'Def Rebound',
+      meta: { side, jersey, reboundType },
     };
 
     let nextFlow: ShotFlowState;
@@ -1413,7 +1417,7 @@ const StatDash: React.FC = () => {
       const committed = await commitEventCommand('rebound', {
         teamId: getTeamIdForSide(side),
         playerId: getPlayerId(side, jersey),
-        reboundType: 'defensive',
+        reboundType,
       });
       if (!committed) return;
       appendLog({ ...reboundLogRow, localId: committed.localId });
@@ -1540,8 +1544,11 @@ const StatDash: React.FC = () => {
           const committed = await commitEventCommand('shot', {
             teamId: getTeamIdForSide(side),
             shooterPlayerId: getPlayerId(side, jersey),
-            shotValue: getShotPoints(shotType),
-            result,
+            shot: {
+              value: getShotPoints(shotType),
+              result,
+              type: shotTypeToApiType(shotType),
+            },
           });
           if (!committed) return;
           const points = getShotPoints(shotType);
@@ -1708,9 +1715,13 @@ const StatDash: React.FC = () => {
           nextDraft.side && typeof nextDraft.shooterJersey === 'number'
             ? getPlayerId(nextDraft.side, nextDraft.shooterJersey)
             : undefined,
-        shotValue: getShotPoints(shotType),
-        result: 'missed',
-        ...(missedPt ? { x: missedPt.nx, y: missedPt.ny } : {}),
+        shot: {
+          value: getShotPoints(shotType),
+          result: 'missed',
+          type: shotTypeToApiType(shotType),
+          ...(nextDraft.fastBreak ? { playType: 'fast_break' } : {}),
+          ...(missedPt ? { x: missedPt.nx, y: missedPt.ny } : {}),
+        },
       });
       if (!committed) return;
       appendLog({
@@ -1802,21 +1813,18 @@ const StatDash: React.FC = () => {
           draft.side && typeof draft.shooterJersey === 'number'
             ? getPlayerId(draft.side, draft.shooterJersey)
             : undefined,
-        shotValue: points,
-        result: draft.result,
-        ...(cur.entry === 'court' && pt ? { x: pt.nx, y: pt.ny } : {}),
+        ...(assist !== 'none' && draft.result === 'made'
+          ? { assistPlayerId: getPlayerId(draft.side, assist) }
+          : {}),
+        shot: {
+          value: points,
+          result: draft.result,
+          type: shotTypeToApiType(draft.shotType),
+          ...(draft.fastBreak ? { playType: 'fast_break' } : {}),
+          ...(cur.entry === 'court' && pt ? { x: pt.nx, y: pt.ny } : {}),
+        },
       });
       if (!shotCmd) return;
-
-      // Fix A: send assist command when a shot is made with an assister
-      let assistCmd: typeof shotCmd | null = null;
-      if (assist !== 'none' && draft.result === 'made') {
-        assistCmd = await commitEventCommand('assist', {
-          teamId: getTeamIdForSide(draft.side),
-          playerId: getPlayerId(draft.side, assist),
-          assistedPlayerId: getPlayerId(draft.side, draft.shooterJersey),
-        });
-      }
 
       const teamName = draft.side === 'home' ? homeName : awayName;
       if (draft.result === 'made') {
@@ -1838,7 +1846,7 @@ const StatDash: React.FC = () => {
           player: getPlayerLabel(draft.side, assist),
           action: 'assist',
           result: `To ${getPlayerLabel(draft.side, draft.shooterJersey)}`,
-          localId: assistCmd?.localId,
+          localId: shotCmd.localId,
           meta: {
             side: draft.side,
             assistJersey: assist,
@@ -1888,11 +1896,13 @@ const StatDash: React.FC = () => {
       if (draft.committingJersey === null || draft.turnoverType === null) return;
       const committed = await commitEventCommand('turnover', {
         teamId: getTeamIdForSide(draft.committingSide),
-        playerId:
-          draft.committingJersey !== null
-            ? getPlayerId(draft.committingSide, draft.committingJersey)
-            : undefined,
-        turnoverType: draft.turnoverType,
+        turnoverPlayerId: getPlayerId(draft.committingSide, draft.committingJersey),
+        ...(steal !== null
+          ? { stealPlayerId: getPlayerId(steal.side, steal.jersey) }
+          : {}),
+        turnover: {
+          type: draft.turnoverType,
+        },
       });
       if (!committed) return;
       const committingTeam = draft.committingSide === 'home' ? homeName : awayName;
@@ -1913,11 +1923,6 @@ const StatDash: React.FC = () => {
       });
       if (steal !== null) {
         const stealTeam = steal.side === 'home' ? homeName : awayName;
-        const stealCmd = await commitEventCommand('steal', {
-          teamId: getTeamIdForSide(steal.side),
-          playerId: getPlayerId(steal.side, steal.jersey),
-          againstPlayerId: getPlayerId(draft.committingSide, draft.committingJersey),
-        });
         appendLog({
           period: periodLabel,
           clock: clockLabel,
@@ -1925,7 +1930,7 @@ const StatDash: React.FC = () => {
           player: getPlayerLabel(steal.side, steal.jersey),
           action: 'steal',
           result: `Off ${getPlayerLabel(draft.committingSide, draft.committingJersey)} turnover`,
-          localId: stealCmd?.localId,
+          localId: committed.localId,
           meta: {
             side: steal.side,
             jersey: steal.jersey,
