@@ -403,27 +403,27 @@ const StatDash: React.FC = () => {
     [matchForNamesQuery.data],
   );
 
-  // Real roster for the in-game Starters modal — only players in the active lineup (marked Playing during /starters).
+  // Full team roster for the in-game Starters modal — all registered players so the
+  // statistician can re-select starters on resume without being limited to what's in
+  // the current (possibly defaulted) lineup.
   const homePlayersForStartersModal = useMemo(() => {
     const roster = matchForNamesQuery.data?.homeTeam?.playerTeams ?? [];
-    const activeJerseys = new Set(homeRosterList);
     return roster
-      .filter((pt) => pt.player && activeJerseys.has(pt.jerseyNumber ?? 0))
+      .filter((pt) => pt.player)
       .map((pt) => ({
         jersey: pt.jerseyNumber ?? 0,
         name: `${pt.player!.firstName} ${pt.player!.lastName}`,
       }));
-  }, [matchForNamesQuery.data, homeRosterList]);
+  }, [matchForNamesQuery.data]);
   const awayPlayersForStartersModal = useMemo(() => {
     const roster = matchForNamesQuery.data?.awayTeam?.playerTeams ?? [];
-    const activeJerseys = new Set(awayRosterList);
     return roster
-      .filter((pt) => pt.player && activeJerseys.has(pt.jerseyNumber ?? 0))
+      .filter((pt) => pt.player)
       .map((pt) => ({
         jersey: pt.jerseyNumber ?? 0,
         name: `${pt.player!.firstName} ${pt.player!.lastName}`,
       }));
-  }, [matchForNamesQuery.data, awayRosterList]);
+  }, [matchForNamesQuery.data]);
 
   useEffect(() => {
     pendingCountRef.current = pendingCount;
@@ -1333,6 +1333,15 @@ const StatDash: React.FC = () => {
       result: reboundType === 'offensive' ? 'Off Rebound' : 'Def Rebound',
       meta: { side, jersey, reboundType },
     };
+    // Capture court coords before any branch clears the ref.
+    const pendingPt = pendingCourtClickRef.current;
+    // Snapshot of the pending missed shot (set when shotType is non-null — cleared in block path).
+    const pendingShot = prev.draft.shotType !== null ? {
+      side: prev.draft.side,
+      shooterJersey: prev.draft.shooterJersey,
+      shotType: prev.draft.shotType,
+      fastBreak: prev.draft.fastBreak,
+    } : null;
 
     let nextFlow: ShotFlowState;
 
@@ -1414,10 +1423,43 @@ const StatDash: React.FC = () => {
     setShotFlow(nextFlow);
 
     void (async () => {
+      // Commit the deferred missed shot (skipped if shot was already sent — e.g. post-block).
+      if (pendingShot?.side && pendingShot.shooterJersey !== null && pendingShot.shotType) {
+        const shotCommitted = await commitEventCommand('shot', {
+          teamId: getTeamIdForSide(pendingShot.side),
+          shooterPlayerId: getPlayerId(pendingShot.side, pendingShot.shooterJersey!),
+          shot: {
+            value: getShotPoints(pendingShot.shotType),
+            result: 'missed',
+            type: shotTypeToApiType(pendingShot.shotType),
+            ...(pendingShot.fastBreak ? { playType: 'fast_break' } : {}),
+            ...(pendingPt ? { x: pendingPt.nx, y: pendingPt.ny } : {}),
+          },
+        });
+        if (shotCommitted) {
+          appendLog({
+            period: periodLabel,
+            clock: clockLabel,
+            team: pendingShot.side === 'home' ? homeName : awayName,
+            player: getPlayerLabel(pendingShot.side, pendingShot.shooterJersey!),
+            action: 'shot',
+            result: shotTypeResultPhrase(pendingShot.shotType, 'missed'),
+            localId: shotCommitted.localId,
+            meta: {
+              side: pendingShot.side,
+              shooterJersey: pendingShot.shooterJersey,
+              shotType: pendingShot.shotType,
+              shotValue: getShotPoints(pendingShot.shotType),
+              result: 'missed',
+              ...(pendingPt ? { x: pendingPt.nx, y: pendingPt.ny } : {}),
+            },
+          });
+        }
+      }
       const committed = await commitEventCommand('rebound', {
         teamId: getTeamIdForSide(side),
-        playerId: getPlayerId(side, jersey),
-        reboundType,
+        reboundPlayerId: getPlayerId(side, jersey),
+        rebound: { type: reboundType },
       });
       if (!committed) return;
       appendLog({ ...reboundLogRow, localId: committed.localId });
@@ -1475,14 +1517,41 @@ const StatDash: React.FC = () => {
     });
 
     if (blockedShooter) {
+      // Snapshot the shooter's details before state is mutated.
+      const missedShotType = prev.draft.priorMiss?.shotType ?? prev.draft.shotType;
+      const missedFastBreak = prev.draft.priorMiss?.fastBreak ?? prev.draft.fastBreak;
+      const pendingPt = pendingCourtClickRef.current;
+
       void (async () => {
-        const committed = await commitEventCommand('block', {
-          teamId: getTeamIdForSide(side),
-          blockerPlayerId: getPlayerId(side, jersey),
-          againstPlayerId: getPlayerId(blockedShooter.side, blockedShooter.jersey),
-        });
-        if (!committed) return;
-        appendLog({ ...blockLogRow, localId: committed.localId });
+        // Shot and block are sent as one event: the missed shot carries blockPlayerId.
+        const shotCommitted = missedShotType
+          ? await commitEventCommand('shot', {
+              teamId: getTeamIdForSide(blockedShooter.side),
+              shooterPlayerId: getPlayerId(blockedShooter.side, blockedShooter.jersey),
+              blockPlayerId: getPlayerId(side, jersey),
+              shot: {
+                value: getShotPoints(missedShotType),
+                result: 'missed',
+                type: shotTypeToApiType(missedShotType),
+                ...(missedFastBreak ? { playType: 'fast_break' } : {}),
+                ...(pendingPt ? { x: pendingPt.nx, y: pendingPt.ny } : {}),
+              },
+            })
+          : null;
+        if (shotCommitted) {
+          appendLog({
+            period: periodLabel,
+            clock: clockLabel,
+            team: blockedShooter.side === 'home' ? homeName : awayName,
+            player: getPlayerLabel(blockedShooter.side, blockedShooter.jersey),
+            action: 'shot',
+            result: missedShotType ? shotTypeResultPhrase(missedShotType, 'missed') : 'Missed',
+            localId: shotCommitted.localId,
+            meta: { side: blockedShooter.side, shooterJersey: blockedShooter.jersey, shotType: missedShotType, result: 'missed' },
+          });
+        }
+        // Block log entry shares the shot's localId — the block is part of the same event.
+        appendLog({ ...blockLogRow, localId: shotCommitted?.localId });
       })();
     }
   }, [appendLog, awayName, clockLabel, commitEventCommand, getPlayerId, getPlayerLabel, getTeamIdForSide, homeName, periodLabel]);
@@ -1525,8 +1594,8 @@ const StatDash: React.FC = () => {
           // Rebounder = shooter — commit the offensive rebound first.
           const reboundCommitted = await commitEventCommand('rebound', {
             teamId: getTeamIdForSide(side),
-            playerId: getPlayerId(side, jersey),
-            reboundType: 'offensive',
+            reboundPlayerId: getPlayerId(side, jersey),
+            rebound: { type: 'offensive' },
           });
           if (reboundCommitted) {
             appendLog({
@@ -1541,13 +1610,14 @@ const StatDash: React.FC = () => {
             });
           }
 
+          // Putback shot — use type 'putback' regardless of the tip-in variant (layup/dunk).
           const committed = await commitEventCommand('shot', {
             teamId: getTeamIdForSide(side),
             shooterPlayerId: getPlayerId(side, jersey),
             shot: {
               value: getShotPoints(shotType),
               result,
-              type: shotTypeToApiType(shotType),
+              type: 'putback',
             },
           });
           if (!committed) return;
@@ -1613,21 +1683,58 @@ const StatDash: React.FC = () => {
       if (prev === 'idle' || prev.step !== 'pickRebounder') return;
 
       if (outcome === 'dead_out_of_bounds' || outcome === 'dead_shot_clock_violation') {
-        const reason = outcome === 'dead_out_of_bounds' ? 'Out of bounds' : '24 sec violation';
+        const deadReason = outcome === 'dead_out_of_bounds' ? 'out_of_bounds' : 'shot_clock_violation';
         const deadBallLogRow: Omit<GameLogEntry, 'id'> = {
           period: periodLabel,
           clock: clockLabel,
           team: 'Officials',
           player: '—',
           action: 'dead ball',
-          result: reason,
+          result: outcome === 'dead_out_of_bounds' ? 'Out of bounds' : '24 sec violation',
         };
+        // Capture shot details and coords before clearing state.
+        const pendingPt = pendingCourtClickRef.current;
+        const pendingShot = prev.draft.shotType !== null ? {
+          side: prev.draft.side,
+          shooterJersey: prev.draft.shooterJersey,
+          shotType: prev.draft.shotType,
+          fastBreak: prev.draft.fastBreak,
+        } : null;
         pendingCourtClickRef.current = null;
         setShotFlow('idle');
 
         void (async () => {
+          // Commit the deferred missed shot first.
+          if (pendingShot?.side && pendingShot.shooterJersey !== null && pendingShot.shotType) {
+            const shotCommitted = await commitEventCommand('shot', {
+              teamId: getTeamIdForSide(pendingShot.side),
+              shooterPlayerId: getPlayerId(pendingShot.side, pendingShot.shooterJersey!),
+              shot: {
+                value: getShotPoints(pendingShot.shotType),
+                result: 'missed',
+                type: shotTypeToApiType(pendingShot.shotType),
+                ...(pendingShot.fastBreak ? { playType: 'fast_break' } : {}),
+                ...(pendingPt ? { x: pendingPt.nx, y: pendingPt.ny } : {}),
+              },
+            });
+            if (shotCommitted) {
+              appendLog({
+                period: periodLabel,
+                clock: clockLabel,
+                team: pendingShot.side === 'home' ? homeName : awayName,
+                player: getPlayerLabel(pendingShot.side, pendingShot.shooterJersey!),
+                action: 'shot',
+                result: shotTypeResultPhrase(pendingShot.shotType, 'missed'),
+                localId: shotCommitted.localId,
+                meta: { side: pendingShot.side, shooterJersey: pendingShot.shooterJersey, shotType: pendingShot.shotType, shotValue: getShotPoints(pendingShot.shotType), result: 'missed' },
+              });
+            }
+          }
+          // Dead ball — possession goes to the defending team.
+          const defSide = pendingShot?.side ? opponentOf(pendingShot.side) : 'home';
           const committed = await commitEventCommand('dead_ball', {
-            reason: outcome === 'dead_out_of_bounds' ? 'out_of_bounds' : 'shot_clock_violation',
+            teamId: getTeamIdForSide(defSide),
+            deadBall: { reason: deadReason },
           });
           if (!committed) return;
           appendLog(deadBallLogRow);
@@ -1672,6 +1779,17 @@ const StatDash: React.FC = () => {
       // In a post-block context side/shooterJersey are cleared, so snapshotPriorMiss returns
       // null. Fall back to the already-stored priorMiss so Back navigation still works.
       const priorMiss = snapshotPriorMiss(prev.draft) ?? prev.draft.priorMiss;
+
+      // Snapshot original miss details before the draft is overwritten.
+      // When side is null we're in a post-block tip-in — shot was already committed.
+      const pendingShot = prev.draft.side !== null && prev.draft.shotType !== null ? {
+        side: prev.draft.side,
+        shooterJersey: prev.draft.shooterJersey,
+        shotType: prev.draft.shotType,
+        fastBreak: prev.draft.fastBreak,
+      } : null;
+      const pendingPt = pendingCourtClickRef.current;
+
       setShotFlow({
         ...prev,
         step: 'pickShooter',
@@ -1694,8 +1812,37 @@ const StatDash: React.FC = () => {
           lastOffensiveRebound: null,
         },
       });
+
+      // Commit the original missed shot (skip in post-block — already sent from handlePickBlocker).
+      if (pendingShot?.side && pendingShot.shooterJersey !== null && pendingShot.shotType) {
+        void (async () => {
+          const shotCommitted = await commitEventCommand('shot', {
+            teamId: getTeamIdForSide(pendingShot.side!),
+            shooterPlayerId: getPlayerId(pendingShot.side!, pendingShot.shooterJersey!),
+            shot: {
+              value: getShotPoints(pendingShot.shotType!),
+              result: 'missed',
+              type: shotTypeToApiType(pendingShot.shotType!),
+              ...(pendingShot.fastBreak ? { playType: 'fast_break' } : {}),
+              ...(pendingPt ? { x: pendingPt.nx, y: pendingPt.ny } : {}),
+            },
+          });
+          if (shotCommitted) {
+            appendLog({
+              period: periodLabel,
+              clock: clockLabel,
+              team: pendingShot.side === 'home' ? homeName : awayName,
+              player: getPlayerLabel(pendingShot.side!, pendingShot.shooterJersey!),
+              action: 'shot',
+              result: shotTypeResultPhrase(pendingShot.shotType!, 'missed'),
+              localId: shotCommitted.localId,
+              meta: { side: pendingShot.side, shooterJersey: pendingShot.shooterJersey, shotType: pendingShot.shotType, shotValue: getShotPoints(pendingShot.shotType!), result: 'missed' },
+            });
+          }
+        })();
+      }
     },
-    [appendLog, clockLabel, commitEventCommand, periodLabel]
+    [appendLog, clockLabel, commitEventCommand, getPlayerId, getPlayerLabel, getTeamIdForSide, homeName, awayName, periodLabel]
   );
 
   const handleSelectShotType = useCallback(async (shotType: ShotTypeId) => {
@@ -1707,69 +1854,31 @@ const StatDash: React.FC = () => {
       nextDraft.side !== null &&
       nextDraft.shooterJersey !== null
     ) {
-      const teamName = nextDraft.side === 'home' ? homeName : awayName;
-      const missedPt = cur.entry === 'court' ? pendingCourtClickRef.current : null;
-      const committed = await commitEventCommand('shot', {
-        teamId: nextDraft.side ? getTeamIdForSide(nextDraft.side) : undefined,
-        shooterPlayerId:
-          nextDraft.side && typeof nextDraft.shooterJersey === 'number'
-            ? getPlayerId(nextDraft.side, nextDraft.shooterJersey)
-            : undefined,
-        shot: {
-          value: getShotPoints(shotType),
-          result: 'missed',
-          type: shotTypeToApiType(shotType),
-          ...(nextDraft.fastBreak ? { playType: 'fast_break' } : {}),
-          ...(missedPt ? { x: missedPt.nx, y: missedPt.ny } : {}),
-        },
-      });
-      if (!committed) return;
-      appendLog({
-        period: periodLabel,
-        clock: clockLabel,
-        team: teamName,
-        player: nextDraft.side ? getPlayerLabel(nextDraft.side, nextDraft.shooterJersey) : `#${nextDraft.shooterJersey}`,
-        action: 'shot',
-        result: shotTypeResultPhrase(shotType, 'missed'),
-        localId: committed.localId,
-        meta: {
-          side: nextDraft.side,
-          shooterJersey: nextDraft.shooterJersey,
-          shotType,
-          shotValue: getShotPoints(shotType),
-          result: 'missed',
-          ...(missedPt ? { x: missedPt.nx, y: missedPt.ny } : {}),
-        },
-      });
+      // Add the court marker immediately for visual feedback; the shot command is deferred
+      // until the rebound outcome is known so we can include blockPlayerId when blocked.
       if (cur.entry === 'court') {
         const clickPt = pendingCourtClickRef.current;
         if (clickPt && nextDraft.side !== null) {
           const shotColor = nextDraft.side === 'home' ? homeTeamColor : awayTeamColor;
           setCourtShotMarkers((prev) => [
             ...prev,
-            { ...clickPt, color: shotColor, kind: nextDraft.result === 'missed' ? 'missed' : 'made' },
+            { ...clickPt, color: shotColor, kind: 'missed' },
           ]);
         }
       }
-      // After any missed shot, enter the live-ball rebound state (rebounder selection).
-      if (nextDraft.result === 'missed') {
-        setShotFlow({
-          entry: 'court',
-          step: 'pickRebounder',
-          draft: {
-            ...emptyShotDraft(),
-            result: 'missed',
-            tipInCommit: false,
-            side: nextDraft.side,
-            shooterJersey: nextDraft.shooterJersey,
-            shotType,
-            fastBreak: nextDraft.fastBreak,
-          },
-        });
-      } else {
-        pendingCourtClickRef.current = null;
-        setShotFlow('idle');
-      }
+      setShotFlow({
+        entry: cur.entry,
+        step: 'pickRebounder',
+        draft: {
+          ...emptyShotDraft(),
+          result: 'missed',
+          tipInCommit: false,
+          side: nextDraft.side,
+          shooterJersey: nextDraft.shooterJersey,
+          shotType,
+          fastBreak: nextDraft.fastBreak,
+        },
+      });
       return;
     }
     setShotFlow({
@@ -1777,7 +1886,7 @@ const StatDash: React.FC = () => {
       step: 'assist',
       draft: nextDraft,
     });
-  }, [appendLog, awayName, awayTeamColor, clockLabel, commitEventCommand, getPlayerLabel, homeName, homeTeamColor, periodLabel]);
+  }, [awayTeamColor, homeTeamColor]);
 
   const handleSetFastBreak = useCallback((fastBreak: boolean) => {
     setShotFlow((cur) => {

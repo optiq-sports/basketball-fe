@@ -49,13 +49,18 @@ export function readStoredExpectedVersion(): number {
 
 const LINEUPS_KEY = 'statdash_lineups';
 
+function lineupsStorageKey(): string {
+  const sessionId = sessionStorage.getItem(SESSION_ID_KEY);
+  return sessionId ? `${LINEUPS_KEY}_${sessionId}` : LINEUPS_KEY;
+}
+
 export function writeStoredLineups(lineups: { home: TeamLineup; away: TeamLineup }): void {
-  sessionStorage.setItem(LINEUPS_KEY, JSON.stringify(lineups));
+  localStorage.setItem(lineupsStorageKey(), JSON.stringify(lineups));
 }
 
 export function readStoredLineups(): { home: TeamLineup; away: TeamLineup } | null {
   try {
-    const raw = sessionStorage.getItem(LINEUPS_KEY);
+    const raw = localStorage.getItem(lineupsStorageKey());
     if (!raw) return null;
     return JSON.parse(raw) as { home: TeamLineup; away: TeamLineup };
   } catch {
