@@ -164,10 +164,16 @@ const FoulRecordingCourtPanel: React.FC<FoulRecordingCourtPanelProps> = ({
         {step === 'pickFouled' && fouledSide !== null && (
           <>
             <h2 id="foul-flow-title" className={titleClass} style={titleStyle}>
-              Select player who was fouled
+              {draft.foulType === 'technical'
+                ? 'Select the free throw shooter'
+                : 'Select player who was fouled'}
             </h2>
             <div className="mx-auto max-w-[360px] rounded-lg bg-gray-100 px-4 py-4 text-center">
-              <p className="text-sm font-semibold text-gray-700">Select fouled player from side jersey lists</p>
+              <p className="text-sm font-semibold text-gray-700">
+                {draft.foulType === 'technical'
+                  ? 'Technical foul recorded. Tap the jersey of the opposing player who will shoot the free throws.'
+                  : 'Select fouled player from side jersey lists'}
+              </p>
               <p className="mt-1 text-xs text-gray-500">{fouledSide === 'home' ? homeName : awayName} side players are currently selectable.</p>
             </div>
           </>

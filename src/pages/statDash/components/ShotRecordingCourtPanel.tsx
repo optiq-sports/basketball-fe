@@ -159,13 +159,13 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
                   </p>
                   {draft.result === 'made' ? (
                     <p>
-                      Tap the jersey of the player who <strong>made</strong> the putback after the offensive rebound.
-                      The play ends after you select them.
+                      Tap the jersey of the player who <strong>made</strong> the follow-up shot after the offensive
+                      rebound. The play ends after you select them.
                     </p>
                   ) : (
                     <p>
-                      Tap the jersey of the player who <strong>missed</strong> the putback. You will return to{' '}
-                      <strong>Select rebounder</strong> next — use the side panels, not the court here.
+                      Tap the jersey of the player who <strong>missed</strong> the follow-up shot. You will return
+                      to <strong>Select rebounder</strong> next — use the side panels, not the court here.
                     </p>
                   )}
                 </>

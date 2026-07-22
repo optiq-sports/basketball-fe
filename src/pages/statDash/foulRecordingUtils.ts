@@ -21,6 +21,11 @@ export function foulTypeLabel(id: FoulTypeId): string {
   return FOUL_TYPE_OPTIONS.find((o) => o.id === id)?.label ?? id;
 }
 
+/** Maps frontend FoulTypeId to the backend's expected foul type string. */
+export function foulTypeToApiType(id: FoulTypeId): string {
+  return id === 'unsportmanlike' ? 'unsportsmanlike' : id;
+}
+
 export type FoulFlowEntry = 'court' | 'player' | 'panel';
 
 export type FoulerRole = 'player' | 'bench' | 'coach';
@@ -47,6 +52,8 @@ export type FoulFlowDraft = {
   ftResults: ('made' | 'miss')[];
   reboundSide: TeamSide | null;
   reboundJersey: number | null;
+  /** The foul command is sent as soon as its details are complete — this guards re-sends on Back navigation. */
+  foulCommitted: boolean;
 };
 
 export type ActiveFoulFlow = {
@@ -67,6 +74,7 @@ export function emptyFoulDraft(): FoulFlowDraft {
     ftResults: [],
     reboundSide: null,
     reboundJersey: null,
+    foulCommitted: false,
   };
 }
 
@@ -201,6 +209,17 @@ export function foulFlowBack(cur: ActiveFoulFlow): ActiveFoulFlow | 'idle' {
         draft: { ...draft, reboundSide: null, reboundJersey: null },
       };
     case 'ftResults':
+      // Each FT is committed to the backend the moment it's tapped — once the
+      // sequence has started there is nothing local left to undo.
+      if (draft.ftResults.length > 0) return cur;
+      // Technical fouls skip the assist step, so Back returns to the FT count.
+      if (draft.foulType === 'technical') {
+        return {
+          ...cur,
+          step: 'ftCount',
+          draft: { ...draft, ftResults: [], ftAssistJersey: null, ftCount: null },
+        };
+      }
       return {
         ...cur,
         step: 'ftAssist',
@@ -219,6 +238,9 @@ export function foulFlowBack(cur: ActiveFoulFlow): ActiveFoulFlow | 'idle' {
         draft: { ...draft, ftCount: null },
       };
     case 'pickFouled':
+      // Technical fouls commit at type selection; the foul is already on the backend,
+      // so re-choosing the type is not allowed — undo it from the game log instead.
+      if (draft.foulCommitted) return cur;
       return {
         ...cur,
         step: 'foulType',

@@ -30,20 +30,33 @@ export function useEventQueue(options: UseEventQueueOptions = {}): UseEventQueue
     typeof navigator === 'undefined' ? true : navigator.onLine,
   );
   const isDrainingRef = useRef(false);
+  // Live queue mirror. Every mutation goes through applyQueueUpdate so the drain
+  // (which runs across awaits) always reads current state instead of a stale
+  // snapshot — a stale write-back used to erase events enqueued mid-drain.
+  const queueRef = useRef<QueuedEvent[]>(queue);
+  const isOnlineRef = useRef(isOnline);
+  isOnlineRef.current = isOnline;
 
-  const onQueueChange = useCallback((next: QueuedEvent[]) => {
-    setQueue(next);
-  }, []);
+  const applyQueueUpdate = useCallback(
+    (updater: (prev: QueuedEvent[]) => QueuedEvent[]): QueuedEvent[] => {
+      const next = updater(queueRef.current);
+      queueRef.current = next;
+      setQueue(next);
+      saveQueue(next);
+      return next;
+    },
+    [],
+  );
 
   const runDrain = useCallback(async () => {
     if (isDrainingRef.current) return;
-    if (!isOnline) return;
+    if (!isOnlineRef.current) return;
     isDrainingRef.current = true;
     try {
       await drainQueue({
-        queue,
-        onQueueChange,
-        getIsOnline: () => isOnline,
+        getQueue: () => queueRef.current,
+        applyQueueUpdate,
+        getIsOnline: () => isOnlineRef.current,
         sendCommand: async (event) =>
           commandsApi.sendCommand({
             sessionId: event.sessionId,
@@ -62,42 +75,44 @@ export function useEventQueue(options: UseEventQueueOptions = {}): UseEventQueue
     } finally {
       isDrainingRef.current = false;
     }
-  }, [isOnline, onQueueChange, options, queue]);
+  }, [applyQueueUpdate, options]);
 
-  const enqueue = useCallback((event: EnqueueInput) => {
-    const localId =
-      event.localId ??
-      (typeof crypto !== 'undefined' && crypto.randomUUID
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`);
+  const enqueue = useCallback(
+    (event: EnqueueInput) => {
+      const localId =
+        event.localId ??
+        (typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`);
 
-    setQueue((prev) => [
-      ...prev,
-      {
-        ...event,
-        localId,
-        enqueuedAt: Date.now(),
-        status: 'pending',
-        attempts: 0,
-      },
-    ]);
-  }, []);
+      applyQueueUpdate((prev) => [
+        ...prev,
+        {
+          ...event,
+          localId,
+          enqueuedAt: Date.now(),
+          status: 'pending',
+          attempts: 0,
+        },
+      ]);
+    },
+    [applyQueueUpdate],
+  );
 
   const retryFailed = useCallback(() => {
-    setQueue((prev) =>
+    applyQueueUpdate((prev) =>
       prev.map((event) =>
         event.status === 'failed'
           ? { ...event, status: 'pending', lastError: undefined }
           : event,
       ),
     );
-  }, []);
+  }, [applyQueueUpdate]);
 
   const clearQueue = useCallback(() => {
     clearDrainRetryTimer();
-    saveQueue([]);
-    setQueue([]);
-  }, []);
+    applyQueueUpdate(() => []);
+  }, [applyQueueUpdate]);
 
   useEffect(() => {
     const onOnline = () => setIsOnline(true);
@@ -112,7 +127,6 @@ export function useEventQueue(options: UseEventQueueOptions = {}): UseEventQueue
   }, []);
 
   useEffect(() => {
-    saveQueue(queue);
     clearSentEvents();
   }, [queue]);
 

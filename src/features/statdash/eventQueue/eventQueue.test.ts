@@ -60,12 +60,31 @@ describe('event queue', () => {
     Object.defineProperty(window.navigator, 'onLine', { value: true, configurable: true });
   });
 
+  /** Live-queue harness matching the useEventQueue wiring of getQueue/applyQueueUpdate. */
+  function makeLiveQueue(initial: QueuedEvent[]) {
+    let current = initial;
+    const changes: QueuedEvent[][] = [];
+    return {
+      getQueue: () => current,
+      applyQueueUpdate: (updater: (prev: QueuedEvent[]) => QueuedEvent[]) => {
+        current = updater(current);
+        changes.push(current);
+        return current;
+      },
+      changes,
+      get current() {
+        return current;
+      },
+    };
+  }
+
   it('drainQueue processes FIFO order', async () => {
     const queue = [makeEvent({ enqueuedAt: 2 }), makeEvent({ enqueuedAt: 1 })];
+    const live = makeLiveQueue(queue);
     const sent: string[] = [];
     await drainQueue({
-      queue,
-      onQueueChange: () => undefined,
+      getQueue: live.getQueue,
+      applyQueueUpdate: live.applyQueueUpdate,
       getIsOnline: () => true,
       sendCommand: async (event) => {
         sent.push(event.localId);
@@ -79,15 +98,40 @@ describe('event queue', () => {
 
   it('drainQueue skips when offline', async () => {
     const send = vi.fn();
+    const live = makeLiveQueue([makeEvent()]);
     await drainQueue({
-      queue: [makeEvent()],
-      onQueueChange: () => undefined,
+      getQueue: live.getQueue,
+      applyQueueUpdate: live.applyQueueUpdate,
       getIsOnline: () => false,
       sendCommand: send,
       onCommandAccepted: () => undefined,
       onCommandFailed: () => undefined,
     });
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it('drainQueue sends events enqueued while a previous send was in flight', async () => {
+    const first = makeEvent({ enqueuedAt: 1 });
+    const late = makeEvent({ enqueuedAt: 2 });
+    const live = makeLiveQueue([first]);
+    const sent: string[] = [];
+    await drainQueue({
+      getQueue: live.getQueue,
+      applyQueueUpdate: live.applyQueueUpdate,
+      getIsOnline: () => true,
+      sendCommand: async (event) => {
+        sent.push(event.localId);
+        if (event.localId === first.localId) {
+          // Simulate a command arriving while this send is awaiting the network.
+          live.applyQueueUpdate((prev) => [...prev, late]);
+        }
+        return { sessionId: event.sessionId, version: event.expectedVersion + 1, score: { home: 0, away: 0 }, emittedEvents: [] };
+      },
+      onCommandAccepted: () => undefined,
+      onCommandFailed: () => undefined,
+    });
+    expect(sent).toEqual([first.localId, late.localId]);
+    expect(live.current.every((event) => event.status === 'sent')).toBe(true);
   });
 
   it('VERSION_CONFLICT rebases versions and retries', async () => {
@@ -104,11 +148,12 @@ describe('event queue', () => {
       recentEvents: [],
     });
     const queue = [makeEvent({ expectedVersion: 1 }), makeEvent({ expectedVersion: 2, enqueuedAt: Date.now() + 1 })];
+    const live = makeLiveQueue(queue);
     const versions: number[] = [];
     let first = true;
     await drainQueue({
-      queue,
-      onQueueChange: (next) => saveQueue(next),
+      getQueue: live.getQueue,
+      applyQueueUpdate: live.applyQueueUpdate,
       getIsOnline: () => true,
       sendCommand: async (event) => {
         versions.push(event.expectedVersion);
@@ -126,11 +171,10 @@ describe('event queue', () => {
 
   it('network failure returns event to pending and stops', async () => {
     vi.useFakeTimers();
-    const q = [makeEvent()];
-    const changes: QueuedEvent[][] = [];
+    const live = makeLiveQueue([makeEvent()]);
     await drainQueue({
-      queue: q,
-      onQueueChange: (next) => changes.push(next),
+      getQueue: live.getQueue,
+      applyQueueUpdate: live.applyQueueUpdate,
       getIsOnline: () => true,
       sendCommand: async () => {
         throw new StatDashApiError('offline', 0);
@@ -138,18 +182,18 @@ describe('event queue', () => {
       onCommandAccepted: () => undefined,
       onCommandFailed: () => undefined,
     });
-    expect(changes[changes.length - 1][0].status).toBe('pending');
+    expect(live.current[0].status).toBe('pending');
     vi.useRealTimers();
   });
 
   it('4xx error marks failed and advances', async () => {
     const q1 = makeEvent();
     const q2 = makeEvent({ enqueuedAt: Date.now() + 1 });
+    const live = makeLiveQueue([q1, q2]);
     const sent: string[] = [];
-    const changes: QueuedEvent[][] = [];
     await drainQueue({
-      queue: [q1, q2],
-      onQueueChange: (next) => changes.push(next),
+      getQueue: live.getQueue,
+      applyQueueUpdate: live.applyQueueUpdate,
       getIsOnline: () => true,
       sendCommand: async (event) => {
         if (event.localId === q1.localId) throw new StatDashApiError('bad', 400);
@@ -159,7 +203,7 @@ describe('event queue', () => {
       onCommandAccepted: () => undefined,
       onCommandFailed: () => undefined,
     });
-    expect(changes.some((state) => state.some((event) => event.localId === q1.localId && event.status === 'failed'))).toBe(true);
+    expect(live.changes.some((state) => state.some((event) => event.localId === q1.localId && event.status === 'failed'))).toBe(true);
     expect(sent).toContain(q2.localId);
   });
 
