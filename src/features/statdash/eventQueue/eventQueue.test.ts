@@ -169,6 +169,50 @@ describe('event queue', () => {
     expect(versions).toContain(10);
   });
 
+  it('VERSION_CONFLICT rebase does not resurrect already-failed events', async () => {
+    const { sessionsApi } = await import('../../../services/statdash');
+    vi.mocked(sessionsApi.getSessionState).mockResolvedValue({
+      sessionId: 's1',
+      matchId: 'm1',
+      status: 'IN_PROGRESS',
+      quarter: 1,
+      clockSecondsRemaining: 1,
+      version: 10,
+      score: { home: 0, away: 0 },
+      orientation: { homeOnLeft: true, homeAttacksLeft: true },
+      recentEvents: [],
+    });
+    // A permanently-failed command (e.g. rejected by backend validation) sits ahead
+    // of a fresh pending one. A version conflict on the pending one must not revive
+    // the failed one or consume a version slot on it.
+    const deadEvent = makeEvent({ status: 'failed', expectedVersion: 1, enqueuedAt: 1 });
+    const pendingEvent = makeEvent({ expectedVersion: 2, enqueuedAt: 2 });
+    const live = makeLiveQueue([deadEvent, pendingEvent]);
+    const sentVersions: number[] = [];
+    let first = true;
+    await drainQueue({
+      getQueue: live.getQueue,
+      applyQueueUpdate: live.applyQueueUpdate,
+      getIsOnline: () => true,
+      sendCommand: async (event) => {
+        sentVersions.push(event.expectedVersion);
+        if (first) {
+          first = false;
+          throw new StatDashApiError('conflict', 409, 'VERSION_CONFLICT');
+        }
+        return { sessionId: event.sessionId, version: event.expectedVersion + 1, score: { home: 0, away: 0 }, emittedEvents: [] };
+      },
+      onCommandAccepted: () => undefined,
+      onCommandFailed: () => undefined,
+    });
+    expect(sentVersions).not.toContain(1);
+    const finalDead = live.current.find((e) => e.localId === deadEvent.localId)!;
+    expect(finalDead.status).toBe('failed');
+    const finalPending = live.current.find((e) => e.localId === pendingEvent.localId)!;
+    expect(finalPending.expectedVersion).toBe(10);
+    expect(finalPending.status).toBe('sent');
+  });
+
   it('network failure returns event to pending and stops', async () => {
     vi.useFakeTimers();
     const live = makeLiveQueue([makeEvent()]);

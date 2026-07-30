@@ -15,8 +15,27 @@ const RIGHT_ARC_CX = W - LEFT_ARC_CX;
 const RIGHT_ARC_CY = LEFT_ARC_CY;
 const RIGHT_X_SPLIT = W - LEFT_X_SPLIT;
 
+/** Matches the hoop symbol drawn in BasketballCourt.tsx ("M66 190" / "M554 190"). */
+const RIM_X = 66;
+const RIM_Y = 190;
+
 function dist(ax: number, ay: number, bx: number, by: number): number {
   return Math.hypot(ax - bx, ay - by);
+}
+
+/**
+ * Normalized court position of the rim a team shoots at — used for shots that always
+ * happen at the basket (e.g. putbacks) where there's no real click to derive a spot from.
+ */
+export function getRimPosition(
+  shootingSide: TeamSide,
+  homeAttacksLeft = true
+): { nx: number; ny: number } {
+  const shootsLeft =
+    (shootingSide === 'home' && homeAttacksLeft) ||
+    (shootingSide === 'away' && !homeAttacksLeft);
+  const x = shootsLeft ? RIM_X : W - RIM_X;
+  return { nx: x / W, ny: RIM_Y / H };
 }
 
 /**

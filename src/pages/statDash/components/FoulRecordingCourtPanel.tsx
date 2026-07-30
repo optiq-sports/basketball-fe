@@ -1,10 +1,10 @@
-import React from 'react';
-import { FiArrowLeft, FiX } from 'react-icons/fi';
-import type { TeamSide } from '../types';
-import { jerseyAccentSurfaceStyle } from '../../../contexts/StatisticianTeamColorsContext';
-import type { ActiveFoulFlow, FoulTypeId } from '../foulRecordingUtils';
-import { FOUL_TYPE_OPTIONS, opponentOf } from '../foulRecordingUtils';
-import { STAT_DASH } from '../statDashTheme';
+import React from "react";
+import { FiArrowLeft, FiX } from "react-icons/fi";
+import type { TeamSide } from "../types";
+import { jerseyAccentSurfaceStyle } from "../../../contexts/StatisticianTeamColorsContext";
+import type { ActiveFoulFlow, FoulTypeId } from "../foulRecordingUtils";
+import { FOUL_TYPE_OPTIONS, opponentOf } from "../foulRecordingUtils";
+import { STAT_DASH } from "../statDashTheme";
 
 export interface FoulRecordingCourtPanelProps {
   flow: ActiveFoulFlow;
@@ -22,8 +22,8 @@ export interface FoulRecordingCourtPanelProps {
   onSelectFoulType: (type: FoulTypeId) => void;
   onPickFouled: (jersey: number) => void;
   onSelectFtCount: (count: 0 | 1 | 2 | 3) => void;
-  onFtAssistSelect: (assist: number | 'none') => void;
-  onFtResult: (result: 'made' | 'miss') => void;
+  onFtAssistSelect: (assist: number | "none") => void;
+  onFtResult: (result: "made" | "miss") => void;
   onPickRebounder: (side: TeamSide, jersey: number) => void;
 }
 
@@ -70,7 +70,7 @@ function PanelFooter({
 }
 
 const titleClass =
-  'mb-2 text-center text-[10px] font-bold uppercase leading-tight tracking-wide sm:mb-2 sm:text-[11px]';
+  "mb-2 text-center text-[10px] font-bold uppercase leading-tight tracking-wide sm:mb-2 sm:text-[11px]";
 const titleStyle = { color: STAT_DASH.accentBlue };
 
 function JerseyButton({
@@ -111,7 +111,7 @@ const FoulRecordingCourtPanel: React.FC<FoulRecordingCourtPanelProps> = ({
 }) => {
   const { entry, step, draft } = flow;
 
-  const showFooterBack = !(step === 'pickFouler' && entry === 'court');
+  const showFooterBack = !(step === "pickFouler" && entry === "court");
 
   const fouledSide =
     draft.foulerSide !== null ? opponentOf(draft.foulerSide) : null;
@@ -126,22 +126,25 @@ const FoulRecordingCourtPanel: React.FC<FoulRecordingCourtPanelProps> = ({
       aria-labelledby="foul-flow-title"
     >
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-2 pt-2 sm:px-3 sm:pt-3">
-        {step === 'pickFouler' && (
+        {step === "pickFouler" && (
           <>
             <h2 id="foul-flow-title" className={titleClass} style={titleStyle}>
               Select player who fouled
             </h2>
             <div className="mx-auto max-w-[360px] rounded-lg bg-gray-100 px-4 py-4 text-center">
               <p className="text-sm font-semibold text-gray-700">
-                Tap an on-court jersey on the side columns, or press <span className="font-bold">FOUL</span> on a panel
-                to choose a bench jersey, team bench, or coach.
+                Tap an on-court jersey on the side columns, or press{" "}
+                <span className="font-bold">FOUL</span> on a panel to choose a
+                bench jersey, team bench, or coach.
               </p>
-              <p className="mt-1 text-xs text-gray-500">{homeName} and {awayName}</p>
+              <p className="mt-1 text-xs text-gray-500">
+                {homeName} and {awayName}
+              </p>
             </div>
           </>
         )}
 
-        {step === 'foulType' && (
+        {step === "foulType" && (
           <>
             <h2 id="foul-flow-title" className={titleClass} style={titleStyle}>
               Select foul type
@@ -161,25 +164,32 @@ const FoulRecordingCourtPanel: React.FC<FoulRecordingCourtPanelProps> = ({
           </>
         )}
 
-        {step === 'pickFouled' && fouledSide !== null && (
+        {step === "pickFouled" && fouledSide !== null && (
           <>
             <h2 id="foul-flow-title" className={titleClass} style={titleStyle}>
-              {draft.foulType === 'technical'
-                ? 'Select the free throw shooter'
-                : 'Select player who was fouled'}
+              {draft.foulType === "technical"
+                ? "Select the free throw shooter"
+                : draft.foulType === "double_foul"
+                  ? "Select second fouler"
+                  : "Select player who was fouled"}
             </h2>
             <div className="mx-auto max-w-[360px] rounded-lg bg-gray-100 px-4 py-4 text-center">
               <p className="text-sm font-semibold text-gray-700">
-                {draft.foulType === 'technical'
-                  ? 'Technical foul recorded. Tap the jersey of the opposing player who will shoot the free throws.'
-                  : 'Select fouled player from side jersey lists'}
+                {draft.foulType === "technical"
+                  ? "Technical foul recorded. Tap the jersey of the opposing player who will shoot the free throws."
+                  : draft.foulType === "double_foul"
+                    ? "Double foul — select the second player who was also fouling."
+                    : "Select fouled player from side jersey lists"}
               </p>
-              <p className="mt-1 text-xs text-gray-500">{fouledSide === 'home' ? homeName : awayName} side players are currently selectable.</p>
+              <p className="mt-1 text-xs text-gray-500">
+                {fouledSide === "home" ? homeName : awayName} side players are
+                currently selectable.
+              </p>
             </div>
           </>
         )}
 
-        {step === 'ftCount' && (
+        {step === "ftCount" && (
           <>
             <h2 id="foul-flow-title" className={titleClass} style={titleStyle}>
               Select number of free throws awarded
@@ -192,7 +202,7 @@ const FoulRecordingCourtPanel: React.FC<FoulRecordingCourtPanelProps> = ({
                   onClick={() => onSelectFtCount(n)}
                   className="rounded-lg bg-gray-200 px-4 py-3 text-center text-[12px] font-medium text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
                 >
-                  {n} Free Throw{n > 1 ? 's' : ''}
+                  {n} Free Throw{n > 1 ? "s" : ""}
                 </button>
               ))}
               <button
@@ -206,38 +216,44 @@ const FoulRecordingCourtPanel: React.FC<FoulRecordingCourtPanelProps> = ({
           </>
         )}
 
-        {step === 'ftAssist' &&
+        {step === "ftAssist" &&
           fouledSide !== null &&
           draft.fouledJersey !== null && (
-          <>
-            <h2 id="foul-flow-title" className={titleClass} style={titleStyle}>
-              Select player for assist (FT shooter: #{draft.fouledJersey})
-            </h2>
-            <div className="mx-auto flex max-w-[240px] flex-col items-stretch gap-2 sm:gap-3">
-              <button
-                type="button"
-                onClick={() => onFtAssistSelect('none')}
-                className="rounded-lg bg-slate-200 px-3 py-2 text-center text-[11px] font-medium text-black hover:bg-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:text-xs"
+            <>
+              <h2
+                id="foul-flow-title"
+                className={titleClass}
+                style={titleStyle}
               >
-                No assist
-              </button>
-              <div className="flex flex-wrap justify-center gap-1.5">
-                {(fouledSide === 'home' ? homePlayers : awayPlayers)
-                  .filter((n) => n !== draft.fouledJersey)
-                  .map((n) => (
-                    <JerseyButton
-                      key={n}
-                      jersey={n}
-                      accentColor={fouledSide === 'home' ? homeColor : awayColor}
-                      onClick={() => onFtAssistSelect(n)}
-                    />
-                  ))}
+                Select player for assist (FT shooter: #{draft.fouledJersey})
+              </h2>
+              <div className="mx-auto flex max-w-[240px] flex-col items-stretch gap-2 sm:gap-3">
+                <button
+                  type="button"
+                  onClick={() => onFtAssistSelect("none")}
+                  className="rounded-lg bg-slate-200 px-3 py-2 text-center text-[11px] font-medium text-black hover:bg-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:text-xs"
+                >
+                  No assist
+                </button>
+                <div className="flex flex-wrap justify-center gap-1.5">
+                  {(fouledSide === "home" ? homePlayers : awayPlayers)
+                    .filter((n) => n !== draft.fouledJersey)
+                    .map((n) => (
+                      <JerseyButton
+                        key={n}
+                        jersey={n}
+                        accentColor={
+                          fouledSide === "home" ? homeColor : awayColor
+                        }
+                        onClick={() => onFtAssistSelect(n)}
+                      />
+                    ))}
+                </div>
               </div>
-            </div>
-          </>
-        )}
+            </>
+          )}
 
-        {step === 'ftResults' && ftCount > 0 && (
+        {step === "ftResults" && ftCount > 0 && (
           <>
             <h2 id="foul-flow-title" className={titleClass} style={titleStyle}>
               Record free throw results
@@ -250,18 +266,18 @@ const FoulRecordingCourtPanel: React.FC<FoulRecordingCourtPanelProps> = ({
                   <div
                     key={i}
                     className={`flex flex-col gap-1 rounded-lg border border-gray-200 p-2 ${
-                      active ? 'bg-white' : 'bg-gray-50 opacity-80'
+                      active ? "bg-white" : "bg-gray-50 opacity-80"
                     }`}
                   >
                     <span className="text-center text-[10px] font-semibold text-gray-700">
                       Shot {i + 1}
-                      {done ? ` — ${done.toUpperCase()}` : ''}
+                      {done ? ` — ${done.toUpperCase()}` : ""}
                     </span>
                     <div className="flex justify-center gap-2">
                       <button
                         type="button"
                         disabled={!active}
-                        onClick={() => onFtResult('made')}
+                        onClick={() => onFtResult("made")}
                         className="rounded-md bg-emerald-600 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         MADE
@@ -269,7 +285,7 @@ const FoulRecordingCourtPanel: React.FC<FoulRecordingCourtPanelProps> = ({
                       <button
                         type="button"
                         disabled={!active}
-                        onClick={() => onFtResult('miss')}
+                        onClick={() => onFtResult("miss")}
                         className="rounded-md bg-red-600 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         MISS
@@ -282,19 +298,25 @@ const FoulRecordingCourtPanel: React.FC<FoulRecordingCourtPanelProps> = ({
           </>
         )}
 
-        {step === 'rebounder' && (
+        {step === "rebounder" && (
           <>
             <h2 id="foul-flow-title" className={titleClass} style={titleStyle}>
               Select player who rebounded the ball
             </h2>
             <div className="mx-auto max-w-[360px] rounded-lg bg-gray-100 px-4 py-4 text-center">
-              <p className="text-sm font-semibold text-gray-700">Select rebounder from side jersey lists</p>
+              <p className="text-sm font-semibold text-gray-700">
+                Select rebounder from side jersey lists
+              </p>
             </div>
           </>
         )}
       </div>
 
-      <PanelFooter showBack={showFooterBack} onBack={onBack} onCancel={onCancel} />
+      <PanelFooter
+        showBack={showFooterBack}
+        onBack={onBack}
+        onCancel={onCancel}
+      />
     </div>
   );
 };

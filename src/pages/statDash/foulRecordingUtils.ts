@@ -1,20 +1,20 @@
-import type { TeamSide } from './types';
+import type { TeamSide } from "./types";
 
 export type FoulTypeId =
-  | 'personal'
-  | 'shooting'
-  | 'technical'
-  | 'unsportmanlike'
-  | 'double_foul'
-  | 'offensive';
+  | "personal"
+  | "shooting"
+  | "technical"
+  | "unsportmanlike"
+  | "double_foul"
+  | "offensive";
 
 export const FOUL_TYPE_OPTIONS: { id: FoulTypeId; label: string }[] = [
-  { id: 'personal', label: 'Personal' },
-  { id: 'shooting', label: 'Shooting' },
-  { id: 'technical', label: 'Technical' },
-  { id: 'unsportmanlike', label: 'Unsportmanlike' },
-  { id: 'double_foul', label: 'Double Foul' },
-  { id: 'offensive', label: 'Offensive' },
+  { id: "personal", label: "Personal" },
+  { id: "shooting", label: "Shooting" },
+  { id: "technical", label: "Technical" },
+  { id: "unsportmanlike", label: "Unsportmanlike" },
+  { id: "double_foul", label: "Double Foul" },
+  { id: "offensive", label: "Offensive" },
 ];
 
 export function foulTypeLabel(id: FoulTypeId): string {
@@ -23,21 +23,21 @@ export function foulTypeLabel(id: FoulTypeId): string {
 
 /** Maps frontend FoulTypeId to the backend's expected foul type string. */
 export function foulTypeToApiType(id: FoulTypeId): string {
-  return id === 'unsportmanlike' ? 'unsportsmanlike' : id;
+  return id === "unsportmanlike" ? "unsportsmanlike" : id;
 }
 
-export type FoulFlowEntry = 'court' | 'player' | 'panel';
+export type FoulFlowEntry = "court" | "player" | "panel";
 
-export type FoulerRole = 'player' | 'bench' | 'coach';
+export type FoulerRole = "player" | "bench" | "coach";
 
 export type FoulFlowStep =
-  | 'pickFouler'
-  | 'foulType'
-  | 'pickFouled'
-  | 'ftCount'
-  | 'ftAssist'
-  | 'ftResults'
-  | 'rebounder';
+  | "pickFouler"
+  | "foulType"
+  | "pickFouled"
+  | "ftCount"
+  | "ftAssist"
+  | "ftResults"
+  | "rebounder";
 
 export type FoulFlowDraft = {
   foulerSide: TeamSide | null;
@@ -48,8 +48,8 @@ export type FoulFlowDraft = {
   /** 0 = no free throws */
   ftCount: 0 | 1 | 2 | 3 | null;
   /** Assist on the FT sequence; fouled player shoots automatically. */
-  ftAssistJersey: number | 'none' | null;
-  ftResults: ('made' | 'miss')[];
+  ftAssistJersey: number | "none" | null;
+  ftResults: ("made" | "miss")[];
   reboundSide: TeamSide | null;
   reboundJersey: number | null;
   /** The foul command is sent as soon as its details are complete — this guards re-sends on Back navigation. */
@@ -79,7 +79,7 @@ export function emptyFoulDraft(): FoulFlowDraft {
 }
 
 export function opponentOf(side: TeamSide): TeamSide {
-  return side === 'home' ? 'away' : 'home';
+  return side === "home" ? "away" : "home";
 }
 
 /** Game log `player` column for the fouler. */
@@ -87,69 +87,71 @@ export function foulerLogPlayerField(
   draft: FoulFlowDraft,
   getLabel?: (side: TeamSide | null, jersey: number) => string,
 ): string {
-  if (draft.foulerRole === 'bench') {
-    return draft.foulerJersey !== null ? `#${draft.foulerJersey} (bench)` : 'Bench';
+  if (draft.foulerRole === "bench") {
+    return draft.foulerJersey !== null
+      ? `#${draft.foulerJersey} (bench)`
+      : "Bench";
   }
-  if (draft.foulerRole === 'coach') return 'Coach';
+  if (draft.foulerRole === "coach") return "Coach";
   if (draft.foulerJersey !== null) {
     return getLabel && draft.foulerSide
       ? getLabel(draft.foulerSide, draft.foulerJersey)
       : `#${draft.foulerJersey}`;
   }
-  return '—';
+  return "—";
 }
 
 export function isFoulerDraftComplete(draft: FoulFlowDraft): boolean {
   if (draft.foulerSide === null || draft.foulerRole === null) return false;
-  if (draft.foulerRole === 'player') return draft.foulerJersey !== null;
-  if (draft.foulerRole === 'bench') return true;
-  if (draft.foulerRole === 'coach') return draft.foulerJersey === null;
+  if (draft.foulerRole === "player") return draft.foulerJersey !== null;
+  if (draft.foulerRole === "bench") return true;
+  if (draft.foulerRole === "coach") return draft.foulerJersey === null;
   return false;
 }
 
 export type PanelFoulPick =
-  | { kind: 'player'; jersey: number }
-  | { kind: 'bench_player'; jersey: number }
-  | { kind: 'bench' }
-  | { kind: 'coach' };
+  | { kind: "player"; jersey: number }
+  | { kind: "bench_player"; jersey: number }
+  | { kind: "bench" }
+  | { kind: "coach" };
 
 export function initialFoulFlowFromPanelSelection(
   side: TeamSide,
-  pick: PanelFoulPick
+  pick: PanelFoulPick,
 ): ActiveFoulFlow {
   const base = emptyFoulDraft();
-  if (pick.kind === 'player') {
+  if (pick.kind === "player") {
     return {
-      entry: 'panel',
-      step: 'foulType',
+      entry: "panel",
+      step: "foulType",
       draft: {
         ...base,
         foulerSide: side,
         foulerJersey: pick.jersey,
-        foulerRole: 'player',
+        foulerRole: "player",
       },
     };
   }
-  if (pick.kind === 'bench_player') {
+  if (pick.kind === "bench_player") {
     return {
-      entry: 'panel',
-      step: 'foulType',
+      entry: "panel",
+      step: "foulType",
       draft: {
         ...base,
         foulerSide: side,
         foulerJersey: pick.jersey,
-        foulerRole: 'bench',
+        foulerRole: "bench",
       },
     };
   }
   return {
-    entry: 'panel',
-    step: 'foulType',
+    entry: "panel",
+    step: "foulType",
     draft: {
       ...base,
       foulerSide: side,
       foulerJersey: null,
-      foulerRole: pick.kind === 'bench' ? 'bench' : 'coach',
+      foulerRole: pick.kind === "bench" ? "bench" : "coach",
     },
   };
 }
@@ -158,99 +160,104 @@ export function initialFoulFlowFromPanelSelection(
 export function foulFlowFromPanelPickAtPickFouler(
   cur: ActiveFoulFlow,
   side: TeamSide,
-  pick: PanelFoulPick
+  pick: PanelFoulPick,
 ): ActiveFoulFlow {
-  if (cur.step !== 'pickFouler') return cur;
+  if (cur.step !== "pickFouler") return cur;
   const base = emptyFoulDraft();
-  if (pick.kind === 'player') {
+  if (pick.kind === "player") {
     return {
       ...cur,
-      step: 'foulType',
+      step: "foulType",
       draft: {
         ...base,
         foulerSide: side,
         foulerJersey: pick.jersey,
-        foulerRole: 'player',
+        foulerRole: "player",
       },
     };
   }
-  if (pick.kind === 'bench_player') {
+  if (pick.kind === "bench_player") {
     return {
       ...cur,
-      step: 'foulType',
+      step: "foulType",
       draft: {
         ...base,
         foulerSide: side,
         foulerJersey: pick.jersey,
-        foulerRole: 'bench',
+        foulerRole: "bench",
       },
     };
   }
   return {
     ...cur,
-    step: 'foulType',
+    step: "foulType",
     draft: {
       ...base,
       foulerSide: side,
       foulerJersey: null,
-      foulerRole: pick.kind === 'bench' ? 'bench' : 'coach',
+      foulerRole: pick.kind === "bench" ? "bench" : "coach",
     },
   };
 }
 
 /** Back navigation (linear undo). */
-export function foulFlowBack(cur: ActiveFoulFlow): ActiveFoulFlow | 'idle' {
+export function foulFlowBack(cur: ActiveFoulFlow): ActiveFoulFlow | "idle" {
   const { entry, step, draft } = cur;
   switch (step) {
-    case 'rebounder':
+    case "rebounder":
       return {
         ...cur,
-        step: 'ftResults',
+        step: "ftResults",
         draft: { ...draft, reboundSide: null, reboundJersey: null },
       };
-    case 'ftResults':
+    case "ftResults":
       // Each FT is committed to the backend the moment it's tapped — once the
       // sequence has started there is nothing local left to undo.
       if (draft.ftResults.length > 0) return cur;
       // Technical fouls skip the assist step, so Back returns to the FT count.
-      if (draft.foulType === 'technical') {
+      if (draft.foulType === "technical") {
         return {
           ...cur,
-          step: 'ftCount',
-          draft: { ...draft, ftResults: [], ftAssistJersey: null, ftCount: null },
+          step: "ftCount",
+          draft: {
+            ...draft,
+            ftResults: [],
+            ftAssistJersey: null,
+            ftCount: null,
+          },
         };
       }
       return {
         ...cur,
-        step: 'ftAssist',
+        step: "ftAssist",
         draft: { ...draft, ftResults: [], ftAssistJersey: null },
       };
-    case 'ftAssist':
+    case "ftAssist":
       return {
         ...cur,
-        step: 'ftCount',
+        step: "ftCount",
         draft: { ...draft, ftAssistJersey: null },
       };
-    case 'ftCount':
+    case "ftCount":
       return {
         ...cur,
-        step: 'pickFouled',
+        step: "pickFouled",
         draft: { ...draft, ftCount: null },
       };
-    case 'pickFouled':
-      // Technical fouls commit at type selection; the foul is already on the backend,
-      // so re-choosing the type is not allowed — undo it from the game log instead.
+    case "pickFouled":
+      // Technical, offensive, and double fouls all commit the foul before or at the
+      // pickFouled step — once committed the flow can't be undone here; use the game log.
       if (draft.foulCommitted) return cur;
       return {
         ...cur,
-        step: 'foulType',
+        step: "foulType",
         draft: { ...draft, fouledJersey: null },
       };
-    case 'foulType':
-      if (entry === 'court') {
+    case "foulType":
+      if (entry === "court") {
         return {
           ...cur,
-          step: 'pickFouler',
+          step: "pickFouler",
           draft: {
             ...draft,
             foulType: null,
@@ -260,9 +267,9 @@ export function foulFlowBack(cur: ActiveFoulFlow): ActiveFoulFlow | 'idle' {
           },
         };
       }
-      return 'idle';
-    case 'pickFouler':
-      return 'idle';
+      return "idle";
+    case "pickFouler":
+      return "idle";
     default:
       return cur;
   }
@@ -270,21 +277,24 @@ export function foulFlowBack(cur: ActiveFoulFlow): ActiveFoulFlow | 'idle' {
 
 export function initialFoulFlowFromCourt(): ActiveFoulFlow {
   return {
-    entry: 'court',
-    step: 'pickFouler',
+    entry: "court",
+    step: "pickFouler",
     draft: emptyFoulDraft(),
   };
 }
 
-export function initialFoulFlowFromPlayer(side: TeamSide, jersey: number): ActiveFoulFlow {
+export function initialFoulFlowFromPlayer(
+  side: TeamSide,
+  jersey: number,
+): ActiveFoulFlow {
   return {
-    entry: 'player',
-    step: 'foulType',
+    entry: "player",
+    step: "foulType",
     draft: {
       ...emptyFoulDraft(),
       foulerSide: side,
       foulerJersey: jersey,
-      foulerRole: 'player',
+      foulerRole: "player",
     },
   };
 }

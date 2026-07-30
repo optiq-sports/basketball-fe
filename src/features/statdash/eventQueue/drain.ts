@@ -26,7 +26,11 @@ function rebasePendingEvents(queue: QueuedEvent[], baseVersion: number): QueuedE
     .slice()
     .sort((a, b) => a.enqueuedAt - b.enqueuedAt)
     .map((event) => {
-      if (event.status === 'sent') return event;
+      // 'sent' and 'failed' are both terminal — a failed command was rejected for a
+      // reason a version bump can't fix (e.g. a validation error) and must not be
+      // resurrected. Reviving it here would burn a version slot on a doomed retry
+      // and throw off the version assigned to every real pending command after it.
+      if (event.status === 'sent' || event.status === 'failed') return event;
       const rebased = {
         ...event,
         expectedVersion: versionCursor,
