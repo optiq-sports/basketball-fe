@@ -717,17 +717,41 @@ const StatDash: React.FC = () => {
     setStartGamePromptOpen(false);
   }, []);
 
-  const onAdjustMinutes = useCallback((delta: number) => {
-    setTimerSeconds((s) => Math.max(0, Math.min(MAX_TIMER_SECONDS, s + delta)));
-  }, []);
+  const onAdjustMinutes = useCallback(
+    (delta: number) => {
+      const next = Math.max(0, Math.min(MAX_TIMER_SECONDS, timerSeconds + delta));
+      setTimerSeconds(next);
+      void commitEventCommand("clock", {
+        quarter,
+        clockSecondsRemaining: next,
+        isRunning,
+      });
+    },
+    [commitEventCommand, timerSeconds, quarter, isRunning],
+  );
 
-  const onAdjustSeconds = useCallback((delta: number) => {
-    setTimerSeconds((s) => Math.max(0, Math.min(MAX_TIMER_SECONDS, s + delta)));
-  }, []);
+  const onAdjustSeconds = useCallback(
+    (delta: number) => {
+      const next = Math.max(0, Math.min(MAX_TIMER_SECONDS, timerSeconds + delta));
+      setTimerSeconds(next);
+      void commitEventCommand("clock", {
+        quarter,
+        clockSecondsRemaining: next,
+        isRunning,
+      });
+    },
+    [commitEventCommand, timerSeconds, quarter, isRunning],
+  );
 
   const onStartStop = useCallback(() => {
-    setIsRunning((r) => !r);
-  }, []);
+    const next = !isRunning;
+    setIsRunning(next);
+    void commitEventCommand("clock", {
+      quarter,
+      clockSecondsRemaining: timerSeconds,
+      isRunning: next,
+    });
+  }, [commitEventCommand, isRunning, quarter, timerSeconds]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -736,11 +760,11 @@ const StatDash: React.FC = () => {
       if (el?.closest('input, textarea, select, [contenteditable="true"]'))
         return;
       e.preventDefault();
-      setIsRunning((r) => !r);
+      onStartStop();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [onStartStop]);
 
   /**
    * Sends the foul command the moment its details are complete (fouler + type [+ fouled]),
@@ -2888,7 +2912,8 @@ const StatDash: React.FC = () => {
   }, []);
 
   const handleQuarterBreakConfirm = useCallback(() => {
-    setQuarter((q) => Math.min(4, q + 1));
+    const nextQuarter = Math.min(4, quarter + 1);
+    setQuarter(nextQuarter);
     setTimerSeconds(QUARTER_DURATION_SEC);
     setQuarterBreakPending(false);
     setQuarterEndAwaitingFinish(false);
@@ -2897,7 +2922,12 @@ const StatDash: React.FC = () => {
     // still lives on the backend and is what the post-game shot chart page reads from.
     setCourtShotMarkers([]);
     setCourtFoulMarkers([]);
-  }, []);
+    void commitEventCommand("clock", {
+      quarter: nextQuarter,
+      clockSecondsRemaining: QUARTER_DURATION_SEC,
+      isRunning: false,
+    });
+  }, [commitEventCommand, quarter]);
 
   const handleQuarterBreakKeepReviewing = useCallback(() => {
     setQuarterBreakModalOpen(false);

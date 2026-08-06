@@ -15,9 +15,15 @@ const RIGHT_ARC_CX = W - LEFT_ARC_CX;
 const RIGHT_ARC_CY = LEFT_ARC_CY;
 const RIGHT_X_SPLIT = W - LEFT_X_SPLIT;
 
-/** Matches the hoop symbol drawn in BasketballCourt.tsx ("M66 190" / "M554 190"). */
-const RIM_X = 66;
-const RIM_Y = 190;
+/**
+ * Normalized x of the rim for the left basket, calibrated against where a statistician
+ * actually tapped the court for a dunk (closer to the baseline than the schematic hoop
+ * icon in BasketballCourt.tsx — this is where the rim really sits). The right basket is
+ * the mirror of this value. Vertical position is the exact court center (0.5) — manual
+ * taps land a few thousandths off-center, which this rounds back out.
+ */
+const RIM_NX_LEFT = 0.05593277881514174;
+const RIM_NY = 0.5;
 
 function dist(ax: number, ay: number, bx: number, by: number): number {
   return Math.hypot(ax - bx, ay - by);
@@ -34,8 +40,8 @@ export function getRimPosition(
   const shootsLeft =
     (shootingSide === 'home' && homeAttacksLeft) ||
     (shootingSide === 'away' && !homeAttacksLeft);
-  const x = shootsLeft ? RIM_X : W - RIM_X;
-  return { nx: x / W, ny: RIM_Y / H };
+  const nx = shootsLeft ? RIM_NX_LEFT : 1 - RIM_NX_LEFT;
+  return { nx, ny: RIM_NY };
 }
 
 /**
