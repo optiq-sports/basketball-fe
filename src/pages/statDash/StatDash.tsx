@@ -2762,6 +2762,15 @@ const StatDash: React.FC = () => {
     const homeDiff = diffLineupOnCourt(homeLineup, subDraftHome);
     const awayDiff = diffLineupOnCourt(awayLineup, subDraftAway);
     const summary = `${formatSubstitutionDiff(homeName, homeDiff)} · ${formatSubstitutionDiff(awayName, awayDiff)}`;
+    // Full resulting five-man lineups (not just the swapped pair) so the backend can persist
+    // a restorable snapshot — see Backend Gap #10. Same target lineup on every command in this
+    // batch since subDraftHome/subDraftAway don't change until the whole submission completes.
+    const homeLineupIds = compactOnCourt(subDraftHome).map((jersey) =>
+      getPlayerId("home", jersey),
+    );
+    const awayLineupIds = compactOnCourt(subDraftAway).map((jersey) =>
+      getPlayerId("away", jersey),
+    );
     void (async () => {
       const submitTeamSubs = async (
         side: TeamSide,
@@ -2778,6 +2787,8 @@ const StatDash: React.FC = () => {
             teamId: getTeamIdForSide(side),
             playerOutId: getPlayerId(side, diff.out[idx]),
             playerInId: getPlayerId(side, diff.in[idx]),
+            homeLineup: homeLineupIds,
+            awayLineup: awayLineupIds,
           });
           if (!committed) return false;
         }
