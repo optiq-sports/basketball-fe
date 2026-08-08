@@ -518,10 +518,19 @@ const StatDash: React.FC = () => {
       writeStoredExpectedVersion(expectedVersion + 1);
       latestVersionRef.current = expectedVersion + 1;
 
+      // Every event carries when in the game it happened — otherwise the backend has no
+      // way to reconstruct "what quarter/clock was this at" after the fact (see Backend
+      // Gap #6 and #11 in docs/BACKEND_GAPS.md). The `clock` command sets these as its own
+      // target values with different meaning (where the clock is going), so it's excluded.
+      const payloadWithClock =
+        commandType === "clock"
+          ? payload
+          : { period: quarter, clockSecondsRemaining: timerSeconds, ...payload };
+
       enqueue({
         sessionId: context.sessionId,
         commandType,
-        payload: payload as Record<string, unknown>,
+        payload: payloadWithClock,
         expectedVersion,
         localId: idempotencyKey,
       });
@@ -534,7 +543,7 @@ const StatDash: React.FC = () => {
         localId: idempotencyKey,
       };
     },
-    [enqueue, homeScore, awayScore, navigate],
+    [enqueue, homeScore, awayScore, navigate, quarter, timerSeconds],
   );
 
   const onTick = useCallback(() => {
