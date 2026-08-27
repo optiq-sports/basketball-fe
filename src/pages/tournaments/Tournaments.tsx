@@ -1,7 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { FiMapPin, FiCalendar, FiEdit2, FiTrash2, FiUserPlus, FiChevronLeft, FiChevronDown } from 'react-icons/fi';
+import { LuTrophy } from 'react-icons/lu';
+import type { ColumnDef } from '@tanstack/react-table';
 import { useTournament, useMatches, useTeams, useUpdateTournament, useDeleteTournament, useTournamentAddTeams } from '../../api/hooks';
 import type { Match as ApiMatch } from '../../types/api';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { useToast } from '../../hooks/useToast';
+import DataTable from '../../components/ui/DataTable';
 
 // Copy Icon Component
 const CopyIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -58,6 +65,15 @@ function formatMatchTime(scheduledDate?: string): string {
   }
 }
 
+function formatDateOnly(date?: string): string {
+  if (!date) return '';
+  try {
+    return new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return date;
+  }
+}
+
 const CompetitionDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const { id: tournamentId } = useParams<{ id: string }>();
@@ -70,6 +86,8 @@ const CompetitionDetailPage: React.FC = () => {
   const teamsQuery = useTeams();
   const updateTournament = useUpdateTournament();
   const deleteTournament = useDeleteTournament();
+  const { confirm, dialogProps } = useConfirmDialog();
+  const toast = useToast();
   const addTeams = useTournamentAddTeams();
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAddTeamsModal, setShowAddTeamsModal] = useState(false);
@@ -214,7 +232,7 @@ const CompetitionDetailPage: React.FC = () => {
 
   const handleSaveEdit = () => {
     if (!tournamentId || !editForm.name.trim() || !editForm.venue.trim() || !editForm.startDate || !editForm.endDate) {
-      alert('Please fill name, venue, start and end date.');
+      toast.error('Please fill name, venue, start and end date.');
       return;
     }
     updateTournament.mutate(
@@ -232,21 +250,27 @@ const CompetitionDetailPage: React.FC = () => {
           venue: editForm.venue.trim(),
         },
       },
-      { onSuccess: () => setShowEditModal(false), onError: (e) => alert(e.message) }
+      { onSuccess: () => setShowEditModal(false), onError: (e) => toast.error(e.message) }
     );
   };
 
-  const handleDeleteTournament = () => {
-    if (!tournamentId || !window.confirm(`Delete tournament "${tournament?.name}"? This cannot be undone.`)) return;
+  const handleDeleteTournament = async () => {
+    if (!tournamentId) return;
+    const ok = await confirm({
+      description: `Delete tournament "${tournament?.name}"? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
+    if (!ok) return;
     deleteTournament.mutate(tournamentId, {
       onSuccess: () => navigate('/tournaments'),
-      onError: (e) => alert(e.message),
+      onError: (e) => toast.error(e.message),
     });
   };
 
   const handleAddTeams = () => {
     if (!tournamentId || selectedTeamIds.length === 0) {
-      alert('Please select at least one team.');
+      toast.error('Please select at least one team.');
       return;
     }
     addTeams.mutate(
@@ -256,77 +280,151 @@ const CompetitionDetailPage: React.FC = () => {
           setShowAddTeamsModal(false);
           setSelectedTeamIds([]);
         },
-        onError: (e) => alert(e.message),
+        onError: (e) => toast.error(e.message),
       }
     );
   };
 
   if (tournamentQuery.isPending || !tournamentId) {
     return (
-      <div className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-7xl mx-auto text-gray-500">Loading tournament…</div>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 p-6">
+        <div className="max-w-7xl mx-auto text-gray-500 dark:text-gray-400">Loading tournament…</div>
       </div>
     );
   }
   if (tournamentQuery.error || !tournamentQuery.data) {
     return (
-      <div className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-7xl mx-auto text-red-600">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 p-6">
+        <div className="max-w-7xl mx-auto text-error-600 dark:text-error-500">
           {tournamentQuery.error instanceof Error ? tournamentQuery.error.message : 'Tournament not found'}
         </div>
       </div>
     );
   }
 
+  const standingsColumns: ColumnDef<DisplayTeam>[] = [
+    {
+      accessorKey: 'name',
+      header: 'Team',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-3">
+          <img
+            src={row.original.color === 'yellow' ? '/ball1.png' : '/ball2.png'}
+            alt="Basketball"
+            style={{ width: '28px', height: '28px' }}
+            className="object-contain"
+          />
+          <span className="text-sm text-gray-700 dark:text-gray-300">{row.original.name}</span>
+        </div>
+      ),
+    },
+    { accessorKey: 'gp', header: 'GP' },
+    { accessorKey: 'w', header: 'W' },
+    { accessorKey: 'l', header: 'L' },
+    { accessorKey: 'percent', header: '%' },
+    { accessorKey: 'points', header: 'Points' },
+  ];
+
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 p-6">
       <div className="max-w-7xl mx-auto">
         {tournament.flyer && (
-          <div className="mb-6 rounded-lg overflow-hidden border border-gray-200" style={{ maxHeight: '220px' }}>
+          <div className="mb-6 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-800" style={{ maxHeight: '220px' }}>
             <img src={tournament.flyer} alt="Tournament flyer" className="w-full object-cover object-top" style={{ maxHeight: '220px' }} />
           </div>
         )}
 
-        <div className="mb-6 flex items-center justify-between gap-3 flex-wrap">
-          <h1 className="text-2xl font-semibold text-gray-800">{tournament.name}</h1>
-          <div className="flex gap-2">
+        <button
+          onClick={() => navigate('/tournaments')}
+          className="mb-3 flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+        >
+          <FiChevronLeft className="size-4" />
+          Tournaments
+        </button>
+
+        <div className="mb-6 flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{tournament.name}</h1>
+            {(tournament.venue || tournament.startDate) && (
+              <div className="mt-1.5 flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
+                {tournament.venue && (
+                  <span className="flex items-center gap-1.5">
+                    <FiMapPin className="size-3.5" />
+                    {tournament.venue}
+                  </span>
+                )}
+                {tournament.startDate && (
+                  <span className="flex items-center gap-1.5">
+                    <FiCalendar className="size-3.5" />
+                    {formatDateOnly(tournament.startDate)}
+                    {tournament.endDate && tournament.endDate !== tournament.startDate
+                      ? ` – ${formatDateOnly(tournament.endDate)}`
+                      : ''}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
             <button
               onClick={openEditModal}
-              className="px-4 py-2 rounded-lg text-sm font-medium bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 transition-colors"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 transition-colors dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-white/5"
             >
-              Edit Tournament
-            </button>
-            <button
-              onClick={handleDeleteTournament}
-              disabled={deleteTournament.isPending}
-              className="px-4 py-2 rounded-lg text-sm font-medium bg-white text-red-600 border border-red-200 hover:bg-red-50 transition-colors disabled:opacity-70"
-            >
-              {deleteTournament.isPending ? 'Deleting…' : 'Delete Tournament'}
+              <FiEdit2 className="size-4" />
+              Edit
             </button>
             <button
               onClick={() => setShowAddTeamsModal(true)}
-              className="px-4 py-2 rounded-lg text-sm font-medium bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 transition-colors"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 transition-colors dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-white/5"
             >
+              <FiUserPlus className="size-4" />
               Add Teams
             </button>
             <button
               onClick={() => navigate(`/tournaments/${tournamentId}/fixtures`)}
-              className="px-4 py-2 rounded-lg text-sm font-medium bg-[#21409A] text-white hover:bg-blue-800 transition-colors"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-500 text-white hover:bg-brand-600 transition-colors"
             >
+              <FiCalendar className="size-4" />
               View Fixtures
+            </button>
+            <button
+              onClick={handleDeleteTournament}
+              disabled={deleteTournament.isPending}
+              title="Delete tournament"
+              className="flex items-center justify-center size-9 rounded-lg text-error-500 hover:bg-error-50 transition-colors disabled:opacity-70 dark:hover:bg-error-500/10"
+            >
+              <FiTrash2 className="size-4" />
             </button>
           </div>
         </div>
 
+        {/* Quick stats */}
+        <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {[
+            { label: 'Teams', value: teams.length },
+            { label: 'Games played', value: matchesRaw.filter((m) => m.status === 'COMPLETED').length },
+            { label: 'Total games', value: (tournament.numberOfGames as number) ?? matchesRaw.length },
+            { label: 'Division', value: (tournament.division as string)?.replace(/_/g, ' ') ?? '—' },
+          ].map((stat) => (
+            <div
+              key={stat.label}
+              className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900"
+            >
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{stat.label}</p>
+              <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white capitalize">{stat.value}</p>
+            </div>
+          ))}
+        </div>
+
         {showAddTeamsModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-              <div className="p-6 border-b border-gray-200">
-                <h2 className="text-xl font-semibold text-gray-800">Add Teams to Tournament</h2>
+            <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto dark:bg-gray-900">
+              <div className="p-6 border-b border-gray-200 dark:border-gray-800">
+                <h2 className="text-xl font-semibold text-gray-800 dark:text-white">Add Teams to Tournament</h2>
               </div>
               <div className="p-6 space-y-2 max-h-64 overflow-y-auto">
                 {(teamsQuery.data ?? []).filter((team) => !existingTeamIds.has(team.id)).map((team) => (
-                  <label key={team.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer">
+                  <label key={team.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 dark:hover:bg-white/5 rounded-lg cursor-pointer">
                     <input
                       type="checkbox"
                       checked={selectedTeamIds.includes(team.id)}
@@ -337,22 +435,22 @@ const CompetitionDetailPage: React.FC = () => {
                           setSelectedTeamIds((prev) => prev.filter((id) => id !== team.id));
                         }
                       }}
-                      className="w-4 h-4 rounded border-gray-300 text-[#21409A] focus:ring-[#21409A]"
+                      className="w-4 h-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500 dark:border-gray-700"
                     />
-                    <span className="text-sm font-medium text-gray-800">{team.name}</span>
+                    <span className="text-sm font-medium text-gray-800 dark:text-white">{team.name}</span>
                   </label>
                 ))}
                 {(teamsQuery.data ?? []).filter((team) => !existingTeamIds.has(team.id)).length === 0 && (
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
                     {(teamsQuery.data ?? []).length === 0
                       ? 'No teams available. Create teams first from Teams Management.'
                       : 'All teams are already in this tournament.'}
                   </p>
                 )}
               </div>
-              <div className="flex justify-end gap-3 p-6 border-t border-gray-200">
-                <button onClick={() => { setShowAddTeamsModal(false); setSelectedTeamIds([]); }} className="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
-                <button onClick={handleAddTeams} disabled={addTeams.isPending || selectedTeamIds.length === 0} className="px-4 py-2 bg-[#21409A] text-white rounded-lg font-medium hover:bg-blue-800 disabled:opacity-70 disabled:cursor-not-allowed">{addTeams.isPending ? 'Adding…' : 'Add Teams'}</button>
+              <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-800">
+                <button onClick={() => { setShowAddTeamsModal(false); setSelectedTeamIds([]); }} className="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5">Cancel</button>
+                <button onClick={handleAddTeams} disabled={addTeams.isPending || selectedTeamIds.length === 0} className="px-4 py-2 bg-brand-500 text-white rounded-lg font-medium hover:bg-brand-600 disabled:opacity-70 disabled:cursor-not-allowed">{addTeams.isPending ? 'Adding…' : 'Add Teams'}</button>
               </div>
             </div>
           </div>
@@ -360,98 +458,97 @@ const CompetitionDetailPage: React.FC = () => {
 
         {showEditModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-              <div className="p-6 border-b border-gray-200">
-                <h2 className="text-xl font-semibold text-gray-800">Edit Tournament</h2>
+            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto dark:bg-gray-900">
+              <div className="p-6 border-b border-gray-200 dark:border-gray-800">
+                <h2 className="text-xl font-semibold text-gray-800 dark:text-white">Edit Tournament</h2>
               </div>
               <div className="p-6 space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Name *</label>
                   <input
                     type="text"
                     value={editForm.name}
                     onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:[color-scheme:dark]"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Venue *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Venue *</label>
                   <input
                     type="text"
                     value={editForm.venue}
                     onChange={(e) => setEditForm({ ...editForm, venue: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:[color-scheme:dark]"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Start date *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Start date *</label>
                     <input
                       type="date"
                       value={editForm.startDate}
                       onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:[color-scheme:dark]"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">End date *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">End date *</label>
                     <input
                       type="date"
                       value={editForm.endDate}
                       onChange={(e) => setEditForm({ ...editForm, endDate: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:[color-scheme:dark]"
                     />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Number of games</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Number of games</label>
                     <input
                       type="number"
                       min={1}
                       value={editForm.numberOfGames}
                       onChange={(e) => setEditForm({ ...editForm, numberOfGames: parseInt(e.target.value, 10) || 0 })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:[color-scheme:dark]"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Quarters</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Quarters</label>
                     <input
                       type="number"
                       min={1}
                       value={editForm.numberOfQuarters}
                       onChange={(e) => setEditForm({ ...editForm, numberOfQuarters: parseInt(e.target.value, 10) || 0 })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:[color-scheme:dark]"
                     />
                   </div>
                 </div>
               </div>
-              <div className="flex justify-end gap-3 p-6 border-t border-gray-200">
-                <button onClick={() => setShowEditModal(false)} className="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
-                <button onClick={handleSaveEdit} disabled={updateTournament.isPending} className="px-4 py-2 bg-[#21409A] text-white rounded-lg font-medium hover:bg-blue-800 disabled:opacity-70">{updateTournament.isPending ? 'Saving…' : 'Save'}</button>
+              <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-800">
+                <button onClick={() => setShowEditModal(false)} className="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5">Cancel</button>
+                <button onClick={handleSaveEdit} disabled={updateTournament.isPending} className="px-4 py-2 bg-brand-500 text-white rounded-lg font-medium hover:bg-brand-600 disabled:opacity-70">{updateTournament.isPending ? 'Saving…' : 'Save'}</button>
               </div>
             </div>
           </div>
         )}
 
-        {matchesQuery.isPending && <div className="text-gray-500 mb-4">Loading matches…</div>}
+        {matchesQuery.isPending && <div className="text-gray-500 dark:text-gray-400 mb-4">Loading matches…</div>}
         {matchesQuery.error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+          <div className="mb-4 p-4 bg-error-50 border border-error-100 rounded-lg text-error-700 text-sm dark:bg-error-500/10 dark:border-error-500/30 dark:text-error-500">
             {matchesQuery.error instanceof Error ? matchesQuery.error.message : 'Failed to load matches'}
           </div>
         )}
 
         {ongoingMatch && (
         <div
-          className="rounded-lg shadow-sm p-6 mb-6 border cursor-pointer hover:shadow-md transition-shadow"
-          style={{ background: '#FCFEFF', border: '1px solid #A9A9A91A' }}
+          className="rounded-2xl p-6 mb-6 border border-gray-200 bg-white cursor-pointer transition-colors hover:border-gray-300 dark:bg-gray-900 dark:border-gray-800 dark:hover:border-gray-700"
           onClick={() => navigate(`/tournaments/${tournamentId}/match/${ongoingMatch.id}`)}
         >
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-sm font-semibold text-gray-700">Ongoing Game</h2>
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Ongoing Game</h2>
             <button
-              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(ongoingMatch.matchCode ?? ongoingMatch.id); alert('Match code copied!'); }}
-              className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800 transition-colors"
+              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(ongoingMatch.matchCode ?? ongoingMatch.id); toast.success('Match code copied!'); }}
+              className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800 transition-colors dark:text-gray-400 dark:hover:text-gray-200"
             >
               <span>Copy Match Code</span>
               <CopyIcon className="w-4 h-4" />
@@ -464,17 +561,17 @@ const CompetitionDetailPage: React.FC = () => {
                 <img src="/ball1.png" alt="Basketball" style={{ width: '35px', height: '35px' }} className="object-contain" />
               </div>
               <div>
-                <div className="text-xs text-gray-500 mb-1">{ongoingMatch.teamA}</div>
-                <div className="text-4xl font-bold text-gray-900">{ongoingMatch.homeScore ?? 0}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">{ongoingMatch.teamA}</div>
+                <div className="text-4xl font-bold text-gray-900 dark:text-white">{ongoingMatch.homeScore ?? 0}</div>
               </div>
             </div>
 
-            <div className="text-lg text-gray-400 font-medium">VS</div>
+            <div className="text-lg text-gray-400 dark:text-gray-500 font-medium">VS</div>
 
             <div className="flex items-center gap-4">
               <div>
-                <div className="text-xs text-gray-500 mb-1 text-right">{ongoingMatch.teamB}</div>
-                <div className="text-4xl font-bold text-gray-900">{ongoingMatch.awayScore ?? 0}</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 text-right">{ongoingMatch.teamB}</div>
+                <div className="text-4xl font-bold text-gray-900 dark:text-white">{ongoingMatch.awayScore ?? 0}</div>
               </div>
               <div className="flex items-center justify-center">
                 <img src="/ball2.png" alt="Basketball" style={{ width: '35px', height: '35px' }} className="object-contain" />
@@ -482,22 +579,22 @@ const CompetitionDetailPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="text-center mt-4 text-xs text-gray-400">
+          <div className="text-center mt-4 text-xs text-gray-400 dark:text-gray-500">
             {tournament.name} | {ongoingMatch.time}
           </div>
         </div>
         )}
 
         {/* Group Tabs */}
-        <div className="flex justify-center gap-2 mb-6">
+        <div className="mb-6 inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-white p-1 dark:border-gray-800 dark:bg-gray-900">
           {['A', 'B', 'C', 'D'].map((group) => (
             <button
               key={group}
               onClick={() => setActiveGroup(group)}
-              className={`px-6 py-2.5 rounded-lg font-medium transition-all ${
+              className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeGroup === group
-                  ? 'bg-[#21409A] text-white shadow-md'
-                  : 'bg-white text-gray-600 hover:bg-gray-100'
+                  ? 'bg-brand-500 text-white'
+                  : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/5'
               }`}
             >
               Group {group}
@@ -508,126 +605,84 @@ const CompetitionDetailPage: React.FC = () => {
         {/* Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Standings Table */}
-          <div>
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">Teams</h2>
-            <div className="rounded-lg shadow-sm p-6 border" style={{ background: '#FCFEFF', border: '1px solid #A9A9A91A' }}>
-            <div className="mb-6">
-              <h2 className="text-xl font-semibold text-gray-800">Group {activeGroup}</h2>
-              <p className="text-sm text-gray-500">
-                {matchesRaw.filter(m => m.status === 'COMPLETED').length}/{tournament.numberOfGames as number ?? '—'} Games Played
+          <div className="rounded-2xl border border-gray-200 bg-white dark:bg-gray-900 dark:border-gray-800">
+            <div className="border-b border-gray-100 p-5 dark:border-gray-800">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">Group {activeGroup} Standings</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {matchesRaw.filter(m => m.status === 'COMPLETED').length}/{tournament.numberOfGames as number ?? '—'} games played
               </p>
             </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-2 text-xs font-semibold text-gray-600">Team</th>
-                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">GP</th>
-                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">W</th>
-                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">L</th>
-                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">%</th>
-                    <th className="text-center py-3 px-2 text-xs font-semibold text-gray-600">Points</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {teams.map((team) => (
-                    <tr key={team.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                      <td className="py-3 px-2">
-                        <div className="flex items-center gap-3">
-                          <div className="flex items-center justify-center">
-                            <img 
-                              src={team.color === 'yellow' ? '/ball1.png' : '/ball2.png'} 
-                              alt="Basketball" 
-                              style={{ width: '35px', height: '35px' }} 
-                              className="object-contain" 
-                            />
-                          </div>
-                          <span className="text-sm text-gray-700">{team.name}</span>
-                        </div>
-                      </td>
-                      <td className="text-center py-3 px-2 text-sm text-gray-700">{team.gp}</td>
-                      <td className="text-center py-3 px-2 text-sm text-gray-700">{team.w}</td>
-                      <td className="text-center py-3 px-2 text-sm text-gray-700">{team.l}</td>
-                      <td className="text-center py-3 px-2 text-sm text-gray-700">{team.percent}</td>
-                      <td className="text-center py-3 px-2 text-sm text-gray-700">{team.points}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <div className="p-5 pt-0">
+              <DataTable
+                columns={standingsColumns}
+                data={teams}
+                pageSize={20}
+                emptyMessage="No teams in this tournament yet."
+              />
             </div>
           </div>
 
           {/* Fixtures List */}
-          <div>
-            <div className="flex justify-between items-center mb-4">
-              <div className="flex items-center gap-3">
-                <button 
-                  onClick={() => setShowSchedules(!showSchedules)}
-                  className="text-gray-600 hover:text-gray-800 cursor-pointer"
-                >
-                  <span className="text-lg">{showSchedules ? '▼' : '▶'}</span>
-                </button>
-                <h2 className="text-lg font-semibold text-gray-800">Schedules ({matches.length})</h2>
-              </div>
+          <div className="rounded-2xl border border-gray-200 bg-white dark:bg-gray-900 dark:border-gray-800">
+            <div className="flex justify-between items-center border-b border-gray-100 p-5 dark:border-gray-800">
+              <button
+                onClick={() => setShowSchedules(!showSchedules)}
+                className="flex items-center gap-2 text-lg font-bold text-gray-900 dark:text-white"
+              >
+                <FiChevronDown className={`size-4 text-gray-400 transition-transform ${showSchedules ? '' : '-rotate-90'}`} />
+                Schedules ({matches.length})
+              </button>
               <button
                 onClick={() => navigate(`/tournaments/${tournamentId}/fixtures`)}
-                className="text-sm text-[#21409A] hover:underline font-medium cursor-pointer"
+                className="text-sm text-brand-600 dark:text-brand-400 hover:underline font-medium cursor-pointer"
               >
                 View All
               </button>
             </div>
             {showSchedules && (
-            <div className="space-y-4">
+            <div className="space-y-3 p-5">
+            {matches.length === 0 && (
+              <p className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">No matches scheduled yet.</p>
+            )}
             {matches.map((match) => (
               <div
                 key={match.id}
-                className="rounded-lg shadow-sm p-5 border cursor-pointer transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:ring-1 hover:ring-gray-300 relative"
-                style={{ background: '#F8F8F8', border: '1px solid #A9A9A91A' }}
+                className="rounded-xl border border-gray-200 bg-gray-50 p-4 cursor-pointer transition-colors hover:border-gray-300 dark:bg-white/[0.02] dark:border-gray-800 dark:hover:border-gray-700"
                 onClick={() => navigate(match.hasStarted ? `/tournaments/${tournamentId}/match/${match.id}` : `/tournaments/${tournamentId}/match/${match.id}/pending`)}
               >
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(match.matchCode ?? match.id); alert('Match code copied!'); }}
-                  className="absolute top-3 right-3 p-2 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
-                  title="Copy match code"
-                >
-                  <CopyIcon className="w-4 h-4" />
-                </button>
-                <div className="flex justify-between items-start">
-                  {/* Teams (left) */}
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center justify-center">
-                        <img 
-                          src={match.teamAColor === 'yellow' ? '/ball1.png' : '/ball2.png'} 
-                          alt="Basketball" 
-                          style={{ width: '35px', height: '35px' }} 
-                          className="object-contain" 
-                        />
-                      </div>
-                      <span className="text-sm font-medium text-gray-700">{match.teamA}</span>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-1 items-center justify-center gap-3 min-w-0">
+                    <div className="flex flex-1 items-center justify-end gap-2 min-w-0">
+                      <span className="truncate text-sm font-medium text-gray-800 dark:text-gray-200">{match.teamA}</span>
+                      <img
+                        src={match.teamAColor === 'yellow' ? '/ball1.png' : '/ball2.png'}
+                        alt=""
+                        className="size-6 shrink-0 object-contain"
+                      />
                     </div>
-                    
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center justify-center">
-                        <img 
-                          src={match.teamBColor === 'yellow' ? '/ball1.png' : '/ball2.png'} 
-                          alt="Basketball" 
-                          style={{ width: '35px', height: '35px' }} 
-                          className="object-contain" 
-                        />
-                      </div>
-                      <span className="text-sm font-medium text-gray-700">{match.teamB}</span>
+                    <span className="shrink-0 text-xs font-semibold text-gray-400 dark:text-gray-600">VS</span>
+                    <div className="flex flex-1 items-center gap-2 min-w-0">
+                      <img
+                        src={match.teamBColor === 'yellow' ? '/ball1.png' : '/ball2.png'}
+                        alt=""
+                        className="size-6 shrink-0 object-contain"
+                      />
+                      <span className="truncate text-sm font-medium text-gray-800 dark:text-gray-200">{match.teamB}</span>
                     </div>
                   </div>
-
-                  {/* Venue/Time (right) */}
-                  <div className="text-xs text-gray-500 text-left self-center space-y-1">
-                    <div>{match.venue}</div>
-                    <div>{match.time}</div>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(match.matchCode ?? match.id); toast.success('Match code copied!'); }}
+                    className="shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-white hover:text-gray-600 dark:hover:bg-white/5 dark:hover:text-gray-300"
+                    title="Copy match code"
+                  >
+                    <CopyIcon className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="mt-2.5 flex items-center justify-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+                  <span>{match.venue}</span>
+                  <span className="text-gray-300 dark:text-gray-700">•</span>
+                  <span>{match.time}</span>
                 </div>
               </div>
             ))}
@@ -638,18 +693,18 @@ const CompetitionDetailPage: React.FC = () => {
 
         {/* Tournament Leaders Section */}
         <div className="mt-8">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">Tournament Leaders</h2>
-          
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Tournament Leaders</h2>
+
           {/* Stats Tabs */}
-          <div className="flex gap-2 mb-6">
+          <div className="mb-6 inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-white p-1 dark:border-gray-800 dark:bg-gray-900">
             {(['points', 'rebounds', 'assists', 'blocks', 'steals'] as LeaderStat[]).map((stat) => (
               <button
                 key={stat}
                 onClick={() => setActiveLeaderStat(stat)}
-                className={`px-6 py-2.5 rounded-lg font-medium transition-all ${
+                className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
                   activeLeaderStat === stat
-                    ? 'bg-[#21409A] text-white shadow-md'
-                    : 'bg-white text-gray-600 hover:bg-gray-100'
+                    ? 'bg-brand-500 text-white'
+                    : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/5'
                 }`}
               >
                 {stat.charAt(0).toUpperCase() + stat.slice(1)}
@@ -659,25 +714,32 @@ const CompetitionDetailPage: React.FC = () => {
 
           {/* Player Cards */}
           {tournamentLeaders.length === 0 ? (
-            <div className="text-center py-10 bg-gray-50 rounded-lg border border-gray-200">
-              <p className="text-gray-500 text-sm">No stats recorded yet for this tournament.</p>
+            <div className="flex flex-col items-center gap-2 text-center py-12 bg-gray-50 rounded-2xl border border-gray-200 dark:bg-white/[0.02] dark:border-gray-800">
+              <LuTrophy className="size-8 text-gray-300 dark:text-gray-700" />
+              <p className="text-gray-500 dark:text-gray-400 text-sm">No stats recorded yet for this tournament.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {tournamentLeaders.map((player, i) => (
                 <div
                   key={player.playerId}
-                  className="rounded-2xl overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
-                  style={{ width: '335px', height: '200px', backgroundColor: LEADER_COLORS[i % LEADER_COLORS.length] }}
+                  className="flex items-center gap-4 rounded-2xl border border-gray-200 bg-white p-5 cursor-pointer transition-colors hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700"
                   onClick={() => navigate(
                     `/tournaments/${tournamentId}/match/${player.matchId}/player/${player.playerId}`,
                     { state: { from: 'tournament-leaders', tournamentId } }
                   )}
                 >
-                  <div className="p-4">
-                    <div className="text-white font-bold text-lg mb-2">{player.name}</div>
-                    <div className="bg-white text-gray-900 font-bold text-sm px-3 py-1 rounded-md inline-block">
-                      {player[activeLeaderStat]} <span className="font-light">{LEADER_STAT_LABELS[activeLeaderStat]}</span>
+                  <div
+                    className="flex size-11 shrink-0 items-center justify-center rounded-full text-base font-bold text-white"
+                    style={{ backgroundColor: LEADER_COLORS[i % LEADER_COLORS.length] }}
+                  >
+                    #{i + 1}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-bold text-gray-900 dark:text-white">{player.name}</div>
+                    <div className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      <span className="font-semibold text-brand-600 dark:text-brand-400">{player[activeLeaderStat]}</span>{' '}
+                      {LEADER_STAT_LABELS[activeLeaderStat]}
                     </div>
                   </div>
                 </div>
@@ -686,6 +748,7 @@ const CompetitionDetailPage: React.FC = () => {
           )}
         </div>
       </div>
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 };

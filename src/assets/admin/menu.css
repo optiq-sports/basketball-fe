@@ -1,0 +1,68 @@
+/*
+ * Sidebar menu-item utility classes, ported verbatim from the TailAdmin template's
+ * globals.css (@utility blocks — all class-scoped, safe to import globally).
+ */
+
+@utility menu-item {
+  @apply relative flex items-center w-full gap-3 px-3.5 py-3 font-medium rounded-lg text-theme-sm;
+}
+
+@utility menu-item-active {
+  @apply bg-brand-50 text-brand-500 dark:bg-brand-500/[0.12] dark:text-brand-400;
+}
+
+@utility menu-item-inactive {
+  @apply text-gray-700 hover:bg-gray-100 group-hover:text-gray-700 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-gray-300;
+}
+
+@utility menu-item-icon {
+  @apply text-gray-500 group-hover:text-gray-700 dark:text-gray-400;
+}
+
+@utility menu-item-icon-active {
+  @apply text-brand-500 dark:text-brand-400;
+}
+
+@utility menu-item-icon-inactive {
+  @apply text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-300;
+}
+
+@utility menu-item-text {
+  @apply whitespace-nowrap;
+}
+
+@utility no-scrollbar {
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/*
+ * The default border color changed to `currentColor` in Tailwind v4 — this restores
+ * the v3-style explicit gray default so `border` utilities without a color look right.
+ * Purely cosmetic (only affects elements that already opt into a `border` utility),
+ * so it's safe to leave global rather than scoping to .admin-shell.
+ */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+
+  /* Tailwind v4 resets the default cursor on buttons to `default` — put pointer back. */
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+/* Scoped to .admin-shell (the Wrapper root) so it cannot leak into the isolated
+   Statistician/StatDash route tree, which never renders Wrapper. */
+.admin-shell {
+  @apply bg-gray-50 dark:bg-gray-900;
+}

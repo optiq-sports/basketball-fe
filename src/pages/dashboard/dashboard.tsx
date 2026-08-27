@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { LuTrophy, LuUsers, LuCalendarClock, LuRadio } from 'react-icons/lu';
 import { useProfile, useTournaments, useMatches, useTeams } from '../../api/hooks';
 import type { Match as MatchType } from '../../types/api';
 
@@ -112,19 +113,19 @@ const BasketballDashboard: React.FC = () => {
     profile.error || teamsQuery.error || liveMatches.error || completedMatches.error || tournamentsQuery.error;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-white dark:bg-gray-950 p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl text-gray-700">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl text-gray-600 dark:text-gray-400">
             Welcome back{' '}
-            <span className="font-bold text-gray-900">
+            <span className="font-bold text-gray-900 dark:text-white">
               {profile.isPending ? '...' : welcomeName}
             </span>
           </h1>
           <button
             onClick={handleStartNew}
-            className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors shadow-sm"
+            className="flex items-center gap-2 px-5 py-2.5 bg-brand-500 hover:bg-brand-600 text-white font-medium rounded-lg transition-colors"
           >
             <PlusCircleIcon className="w-5 h-5" />
             <span>Start New</span>
@@ -132,7 +133,7 @@ const BasketballDashboard: React.FC = () => {
         </div>
 
         {hasError && (
-          <div className="mb-6 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+          <div className="mb-6 px-4 py-3 rounded-xl bg-error-50 border border-error-100 text-error-700 text-sm dark:bg-error-500/10 dark:border-error-500/30 dark:text-error-500">
             {profile.error?.message ??
               teamsQuery.error?.message ??
               liveMatches.error?.message ??
@@ -142,15 +143,38 @@ const BasketballDashboard: React.FC = () => {
           </div>
         )}
 
+        {/* Quick stats */}
+        <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {[
+            { label: 'Live now', value: liveList.length, icon: LuRadio },
+            { label: 'Upcoming matches', value: scheduledList.length, icon: LuCalendarClock },
+            { label: 'Tournaments', value: tournamentsList.length, icon: LuTrophy },
+            { label: 'Teams', value: teamsQuery.data?.length ?? 0, icon: LuUsers },
+          ].map((stat) => (
+            <div
+              key={stat.label}
+              className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900"
+            >
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
+                <stat.icon className="size-5" />
+              </div>
+              <div>
+                <p className="text-xl font-bold text-gray-900 dark:text-white">{stat.value}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">{stat.label}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left Column */}
           <div className="space-y-6">
             {/* Ongoing Game */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
-              <h2 className="text-sm font-semibold text-gray-700 mb-4">Ongoing Game</h2>
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white mb-4">Ongoing Game</h2>
               {liveMatches.isPending ? (
-                <div className="h-24 flex items-center justify-center text-gray-400 text-sm">Loading...</div>
+                <div className="h-24 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">Loading...</div>
               ) : ongoingMatch ? (
                 <div
                   className="cursor-pointer hover:opacity-90 transition-opacity"
@@ -163,21 +187,21 @@ const BasketballDashboard: React.FC = () => {
                         <img src="/ball1.png" alt="Basketball" style={{ width: '35px', height: '35px' }} className="object-contain" />
                       </div>
                       <div>
-                        <div className="text-xs text-gray-500 mb-1">
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
                           {getTeamName(teamMap, ongoingMatch.homeTeamId)}
                         </div>
-                        <div className="text-3xl font-bold text-gray-900">
+                        <div className="text-3xl font-bold text-gray-900 dark:text-white">
                           {ongoingMatch.totalHome ?? 0}
                         </div>
                       </div>
                     </div>
-                    <div className="text-sm text-gray-400 font-medium">VS</div>
+                    <div className="text-sm text-gray-400 dark:text-gray-600 font-medium">VS</div>
                     <div className="flex items-center gap-4">
                       <div>
-                        <div className="text-xs text-gray-500 mb-1 text-right">
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 text-right">
                           {getTeamName(teamMap, ongoingMatch.awayTeamId)}
                         </div>
-                        <div className="text-3xl font-bold text-gray-900">
+                        <div className="text-3xl font-bold text-gray-900 dark:text-white">
                           {ongoingMatch.totalAway ?? 0}
                         </div>
                       </div>
@@ -186,36 +210,36 @@ const BasketballDashboard: React.FC = () => {
                       </div>
                     </div>
                   </div>
-                  <div className="mt-4 text-xs text-gray-400">
+                  <div className="mt-4 text-xs text-gray-400 dark:text-gray-500">
                     {ongoingMatch.venue ?? '—'} | {formatMatchDate(ongoingMatch.scheduledDate)}
                   </div>
                 </div>
               ) : (
-                <div className="h-24 flex items-center justify-center text-gray-500 text-sm">No live game</div>
+                <div className="h-24 flex items-center justify-center text-gray-500 dark:text-gray-400 text-sm">No live game</div>
               )}
             </div>
 
             {/* Up Next Carousel */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-sm font-semibold text-gray-700">Up Next</h2>
+                <h2 className="text-sm font-bold text-gray-900 dark:text-white">Up Next</h2>
                 <button
                   type="button"
                   onClick={() => navigate('/tournaments')}
-                  className="text-xs text-blue-600 hover:underline"
+                  className="text-xs text-brand-600 dark:text-brand-400 hover:underline font-medium"
                 >
                   View all
                 </button>
               </div>
               {scheduledMatches.isPending ? (
-                <div className="h-20 flex items-center justify-center text-gray-400 text-sm">Loading...</div>
+                <div className="h-20 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">Loading...</div>
               ) : hasUpNext && currentUpNext ? (
                 <div className="relative">
                   <div className="flex items-center justify-between">
                     <button
                       type="button"
                       onClick={prevSlide}
-                      className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+                      className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
                     >
                       <ChevronLeftIcon className="w-5 h-5" />
                     </button>
@@ -231,13 +255,13 @@ const BasketballDashboard: React.FC = () => {
                           <div className="flex items-center justify-center">
                             <img src="/ball1.png" alt="Basketball" style={{ width: '35px', height: '35px' }} className="object-contain" />
                           </div>
-                          <div className="text-sm text-gray-600">
+                          <div className="text-sm text-gray-700 dark:text-gray-300">
                             {getTeamName(teamMap, currentUpNext.homeTeamId)}
                           </div>
                         </div>
-                        <div className="text-xs text-gray-400 font-medium">VS</div>
+                        <div className="text-xs text-gray-400 dark:text-gray-600 font-medium">VS</div>
                         <div className="flex items-center gap-3">
-                          <div className="text-sm text-gray-600">
+                          <div className="text-sm text-gray-700 dark:text-gray-300">
                             {getTeamName(teamMap, currentUpNext.awayTeamId)}
                           </div>
                           <div className="flex items-center justify-center">
@@ -245,14 +269,14 @@ const BasketballDashboard: React.FC = () => {
                           </div>
                         </div>
                       </div>
-                      <div className="mt-3 text-xs text-gray-400">
+                      <div className="mt-3 text-xs text-gray-400 dark:text-gray-500">
                         {currentUpNext.venue ?? '—'} | {formatMatchDate(currentUpNext.scheduledDate)}
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={nextSlide}
-                      className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
+                      className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
                     >
                       <ChevronRightIcon className="w-5 h-5" />
                     </button>
@@ -264,46 +288,53 @@ const BasketballDashboard: React.FC = () => {
                         type="button"
                         onClick={() => setCurrentSlide(idx)}
                         className={`w-1.5 h-1.5 rounded-full transition-colors ${
-                          idx === currentSlideIndex ? 'bg-gray-800' : 'bg-gray-300'
+                          idx === currentSlideIndex ? 'bg-brand-500' : 'bg-gray-300 dark:bg-gray-700'
                         }`}
                       />
                     ))}
                   </div>
                 </div>
               ) : (
-                <div className="h-20 flex items-center justify-center text-gray-500 text-sm">No upcoming matches</div>
+                <div className="h-20 flex items-center justify-center text-gray-500 dark:text-gray-400 text-sm">No upcoming matches</div>
               )}
             </div>
 
             {/* Up Coming Tournaments */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-sm font-semibold text-gray-700">Upcoming Tournament / Leagues</h2>
+                <h2 className="text-sm font-bold text-gray-900 dark:text-white">Upcoming Tournament / Leagues</h2>
                 <button
                   type="button"
                   onClick={() => navigate('/tournaments')}
-                  className="text-xs text-blue-600 hover:underline"
+                  className="text-xs text-brand-600 dark:text-brand-400 hover:underline font-medium"
                 >
                   View All
                 </button>
               </div>
               {tournamentsQuery.isPending ? (
-                <div className="h-20 flex items-center justify-center text-gray-400 text-sm">Loading...</div>
+                <div className="h-20 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">Loading...</div>
               ) : tournamentsList.length > 0 ? (
                 <div className="space-y-3">
                   {tournamentsList.map((tournament) => (
                     <div
                       key={tournament.id}
-                      className="flex items-center gap-3 p-3 hover:bg-gray-50 rounded-lg transition-colors"
+                      onClick={() => navigate(`/tournaments/${tournament.id}`)}
+                      className="flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-white/5 rounded-lg transition-colors cursor-pointer"
                     >
-                      <img
-                        src="/club.png"
-                        alt="Tournament"
-                        className="w-12 h-12 rounded-lg object-cover"
-                      />
-                      <div className="flex-1">
-                        <div className="font-medium text-gray-900 text-sm mb-1">{tournament.name}</div>
-                        <div className="flex items-center gap-3 text-xs text-gray-500">
+                      {tournament.flyer ? (
+                        <img
+                          src={tournament.flyer}
+                          alt=""
+                          className="w-12 h-12 rounded-lg object-cover shrink-0"
+                        />
+                      ) : (
+                        <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-300 dark:bg-white/5 dark:text-gray-700">
+                          <LuTrophy className="size-5" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-gray-900 dark:text-white text-sm mb-1 truncate">{tournament.name}</div>
+                        <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
                           <span className="flex items-center gap-1">
                             <LocationIcon className="w-3 h-3" />
                             {tournament.venue ?? '—'}
@@ -318,7 +349,7 @@ const BasketballDashboard: React.FC = () => {
                   ))}
                 </div>
               ) : (
-                <div className="h-20 flex items-center justify-center text-gray-500 text-sm">No tournaments</div>
+                <div className="h-20 flex items-center justify-center text-gray-500 dark:text-gray-400 text-sm">No tournaments</div>
               )}
             </div>
           </div>
@@ -327,7 +358,7 @@ const BasketballDashboard: React.FC = () => {
           <div className="space-y-6">
             {/* New Game Setup Card */}
             <div
-              className="rounded-2xl p-6 shadow-lg relative overflow-hidden"
+              className="rounded-2xl p-6 relative overflow-hidden"
               style={{
                 background:
                   'linear-gradient(90deg, #9BD9E6 -102.62%, #93D0E1 -73.81%, #80B7D5 -23.41%, #608FC1 36.59%, #3559A6 108.59%, #21409A 137.39%)',
@@ -343,7 +374,7 @@ const BasketballDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleStartNew}
-                  className="bg-white text-[#3F3F3F] px-6 py-2 rounded-lg text-sm font-medium hover:bg-blue-50 transition-colors"
+                  className="bg-white text-gray-800 px-6 py-2 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors"
                 >
                   Game Setup
                 </button>
@@ -358,59 +389,55 @@ const BasketballDashboard: React.FC = () => {
             </div>
 
             {/* Recent Games */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm">
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-sm font-semibold text-gray-700">Recent Games</h2>
+                <h2 className="text-sm font-bold text-gray-900 dark:text-white">Recent Games</h2>
                 <button
                   type="button"
                   onClick={() => navigate('/tournaments')}
-                  className="text-xs text-blue-600 hover:underline"
+                  className="text-xs text-brand-600 dark:text-brand-400 hover:underline font-medium"
                 >
                   View All
                 </button>
               </div>
               {completedMatches.isPending ? (
-                <div className="h-32 flex items-center justify-center text-gray-400 text-sm">Loading...</div>
+                <div className="h-32 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">Loading...</div>
               ) : recentList.length > 0 ? (
                 <div className="space-y-3">
                   {recentList.map((game: MatchType) => (
                     <div
                       key={game.id}
-                      className="bg-gray-50 rounded-xl p-4 cursor-pointer hover:bg-gray-100 transition-colors"
+                      className="rounded-xl border border-gray-200 bg-gray-50 p-4 cursor-pointer transition-colors hover:border-gray-300 dark:bg-white/[0.02] dark:border-gray-800 dark:hover:border-gray-700"
                       onClick={() =>
                         navigate(`/tournaments/${game.tournamentId}/match/${game.id}`)}
                     >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <div className="flex items-center justify-center">
-                            <img src="/ball1.png" alt="Basketball" style={{ width: '35px', height: '35px' }} className="object-contain" />
-                          </div>
-                          <span className="text-sm text-gray-600">
-                            {getTeamName(teamMap, game.homeTeamId)} -{' '}
-                            <span className="font-semibold text-gray-900">{game.totalHome ?? 0}</span>
+                      <div className="flex items-center gap-3">
+                        <div className="flex flex-1 items-center justify-end gap-2 min-w-0">
+                          <span className="truncate text-sm font-medium text-gray-700 dark:text-gray-300">
+                            {getTeamName(teamMap, game.homeTeamId)}
+                          </span>
+                          <img src="/ball1.png" alt="" className="size-6 shrink-0 object-contain" />
+                        </div>
+                        <div className="shrink-0 text-base font-bold text-gray-900 dark:text-white">
+                          {game.totalHome ?? 0}<span className="mx-1 text-gray-300 dark:text-gray-700">–</span>{game.totalAway ?? 0}
+                        </div>
+                        <div className="flex flex-1 items-center gap-2 min-w-0">
+                          <img src="/ball2.png" alt="" className="size-6 shrink-0 object-contain" />
+                          <span className="truncate text-sm font-medium text-gray-700 dark:text-gray-300">
+                            {getTeamName(teamMap, game.awayTeamId)}
                           </span>
                         </div>
                       </div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <div className="flex items-center justify-center">
-                            <img src="/ball2.png" alt="Basketball" style={{ width: '35px', height: '35px' }} className="object-contain" />
-                          </div>
-                          <span className="text-sm text-gray-600">
-                            {getTeamName(teamMap, game.awayTeamId)} -{' '}
-                            <span className="font-semibold text-gray-900">{game.totalAway ?? 0}</span>
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-xs text-gray-400 border-t border-gray-200 pt-2">
-                        <div>{game.venue ?? '—'}</div>
-                        <div>{formatMatchDate(game.scheduledDate)}</div>
+                      <div className="mt-2.5 flex items-center justify-center gap-3 text-xs text-gray-400 dark:text-gray-500 border-t border-gray-200 dark:border-gray-800 pt-2.5">
+                        <span>{game.venue ?? '—'}</span>
+                        <span className="text-gray-300 dark:text-gray-700">•</span>
+                        <span>{formatMatchDate(game.scheduledDate)}</span>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="h-32 flex items-center justify-center text-gray-500 text-sm">No recent games</div>
+                <div className="h-32 flex items-center justify-center text-gray-500 dark:text-gray-400 text-sm">No recent games</div>
               )}
             </div>
           </div>

@@ -2,8 +2,12 @@ import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FaMapMarkerAlt, FaCalendar } from 'react-icons/fa';
 import { FiEdit2, FiTrash } from 'react-icons/fi';
+import { LuTrophy } from 'react-icons/lu';
 import { useTournaments, useCreateTournament, useUpdateTournament, useDeleteTournament } from '../../api/hooks';
 import type { Tournament } from '../../types/api';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { useToast } from '../../hooks/useToast';
 
 function formatDateRange(start?: string, end?: string): string {
   if (!start && !end) return 'TBA';
@@ -35,9 +39,12 @@ const TournamentsListing: React.FC = () => {
   const createTournament = useCreateTournament();
   const updateTournament = useUpdateTournament();
   const deleteTournament = useDeleteTournament();
+  const { confirm, dialogProps } = useConfirmDialog();
+  const toast = useToast();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [seasonFilter, setSeasonFilter] = useState<string>('All');
+  const [brokenFlyerIds, setBrokenFlyerIds] = useState<Set<string>>(new Set());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTournament, setEditingTournament] = useState<Tournament | null>(null);
   const [formData, setFormData] = useState({
@@ -116,18 +123,23 @@ const TournamentsListing: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleDeleteTournament = (t: Tournament, e: React.MouseEvent) => {
+  const handleDeleteTournament = async (t: Tournament, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm(`Delete tournament "${t.name}"? This cannot be undone.`)) return;
+    const ok = await confirm({
+      description: `Delete tournament "${t.name}"? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
+    if (!ok) return;
     deleteTournament.mutate(t.id, {
       onSuccess: () => {},
-      onError: (err) => alert(err.message),
+      onError: (err) => toast.error(err.message),
     });
   };
 
   const handleSaveTournament = () => {
     if (!formData.name.trim() || !formData.venue.trim() || !formData.startDate || !formData.endDate) {
-      alert('Please fill in name, venue, start date and end date.');
+      toast.error('Please fill in name, venue, start date and end date.');
       return;
     }
     const startDate = new Date(formData.startDate).toISOString().slice(0, 10);
@@ -152,25 +164,25 @@ const TournamentsListing: React.FC = () => {
         { id: editingTournament.id, data: payload },
         {
           onSuccess: () => { setIsModalOpen(false); setEditingTournament(null); },
-          onError: (err) => alert(err.message),
+          onError: (err) => toast.error(err.message),
         }
       );
     } else {
       createTournament.mutate(payload as Parameters<typeof createTournament.mutate>[0], {
         onSuccess: () => { setIsModalOpen(false); setEditingTournament(null); },
-        onError: (err) => alert(err.message),
+        onError: (err) => toast.error(err.message),
       });
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-white dark:bg-gray-950 p-6">
       <div className="max-w-7xl mx-auto">
         <div className="mb-6 flex items-center justify-between gap-3">
-          <h1 className="text-3xl font-normal text-gray-800">Tournaments</h1>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Tournaments</h1>
           <button
             onClick={handleAddTournament}
-            className="px-4 py-2.5 bg-[#21409A] text-white rounded-lg font-medium hover:bg-blue-800 transition-colors"
+            className="px-4 py-2.5 bg-brand-500 text-white rounded-lg font-medium hover:bg-brand-600 transition-colors"
           >
             Add Tournament
           </button>
@@ -184,14 +196,14 @@ const TournamentsListing: React.FC = () => {
               placeholder="Search tournaments"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-4 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              className="w-full pl-4 pr-4 py-3 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500"
             />
           </div>
           <div className="relative">
             <select
               value={seasonFilter}
               onChange={(e) => setSeasonFilter(e.target.value)}
-              className="appearance-none pl-3 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white cursor-pointer text-sm min-w-[160px]"
+              className="appearance-none pl-3 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent bg-white text-gray-900 cursor-pointer text-sm min-w-[160px] dark:border-gray-700 dark:bg-gray-900 dark:text-white"
             >
               <option value="All">All Seasons</option>
               {seasons.map((season) => (
@@ -202,106 +214,107 @@ const TournamentsListing: React.FC = () => {
         </div>
 
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+          <div className="mb-6 p-4 bg-error-50 border border-error-100 rounded-lg text-error-700 dark:bg-error-500/10 dark:border-error-500/30 dark:text-error-500">
             {error instanceof Error ? error.message : 'Failed to load tournaments'}
           </div>
         )}
 
         {isPending && (
-          <div className="text-gray-500 py-8">Loading tournaments…</div>
+          <div className="text-gray-500 dark:text-gray-400 py-8">Loading tournaments…</div>
         )}
 
         {!isPending && !error && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredTournaments.map((tournament) => (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+          {filteredTournaments.map((tournament) => {
+            const showFlyer = !!tournament.flyer && !brokenFlyerIds.has(tournament.id);
+            return (
             <div
               key={tournament.id}
               onClick={() => handleTournamentClick(tournament.id)}
-              style={{
-                width: '310px',
-                height: '413px',
-                opacity: 1,
-                borderRadius: '16px',
-                borderWidth: '1px',
-                background: '#FCFEFF',
-                border: '1px solid #A9A9A91A'
-              }}
-              className="hover:shadow-md transition-shadow duration-200 cursor-pointer overflow-hidden relative group"
+              className="group cursor-pointer overflow-hidden rounded-2xl border border-gray-200 bg-white transition-colors hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700"
             >
-              <div className="absolute top-2 right-2 z-10 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button
-                  onClick={(e) => handleEditTournament(tournament, e)}
-                  className="p-2 bg-white rounded-lg shadow border border-gray-200 hover:bg-gray-50"
-                  title="Edit"
-                >
-                  <FiEdit2 size={18} className="text-gray-700" />
-                </button>
-                <button
-                  onClick={(e) => handleDeleteTournament(tournament, e)}
-                  className="p-2 bg-white rounded-lg shadow border border-gray-200 hover:bg-red-50"
-                  title="Delete"
-                >
-                  <FiTrash size={18} className="text-red-600" />
-                </button>
-              </div>
-              <div className="relative h-79 overflow-hidden">
-                {tournament.flyer ? (
+              <div className="relative aspect-square overflow-hidden bg-gray-50 dark:bg-white/[0.03]">
+                <div className="absolute right-2 top-2 z-10 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+                  <button
+                    onClick={(e) => handleEditTournament(tournament, e)}
+                    className="rounded-lg bg-white/90 p-1.5 text-gray-700 hover:bg-white"
+                    title="Edit"
+                  >
+                    <FiEdit2 size={14} />
+                  </button>
+                  <button
+                    onClick={(e) => handleDeleteTournament(tournament, e)}
+                    className="rounded-lg bg-white/90 p-1.5 text-error-600 hover:bg-white"
+                    title="Delete"
+                  >
+                    <FiTrash size={14} />
+                  </button>
+                </div>
+                {showFlyer ? (
                   <img
                     src={tournament.flyer}
-                    alt="Tournament Flyer"
-                    style={{ width: '286px', height: '300px', top: '14px', left: '12px', opacity: 1, borderRadius: '6px' }}
-                    className="absolute object-cover"
+                    alt={`${tournament.name} flyer`}
+                    onError={() =>
+                      setBrokenFlyerIds((prev) => new Set(prev).add(tournament.id))
+                    }
+                    className="h-full w-full object-cover"
                   />
                 ) : (
-                  <div
-                    style={{ width: '286px', height: '300px', top: '14px', left: '12px', borderRadius: '6px' }}
-                    className="absolute bg-gray-100 flex items-center justify-center text-xs text-gray-400"
-                  >
-                    No flyer
+                  <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-gray-300 dark:text-gray-700">
+                    <LuTrophy className="size-10" />
+                    <span className="text-xs font-medium text-gray-400 dark:text-gray-600">No flyer</span>
                   </div>
                 )}
               </div>
-               <div className="p-4">
-                 <h3 className="text-lg font-semibold text-gray-800 mb-3">{tournament.name}</h3>
-                <div className="flex items-center justify-start gap-4">
-                  <div className="flex items-center text-gray-600">
-                    <FaMapMarkerAlt className="w-4 h-4 mr-2 text-gray-400" />
-                    <span className="text-sm">{tournament.venue}</span>
+              <div className="p-4">
+                <h3 className="text-base font-bold text-gray-900 dark:text-white mb-2 truncate">{tournament.name}</h3>
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                    <FaMapMarkerAlt className="size-3.5 shrink-0" />
+                    <span className="text-sm truncate">{tournament.venue}</span>
                   </div>
-                  <div className="flex items-center text-gray-600">
-                    <FaCalendar className="w-4 h-4 mr-2 text-gray-400" />
-                    <span className="text-sm">{formatDateRange(tournament.startDate, tournament.endDate)}</span>
+                  <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                    <FaCalendar className="size-3.5 shrink-0" />
+                    <span className="text-sm truncate">{formatDateRange(tournament.startDate, tournament.endDate)}</span>
                   </div>
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
+        )}
+
+        {!isPending && !error && filteredTournaments.length === 0 && (
+          <div className="text-center py-12">
+            <p className="text-gray-500 dark:text-gray-400 text-lg">No tournaments found</p>
+            <p className="text-gray-400 dark:text-gray-500 text-sm mt-2">Try adjusting your search or filter</p>
+          </div>
         )}
 
         {isModalOpen && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-              <div className="p-6 border-b border-gray-200">
-                <h2 className="text-xl font-semibold text-gray-800">{editingTournament ? 'Edit Tournament' : 'Add Tournament'}</h2>
+            <div className="bg-white dark:bg-gray-900 rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b border-gray-200 dark:border-gray-800">
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{editingTournament ? 'Edit Tournament' : 'Add Tournament'}</h2>
               </div>
               <div className="p-6 space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name *</label>
                   <input
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                     placeholder="Tournament name"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Division</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Division</label>
                   <select
                     value={formData.division}
                     onChange={(e) => setFormData({ ...formData, division: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                   >
                     <option value="PREMIER">Premier</option>
                     <option value="DIVISION_1">Division 1</option>
@@ -312,90 +325,90 @@ const TournamentsListing: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Start date *</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start date *</label>
                     <input
                       type="date"
                       value={formData.startDate}
                       onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">End date *</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">End date *</label>
                     <input
                       type="date"
                       value={formData.endDate}
                       onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Venue *</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Venue *</label>
                   <input
                     type="text"
                     value={formData.venue}
                     onChange={(e) => setFormData({ ...formData, venue: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                     placeholder="Venue"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Number of games</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Number of games</label>
                     <input
                       type="number"
                       min={1}
                       value={formData.numberOfGames}
                       onChange={(e) => setFormData({ ...formData, numberOfGames: parseInt(e.target.value, 10) || 0 })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Quarters</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Quarters</label>
                     <input
                       type="number"
                       min={1}
                       value={formData.numberOfQuarters}
                       onChange={(e) => setFormData({ ...formData, numberOfQuarters: parseInt(e.target.value, 10) || 0 })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                     />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Quarter duration (min)</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Quarter duration (min)</label>
                     <input
                       type="number"
                       min={1}
                       value={formData.quarterDuration}
                       onChange={(e) => setFormData({ ...formData, quarterDuration: parseInt(e.target.value, 10) || 0 })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Overtime duration (min)</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Overtime duration (min)</label>
                     <input
                       type="number"
                       min={1}
                       value={formData.overtimeDuration}
                       onChange={(e) => setFormData({ ...formData, overtimeDuration: parseInt(e.target.value, 10) || 0 })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                     />
                   </div>
                 </div>
               </div>
-              <div className="flex justify-end gap-3 p-6 border-t border-gray-200">
+              <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-800">
                 <button
                   onClick={() => { setIsModalOpen(false); setEditingTournament(null); }}
-                  className="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50"
+                  className="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSaveTournament}
                   disabled={createTournament.isPending || updateTournament.isPending}
-                  className="px-4 py-2 bg-[#21409A] text-white rounded-lg font-medium hover:bg-blue-800 disabled:opacity-70"
+                  className="px-4 py-2 bg-brand-500 text-white rounded-lg font-medium hover:bg-brand-600 disabled:opacity-70"
                 >
                   {createTournament.isPending || updateTournament.isPending ? 'Saving…' : editingTournament ? 'Update' : 'Create'}
                 </button>
@@ -404,6 +417,7 @@ const TournamentsListing: React.FC = () => {
           </div>
         )}
       </div>
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 };

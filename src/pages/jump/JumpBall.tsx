@@ -7,7 +7,7 @@ import {
   useStatisticianTeamColors,
 } from '../../contexts/StatisticianTeamColorsContext';
 import { readGameSetupOrientation } from '../gameSetupOrientation';
-import { writeJumpBallWinner } from '../jumpBallWinner';
+import { writeJumpBallWinnerTeamId } from '../jumpBallWinner';
 import { readStoredSessionContext } from '../../features/statdash/sessionContextStorage';
 
 const PLAYERS = [1, 2, 3, 4, 5] as const;
@@ -74,7 +74,11 @@ const JumpBall: React.FC = () => {
     }
     setIsSaving(true);
     setWinner(w);
-    writeJumpBallWinner(w);
+    // 'left'/'right' is a court side, not a team — resolve it against the chosen
+    // orientation so StatDash can send the real winningTeamId to the backend.
+    const winnerIsHome = w === 'left' ? homeOnLeft : !homeOnLeft;
+    const winningTeamId = winnerIsHome ? context.homeTeamId : context.awayTeamId;
+    if (winningTeamId) writeJumpBallWinnerTeamId(winningTeamId);
     setIsSaving(false);
   };
 

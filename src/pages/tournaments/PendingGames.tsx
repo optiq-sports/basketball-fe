@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useMatch, useUpdateMatch, useStatisticians } from '../../api/hooks';
 import type { MatchStatus, Statistician } from '../../types/api';
-import { resolvePlayerPhotoUrl } from '../../utils/playerPhotoPlaceholder';
+import { resolvePlayerPhotoUrl, handlePhotoLoadError } from '../../utils/playerPhotoPlaceholder';
+import { useToast } from '../../hooks/useToast';
 
 const CopyIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -65,6 +66,7 @@ const PendingGames: React.FC = () => {
   const navigate = useNavigate();
   const matchQuery = useMatch(matchId);
   const updateMatch = useUpdateMatch();
+  const toast = useToast();
 
   const match = matchQuery.data;
   const statisticiansQuery = useStatisticians();
@@ -82,7 +84,7 @@ const PendingGames: React.FC = () => {
   const handleCopyCode = () => {
     const code = match?.matchCode ?? matchId ?? '';
     navigator.clipboard.writeText(code);
-    alert('Match code copied!');
+    toast.success('Match code copied!');
   };
 
   const handleStatusUpdate = (status: MatchStatus) => {
@@ -264,6 +266,7 @@ const PendingGames: React.FC = () => {
                 <div className="w-12 h-12 bg-gray-300 rounded-full overflow-hidden flex-shrink-0">
                   <img
                     src={getStatPhoto(stat)}
+                    onError={handlePhotoLoadError(stat.id)}
                     alt={getStatName(stat)}
                     className="w-full h-full object-cover"
                   />

@@ -276,7 +276,23 @@ export function useDeletePlayer() {
     mutationFn: async (id: string) => {
       await apiClient.players.delete(id);
     },
-    onSuccess: (_, id) => {
+    // Optimistic UI: remove the row from every cached players list immediately
+    // (bare ['players'], team-scoped, and unassigned variants all match via the
+    // partial ['players'] key), roll back on error, reconcile with the server on settle.
+    onMutate: async (id: string) => {
+      await queryClient.cancelQueries({ queryKey: ['players'] });
+      const previous = queryClient.getQueriesData<Array<{ id: string }>>({ queryKey: ['players'] });
+      queryClient.setQueriesData<Array<{ id: string }>>({ queryKey: ['players'] }, (old) =>
+        old ? old.filter((p) => p.id !== id) : old,
+      );
+      return { previous };
+    },
+    onError: (_err, _id, context) => {
+      context?.previous.forEach(([key, data]) => {
+        queryClient.setQueryData(key, data);
+      });
+    },
+    onSettled: (_data, _err, id) => {
       queryClient.invalidateQueries({ queryKey: ['players'] });
       queryClient.invalidateQueries({ queryKey: queryKeys.player(id) });
     },
@@ -671,7 +687,19 @@ export function useDeleteAdmin() {
     mutationFn: async (id: string) => {
       await apiClient.admin.delete(id);
     },
-    onSuccess: (_, id) => {
+    // Optimistic UI — same pattern as useDeletePlayer above.
+    onMutate: async (id: string) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.admins() });
+      const previous = queryClient.getQueryData<Array<{ id: string }>>(queryKeys.admins());
+      queryClient.setQueryData<Array<{ id: string }>>(queryKeys.admins(), (old) =>
+        old ? old.filter((a) => a.id !== id) : old,
+      );
+      return { previous };
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previous) queryClient.setQueryData(queryKeys.admins(), context.previous);
+    },
+    onSettled: (_data, _err, id) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.admins() });
       queryClient.invalidateQueries({ queryKey: queryKeys.admin(id) });
     },

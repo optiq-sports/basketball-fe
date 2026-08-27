@@ -1,8 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FiEdit2, FiTrash } from 'react-icons/fi';
+import { FiEdit2, FiTrash, FiChevronLeft, FiPlus, FiCalendar, FiMapPin } from 'react-icons/fi';
 import { useMatches, useTeams, useCreateMatch, useUpdateMatch, useDeleteMatch } from '../../api/hooks';
 import type { Match as ApiMatch } from '../../types/api';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { useToast } from '../../hooks/useToast';
+import StatusBadge from '../../components/ui/StatusBadge';
+import Modal from '../../components/ui/Modal';
 
 const CopyIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -11,16 +16,28 @@ const CopyIcon: React.FC<{ className?: string }> = ({ className }) => (
   </svg>
 );
 
+type MatchStatus = 'SCHEDULED' | 'LIVE' | 'COMPLETED' | 'CANCELLED' | 'POSTPONED';
+
 interface DisplayGame {
   id: string;
   homeTeam: string;
   awayTeam: string;
+  homeScore?: number;
+  awayScore?: number;
+  status: MatchStatus;
   date: string;
   time: string;
   venue: string;
-  isExpanded: boolean;
   matchCode: string;
 }
+
+const STATUS_BADGE: Record<MatchStatus, { label: string; tone: 'success' | 'warning' | 'error' | 'neutral' }> = {
+  SCHEDULED: { label: 'Scheduled', tone: 'neutral' },
+  LIVE: { label: 'Live', tone: 'warning' },
+  COMPLETED: { label: 'Completed', tone: 'success' },
+  CANCELLED: { label: 'Cancelled', tone: 'error' },
+  POSTPONED: { label: 'Postponed', tone: 'error' },
+};
 
 function formatMatchDateTime(scheduledDate?: string): { date: string; time: string } {
   if (!scheduledDate) return { date: '—', time: '—' };
@@ -53,6 +70,8 @@ const Fixtures: React.FC = () => {
   const createMatch = useCreateMatch();
   const updateMatch = useUpdateMatch();
   const deleteMatch = useDeleteMatch();
+  const { confirm, dialogProps } = useConfirmDialog();
+  const toast = useToast();
   const [editingMatchId, setEditingMatchId] = useState<string | null>(null);
   const [editDate, setEditDate] = useState('');
   const [editTime, setEditTime] = useState('');
@@ -67,8 +86,6 @@ const Fixtures: React.FC = () => {
 
   const teams = teamsQuery.data ?? [];
 
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-
   const games: DisplayGame[] = useMemo(() => {
     const list = matchesQuery.data ?? [];
     return list.map((m: ApiMatch) => {
@@ -77,27 +94,20 @@ const Fixtures: React.FC = () => {
         id: m.id,
         homeTeam: teamMap.get(m.homeTeamId) ?? 'TBD',
         awayTeam: teamMap.get(m.awayTeamId) ?? 'TBD',
+        homeScore: m.homeScore,
+        awayScore: m.awayScore,
+        status: (m.status as MatchStatus) ?? 'SCHEDULED',
         date,
         time,
         venue: m.venue ?? '—',
-        isExpanded: expandedIds.has(m.id),
         matchCode: (m as { code?: string }).code ?? m.id,
       };
     });
-  }, [matchesQuery.data, teamMap, expandedIds]);
-
-  const toggleGame = (gameId: string) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(gameId)) next.delete(gameId);
-      else next.add(gameId);
-      return next;
-    });
-  };
+  }, [matchesQuery.data, teamMap]);
 
   const handleAddGame = () => {
     if (!tournamentId || !newHomeTeamId || !newAwayTeamId || !newDate) {
-      alert('Please select home team, away team and date.');
+      toast.error('Please select home team, away team and date.');
       return;
     }
     const t = newTime || '12:00';
@@ -123,7 +133,7 @@ const Fixtures: React.FC = () => {
           setNewTime('');
           setNewVenue('');
         },
-        onError: (e) => alert(e.message),
+        onError: (e) => toast.error(e.message),
       }
     );
   };
@@ -152,44 +162,58 @@ const Fixtures: React.FC = () => {
         id: editingMatchId,
         data: { scheduledDate, venue: editVenue || undefined, status: editStatus },
       },
-      { onSuccess: () => setEditingMatchId(null), onError: (e) => alert(e.message) }
+      { onSuccess: () => setEditingMatchId(null), onError: (e) => toast.error(e.message) }
     );
   };
 
-  const handleDeleteMatch = (matchId: string, e: React.MouseEvent) => {
+  const handleDeleteMatch = async (matchId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm('Delete this match? This cannot be undone.')) return;
-    deleteMatch.mutate(matchId, { onError: (e) => alert(e.message) });
+    const ok = await confirm({
+      description: 'Delete this match? This cannot be undone.',
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    deleteMatch.mutate(matchId, { onError: (e) => toast.error(e.message) });
   };
 
   if (!tournamentId) {
     return (
-      <div className="min-h-screen bg-gray-50 p-6">
-        <div className="max-w-7xl mx-auto text-red-600">Missing tournament ID</div>
+      <div className="min-h-screen bg-white dark:bg-gray-950 p-6">
+        <div className="max-w-7xl mx-auto text-error-600 dark:text-error-500">Missing tournament ID</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-white dark:bg-gray-950 p-6">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-6">
+        <button
+          onClick={() => navigate(`/tournaments/${tournamentId}`)}
+          className="mb-3 flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+        >
+          <FiChevronLeft className="size-4" />
+          Tournament
+        </button>
+
+        <div className="mb-6 flex items-center justify-between gap-3 flex-wrap">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Fixtures</h1>
           <button
-            onClick={() => navigate(`/tournaments/${tournamentId}`)}
-            className="text-gray-600 hover:text-gray-800 mb-4 flex items-center gap-2 cursor-pointer"
+            onClick={() => setShowAddGame(true)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-500 text-white hover:bg-brand-600 transition-colors"
           >
-            <span>←</span> Back to Tournament
+            <FiPlus className="size-4" />
+            Add Game
           </button>
-          <h1 className="text-2xl font-semibold text-gray-800">Fixtures</h1>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Format</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Format</label>
             <select
               value={format}
               onChange={(e) => setFormat(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
             >
               <option value="Round Robin">Round Robin</option>
               <option value="Knockout">Knockout</option>
@@ -197,11 +221,11 @@ const Fixtures: React.FC = () => {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Round</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Round</label>
             <select
               value={round}
               onChange={(e) => setRound(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
             >
               <option value="Group stage">Group stage</option>
               <option value="Quarter Finals">Quarter Finals</option>
@@ -211,13 +235,15 @@ const Fixtures: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex gap-2 mb-6">
+        <div className="mb-6 inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-white p-1 dark:border-gray-800 dark:bg-gray-900">
           {['A', 'B', 'C', 'D'].map((group) => (
             <button
               key={group}
               onClick={() => setActiveGroup(group)}
-              className={`px-6 py-2.5 rounded-lg font-medium transition-all ${
-                activeGroup === group ? 'bg-[#21409A] text-white shadow-md' : 'bg-white text-gray-600 hover:bg-gray-100'
+              className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeGroup === group
+                  ? 'bg-brand-500 text-white'
+                  : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/5'
               }`}
             >
               Group {group}
@@ -225,34 +251,47 @@ const Fixtures: React.FC = () => {
           ))}
         </div>
 
-        {matchesQuery.isPending && <div className="text-gray-500 py-4">Loading fixtures…</div>}
+        {matchesQuery.isPending && <div className="text-gray-500 dark:text-gray-400 py-4">Loading fixtures…</div>}
         {matchesQuery.error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+          <div className="mb-4 p-4 bg-error-50 border border-error-100 rounded-lg text-error-700 text-sm dark:bg-error-500/10 dark:border-error-500/30 dark:text-error-500">
             {matchesQuery.error instanceof Error ? matchesQuery.error.message : 'Failed to load matches'}
           </div>
         )}
 
-        <div className="space-y-6">
-          {games.map((game, index) => (
-            <div key={game.id} className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-              <div
-                className="flex items-center gap-3 mb-4 cursor-pointer"
-                onClick={() => toggleGame(game.id)}
-              >
-                <div className={`w-2 h-2 rounded-full ${game.isExpanded ? 'bg-green-500' : 'bg-gray-400'}`} />
-                <h3 className="text-base font-semibold text-gray-800">Game {index + 1}</h3>
-                <span className="ml-auto flex items-center gap-2">
+        {!matchesQuery.isPending && games.length === 0 && (
+          <div className="text-center py-12 rounded-2xl border border-gray-200 bg-gray-50 dark:bg-white/[0.02] dark:border-gray-800">
+            <p className="text-gray-500 dark:text-gray-400 text-sm">No games scheduled yet.</p>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {games.map((game, index) => {
+            const hasScore = game.homeScore != null && game.awayScore != null;
+            const badge = STATUS_BADGE[game.status];
+            return (
+            <div
+              key={game.id}
+              className="group rounded-2xl border border-gray-200 bg-white transition-colors hover:border-gray-300 dark:bg-gray-900 dark:border-gray-800 dark:hover:border-gray-700"
+            >
+              <div className="flex items-center justify-between gap-2 border-b border-gray-100 px-5 py-3 dark:border-gray-800">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-600">
+                    Game {index + 1}
+                  </span>
+                  <StatusBadge label={badge.label} tone={badge.tone} />
+                </div>
+                <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                   <button
                     type="button"
-                    onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(game.matchCode); alert('Match code copied!'); }}
-                    className="p-1.5 rounded border border-gray-200 hover:bg-gray-100 text-gray-600"
+                    onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(game.matchCode); toast.success('Match code copied!'); }}
+                    className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/5"
                     title="Copy match code"
                   >
                     <CopyIcon className="w-4 h-4" />
                   </button>
                   <button
                     onClick={(e) => openEditMatch(game.id, e)}
-                    className="p-1.5 rounded border border-gray-200 hover:bg-gray-100 text-gray-600"
+                    className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/5"
                     title="Edit match"
                   >
                     <FiEdit2 size={16} />
@@ -260,86 +299,101 @@ const Fixtures: React.FC = () => {
                   <button
                     onClick={(e) => handleDeleteMatch(game.id, e)}
                     disabled={deleteMatch.isPending}
-                    className="p-1.5 rounded border border-red-200 hover:bg-red-50 text-red-600 disabled:opacity-70"
+                    className="p-1.5 rounded-lg text-error-500 hover:bg-error-50 disabled:opacity-70 dark:hover:bg-error-500/10"
                     title="Delete match"
                   >
                     <FiTrash size={16} />
                   </button>
-                  <span className="text-gray-600">{game.isExpanded ? '▼' : '▶'}</span>
-                </span>
+                </div>
               </div>
+
               <div
-                className="flex items-center gap-4 cursor-pointer hover:opacity-90"
+                className="cursor-pointer px-5 py-5"
                 onClick={() => navigate(`/tournaments/${tournamentId}/match/${game.id}`)}
               >
-                <div className="flex items-center gap-2">
-                  <img src="/ball1.png" alt="" className="w-7 h-7 object-contain" />
-                  <span className="text-sm font-medium text-gray-700">{game.homeTeam}</span>
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-1 flex-col items-center gap-2 min-w-0">
+                    <div className="flex size-12 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-500/10">
+                      <img src="/ball1.png" alt="" className="size-7 object-contain" />
+                    </div>
+                    <span className="max-w-full truncate text-sm font-semibold text-gray-800 dark:text-gray-200">{game.homeTeam}</span>
+                  </div>
+
+                  <div className="shrink-0 px-2 text-center">
+                    {hasScore ? (
+                      <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                        {game.homeScore}<span className="mx-1 text-gray-300 dark:text-gray-700">–</span>{game.awayScore}
+                      </div>
+                    ) : (
+                      <div className="text-xs font-semibold text-gray-400 dark:text-gray-600">VS</div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-1 flex-col items-center gap-2 min-w-0">
+                    <div className="flex size-12 items-center justify-center rounded-full bg-blue-50 dark:bg-blue-500/10">
+                      <img src="/ball2.png" alt="" className="size-7 object-contain" />
+                    </div>
+                    <span className="max-w-full truncate text-sm font-semibold text-gray-800 dark:text-gray-200">{game.awayTeam}</span>
+                  </div>
                 </div>
-                <span className="text-gray-400">vs</span>
-                <div className="flex items-center gap-2">
-                  <img src="/ball2.png" alt="" className="w-7 h-7 object-contain" />
-                  <span className="text-sm font-medium text-gray-700">{game.awayTeam}</span>
-                </div>
-                <span className="ml-auto text-xs text-gray-500">{game.date} · {game.time}</span>
-                <span className="text-xs text-gray-500">{game.venue}</span>
               </div>
-              {game.isExpanded && (
-                <div className="mt-4 pt-4 border-t border-gray-100 text-sm text-gray-600">
-                  <div>Venue: {game.venue}</div>
-                  <div>{game.date} at {game.time}</div>
-                </div>
-              )}
+
+              <div className="flex items-center justify-center gap-3 border-t border-gray-100 px-5 py-3 text-xs text-gray-500 dark:border-gray-800 dark:text-gray-400">
+                <span className="flex items-center gap-1.5">
+                  <FiCalendar className="size-3.5" />
+                  {game.date} · {game.time}
+                </span>
+                <span className="text-gray-300 dark:text-gray-700">•</span>
+                <span className="flex items-center gap-1.5">
+                  <FiMapPin className="size-3.5" />
+                  {game.venue}
+                </span>
+              </div>
             </div>
-          ))}
+            );
+          })}
         </div>
 
-        {editingMatchId && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">Edit Match</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
-                  <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
-                  <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Venue</label>
-                  <input type="text" value={editVenue} onChange={(e) => setEditVenue(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="Court" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                  <select value={editStatus} onChange={(e) => setEditStatus(e.target.value as typeof editStatus)} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white">
-                    <option value="SCHEDULED">Scheduled</option>
-                    <option value="LIVE">Live</option>
-                    <option value="COMPLETED">Completed</option>
-                    <option value="CANCELLED">Cancelled</option>
-                    <option value="POSTPONED">Postponed</option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex justify-end gap-3 mt-6">
-                <button onClick={() => setEditingMatchId(null)} className="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
-                <button onClick={handleSaveEditMatch} disabled={updateMatch.isPending} className="px-4 py-2 bg-[#21409A] text-white rounded-lg font-medium hover:bg-blue-800 disabled:opacity-70">{updateMatch.isPending ? 'Saving…' : 'Save'}</button>
-              </div>
+        <Modal open={!!editingMatchId} onClose={() => setEditingMatchId(null)} title="Edit Match" size="sm">
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date *</label>
+              <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:[color-scheme:dark]" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Time</label>
+              <input type="time" value={editTime} onChange={(e) => setEditTime(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:[color-scheme:dark]" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Venue</label>
+              <input type="text" value={editVenue} onChange={(e) => setEditVenue(e.target.value)} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:[color-scheme:dark]" placeholder="Court" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Status</label>
+              <select value={editStatus} onChange={(e) => setEditStatus(e.target.value as typeof editStatus)} className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white">
+                <option value="SCHEDULED">Scheduled</option>
+                <option value="LIVE">Live</option>
+                <option value="COMPLETED">Completed</option>
+                <option value="CANCELLED">Cancelled</option>
+                <option value="POSTPONED">Postponed</option>
+              </select>
             </div>
           </div>
-        )}
+          <div className="flex justify-end gap-3 mt-6">
+            <button onClick={() => setEditingMatchId(null)} className="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5">Cancel</button>
+            <button onClick={handleSaveEditMatch} disabled={updateMatch.isPending} className="px-4 py-2 bg-brand-500 text-white rounded-lg font-medium hover:bg-brand-600 disabled:opacity-70">{updateMatch.isPending ? 'Saving…' : 'Save'}</button>
+          </div>
+        </Modal>
 
-        {showAddGame && (
-          <div className="mt-8 p-6 bg-white rounded-lg border border-gray-200 space-y-4">
-            <h3 className="text-lg font-semibold text-gray-800">Add Game</h3>
+        <Modal open={showAddGame} onClose={() => setShowAddGame(false)} title="Add Game" size="md">
+          <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Home team *</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Home team *</label>
                 <select
                   value={newHomeTeamId}
                   onChange={(e) => setNewHomeTeamId(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                 >
                   <option value="">Select team</option>
                   {teams.map((t) => (
@@ -348,11 +402,11 @@ const Fixtures: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Away team *</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Away team *</label>
                 <select
                   value={newAwayTeamId}
                   onChange={(e) => setNewAwayTeamId(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                 >
                   <option value="">Select team</option>
                   {teams.map((t) => (
@@ -361,31 +415,31 @@ const Fixtures: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date *</label>
                 <input
                   type="date"
                   value={newDate}
                   onChange={(e) => setNewDate(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:[color-scheme:dark]"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Time</label>
                 <input
                   type="time"
                   value={newTime}
                   onChange={(e) => setNewTime(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:[color-scheme:dark]"
                 />
               </div>
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Venue</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Venue</label>
                 <input
                   type="text"
                   value={newVenue}
                   onChange={(e) => setNewVenue(e.target.value)}
                   placeholder="Court"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:[color-scheme:dark]"
                 />
               </div>
             </div>
@@ -393,35 +447,21 @@ const Fixtures: React.FC = () => {
               <button
                 onClick={handleAddGame}
                 disabled={createMatch.isPending}
-                className="px-6 py-2.5 bg-[#21409A] text-white rounded-lg font-medium hover:bg-blue-800 disabled:opacity-70"
+                className="px-6 py-2.5 bg-brand-500 text-white rounded-lg font-medium hover:bg-brand-600 disabled:opacity-70"
               >
                 {createMatch.isPending ? 'Creating…' : 'Create match'}
               </button>
               <button
                 onClick={() => setShowAddGame(false)}
-                className="px-6 py-2.5 bg-white border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50"
+                className="px-6 py-2.5 bg-white border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
               >
                 Cancel
               </button>
             </div>
           </div>
-        )}
-
-        <div className="flex gap-4 mt-8">
-          <button
-            onClick={() => setShowAddGame(true)}
-            className="px-6 py-3 bg-[#21409A] text-white rounded-lg font-medium hover:bg-blue-800 transition-colors cursor-pointer"
-          >
-            Add Game
-          </button>
-          <button
-            onClick={() => navigate('/tournaments')}
-            className="px-6 py-3 bg-[#21409A] text-white rounded-lg font-medium hover:bg-blue-800 transition-colors cursor-pointer"
-          >
-            Back to Tournaments
-          </button>
-        </div>
+        </Modal>
       </div>
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 };

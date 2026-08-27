@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCreateTournament, useUploadTournamentFlyer } from '../../api/hooks';
+import { useToast } from '../../hooks/useToast';
 
 interface Official {
   id: number;
@@ -29,6 +30,7 @@ const StartNew: React.FC = () => {
   const navigate = useNavigate();
   const createTournament = useCreateTournament();
   const uploadTournamentFlyer = useUploadTournamentFlyer();
+  const toast = useToast();
   const [competitionName, setCompetitionName] = useState('');
   const [competitionShortName, setCompetitionShortName] = useState('');
   const [division, setDivision] = useState('');
@@ -75,7 +77,7 @@ const StartNew: React.FC = () => {
 
   const handleSaveNext = () => {
     if (!competitionName.trim() || !court.trim() || !date || !time) {
-      alert('Please fill in Competition name, Venue, Date and Time.');
+      toast.error('Please fill in Competition name, Venue, Date and Time.');
       return;
     }
     const numGames = parseInt(numberOfGames, 10) || 14;
@@ -117,7 +119,7 @@ const StartNew: React.FC = () => {
                 navigate(`/tournaments/${tournamentId}`);
               },
               onError: (err) => {
-                alert(err.message);
+                toast.error(err.message);
                 setDivision('');
                 navigate(`/tournaments/${tournamentId}`);
               },
@@ -128,7 +130,7 @@ const StartNew: React.FC = () => {
           navigate(`/tournaments/${tournamentId}`);
         }
       },
-      onError: (err) => alert(err.message),
+      onError: (err) => toast.error(err.message),
     });
   };
 

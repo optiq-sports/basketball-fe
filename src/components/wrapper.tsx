@@ -1,9 +1,12 @@
-import React, { useState, Suspense, lazy } from 'react'
-import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
+import React, { Suspense, lazy } from 'react'
+import { Routes, Route, useNavigate, Navigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useProfile, queryKeys } from '../api/hooks'
-import Navbar from './navbar'
-import Sidebar from './sidbar'
+import { ThemeProvider } from '../contexts/ThemeContext'
+import { SidebarProvider, useSidebar } from '../contexts/SidebarContext'
+import AdminTopbar from './admin/AdminTopbar'
+import AdminSidebar from './admin/AdminSidebar'
+import Backdrop from './admin/Backdrop'
 
 const MatchPage = lazy(() => import('../pages/tournaments/Match'))
 const PlayerDetails = lazy(() => import('../pages/tournaments/PlayerDetails'))
@@ -48,12 +51,11 @@ function formatRole(role: string): string {
   return role;
 }
 
-const Wrapper: React.FC = () => {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const location = useLocation();
+const WrapperContent: React.FC = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const profile = useProfile();
+  const { isExpanded, isHovered, isMobileOpen } = useSidebar();
 
   const profileData = profile.data;
   const rawRole = (profileData as { role?: string } | undefined)?.role;
@@ -64,6 +66,8 @@ const Wrapper: React.FC = () => {
     || 'User';
   const userRole = rawRole ? formatRole(rawRole) : 'Administrator';
 
+  // Single source of truth for logout — previously duplicated (and out of sync
+  // with the real auth keys) in the old standalone Sidebar component.
   const handleLogout = () => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem('user_name');
@@ -71,88 +75,55 @@ const Wrapper: React.FC = () => {
     navigate('/login');
   };
 
-  const toggleSidebar = () => {
-    setIsSidebarOpen(!isSidebarOpen);
-  };
-
-  // Determine active menu item based on current route
-  const getActiveItem = () => {
-    const path = location.pathname;
-    if (path === '/dashboard' || path === '/') return 'dashboard';
-    if (path.startsWith('/start-new')) return 'start-new';
-    if (path.startsWith('/tournaments')) return 'tournaments';
-    if (path.startsWith('/results')) return 'results';
-    if (path.startsWith('/statisticians')) return 'statisticians';
-    if (path.startsWith('/teams-management')) return 'teams';
-    if (path.startsWith('/players-management')) return 'players';
-    if (path.startsWith('/users')) return 'users';
-    if (path.startsWith('/ops')) return 'ops';
-    return '';
-  };
+  const mainContentMargin = isMobileOpen ? 'ml-0' : isExpanded || isHovered ? 'lg:ml-[290px]' : 'lg:ml-[90px]';
 
   return (
-    <div className="h-screen bg-gray-50 overflow-hidden flex flex-col">
-      {/* Navbar - Full Width at Top */}
-      <Navbar 
-        userName={userName}
-        userRole={userRole}
-        onMenuClick={toggleSidebar}
-        onLogout={handleLogout}
-      />
-
-      {/* Main Layout - Sidebar and Content */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar - Below navbar */}
-        <div className={`
-          fixed lg:static inset-y-0 left-0 z-30 top-20
-          transform transition-transform duration-300 ease-in-out
-          ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-        `}>
-          <Sidebar activeItem={getActiveItem()} onNavigate={toggleSidebar} userRole={rawRole} />
-        </div>
-
-        {/* Mobile overlay */}
-        {isSidebarOpen && (
-          <div 
-            className="fixed inset-0 bg-transparent z-20 lg:hidden"
-            onClick={toggleSidebar}
-          ></div>
-        )}
-
-        {/* Page Content - Scrollable with Routes */}
-        <main className="flex-1 overflow-y-auto bg-gray-50">
+    <div className="admin-shell min-h-screen xl:flex">
+      <AdminSidebar userRole={rawRole} />
+      <Backdrop />
+      <div className={`flex-1 transition-all duration-300 ease-in-out ${mainContentMargin}`}>
+        <AdminTopbar userName={userName} userRole={userRole} onLogout={handleLogout} />
+        <div className="p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6">
           <Suspense fallback={<div className="p-6 flex items-center justify-center text-gray-500">Loading...</div>}>
-          <Routes>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/start-new" element={<StartNew />} />
-            <Route path="/teams" element={<Teams />} />
-            <Route path="/players" element={<Players />} />
-            <Route path="/team-overview" element={<TeamOverview />} />
-            <Route path="/complete" element={<Complete />} />
-            <Route path="/tournaments" element={<TournamentsListing />} />
-            <Route path="/tournaments/:id" element={<Tournaments />} />
-            <Route path="/tournaments/:id/fixtures" element={<Fixtures />} />
-            <Route path="/tournaments/:id/schedules" element={<Schedules />} />
-            <Route path="/tournaments/:id/match/:matchId/pending" element={<PendingGames />} />
-            <Route path="/tournaments/:id/match/:matchId/shotchart" element={<ShotChart />} />
-            <Route path="/tournaments/:id/match/:matchId" element={<MatchPage />} />
-            <Route path="/tournaments/:id/match/:matchId/player/:playerId" element={<PlayerDetails />} />
-            <Route path="/results" element={<Results />} />
-            <Route path="/statisticians" element={<Statisticians />} />
-            <Route path="/statisticians/:id" element={<ViewStat />} />
-            <Route path="/teams-management" element={<TeamsManagement />} />
-            <Route path="/teams-management/:id" element={<TeamDetails />} />
-            <Route path="/players-management" element={<PlayersManagement />} />
-            <Route path="/players-management/:playerId" element={<PlayerProfile />} />
-            <Route path="/users" element={<UsersRouteGuard rawRole={rawRole} />} />
-            <Route path="/ops/queues" element={<QueueDashboard />} />
-            <Route path="/" element={<Dashboard />} />
-          </Routes>
+            <Routes>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/start-new" element={<StartNew />} />
+              <Route path="/teams" element={<Teams />} />
+              <Route path="/players" element={<Players />} />
+              <Route path="/team-overview" element={<TeamOverview />} />
+              <Route path="/complete" element={<Complete />} />
+              <Route path="/tournaments" element={<TournamentsListing />} />
+              <Route path="/tournaments/:id" element={<Tournaments />} />
+              <Route path="/tournaments/:id/fixtures" element={<Fixtures />} />
+              <Route path="/tournaments/:id/schedules" element={<Schedules />} />
+              <Route path="/tournaments/:id/match/:matchId/pending" element={<PendingGames />} />
+              <Route path="/tournaments/:id/match/:matchId/shotchart" element={<ShotChart />} />
+              <Route path="/tournaments/:id/match/:matchId" element={<MatchPage />} />
+              <Route path="/tournaments/:id/match/:matchId/player/:playerId" element={<PlayerDetails />} />
+              <Route path="/results" element={<Results />} />
+              <Route path="/statisticians" element={<Statisticians />} />
+              <Route path="/statisticians/:id" element={<ViewStat />} />
+              <Route path="/teams-management" element={<TeamsManagement />} />
+              <Route path="/teams-management/:id" element={<TeamDetails />} />
+              <Route path="/players-management" element={<PlayersManagement />} />
+              <Route path="/players-management/:playerId" element={<PlayerProfile />} />
+              <Route path="/users" element={<UsersRouteGuard rawRole={rawRole} />} />
+              <Route path="/ops/queues" element={<QueueDashboard />} />
+              <Route path="/" element={<Dashboard />} />
+            </Routes>
           </Suspense>
-        </main>
+        </div>
       </div>
     </div>
   );
 };
+
+const Wrapper: React.FC = () => (
+  <ThemeProvider>
+    <SidebarProvider>
+      <WrapperContent />
+    </SidebarProvider>
+  </ThemeProvider>
+);
 
 export default Wrapper;

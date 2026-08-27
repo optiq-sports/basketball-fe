@@ -60,7 +60,7 @@ const PlayerImageUploadBox: React.FC<PlayerImageUploadBoxProps> = ({ onClose, on
   };
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center z-50 backdrop-blur-md bg-white/20">
+    <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50">
       <div className="bg-[#F8F8F8]/90 backdrop-blur-xl rounded-2xl shadow-xl w-full max-w-md p-8 relative border border-white/30 transition-all duration-300">
         <button
           onClick={onClose}

@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiArrowLeft } from 'react-icons/fi';
+import { useToast } from '../../hooks/useToast';
 
 const ForgotPassword: React.FC = () => {
   const [email, setEmail] = useState<string>('');
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
   const navigate = useNavigate();
+  const toast = useToast();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -16,7 +18,7 @@ const ForgotPassword: React.FC = () => {
         navigate('/login');
       }, 3000);
     } else {
-      alert('Please enter your email address');
+      toast.error('Please enter your email address');
     }
   };
 

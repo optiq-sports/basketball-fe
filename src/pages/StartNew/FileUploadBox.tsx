@@ -78,7 +78,7 @@ const FileUploadBox: React.FC<FileUploadBoxProps> = ({ teamId, onClose, onSucces
 
   if (!teamId) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center z-50 backdrop-blur-md bg-white/20">
+      <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50">
         <div className="bg-[#F8F8F8]/90 backdrop-blur-xl rounded-2xl shadow-xl w-full max-w-md p-8 relative border border-white/30">
           <button
             onClick={handleClose}
@@ -105,7 +105,7 @@ const FileUploadBox: React.FC<FileUploadBoxProps> = ({ teamId, onClose, onSucces
 
   if (uploadResult) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center z-50 backdrop-blur-md bg-white/20">
+      <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50">
         <div className="bg-[#F8F8F8]/90 backdrop-blur-xl rounded-2xl shadow-xl w-full max-w-lg p-8 relative border border-white/30 max-h-[90vh] overflow-y-auto">
           <div className="flex flex-col p-6 space-y-4">
             <div className="flex items-center gap-2">
@@ -154,7 +154,7 @@ const FileUploadBox: React.FC<FileUploadBoxProps> = ({ teamId, onClose, onSucces
   }
 
   return (
-    <div className="fixed inset-0 flex items-center justify-center z-50 backdrop-blur-md bg-white/20">
+    <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50">
       <div className="bg-[#F8F8F8]/90 backdrop-blur-xl rounded-2xl shadow-xl w-full max-w-md p-8 relative border border-white/30 transition-all duration-300">
         <button
           onClick={handleClose}

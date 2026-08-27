@@ -68,7 +68,7 @@ import {
   turnoverFlowBack,
   turnoverTypeLabel,
 } from "./turnoverRecordingUtils";
-import type { TeamLineup } from "./substitutionLineupUtils";
+import type { OnCourtSlots, TeamLineup } from "./substitutionLineupUtils";
 import {
   cloneLineup,
   compactOnCourt,
@@ -76,10 +76,15 @@ import {
   diffLineupOnCourt,
   formatSubstitutionDiff,
   fullRoster,
+  LINEUP_SLOTS,
   lineupIsComplete,
 } from "./substitutionLineupUtils";
 import { readGameSetupOrientation } from "../gameSetupOrientation";
-import { clearJumpBallWinner, readJumpBallWinner } from "../jumpBallWinner";
+import {
+  clearJumpBallWinnerTeamId,
+  readJumpBallWinnerTeamId,
+} from "../jumpBallWinner";
+import { buildGameLogFromEvents } from "./gameLogReplay";
 import {
   commandsApi,
   createSessionSseClient,
@@ -334,6 +339,10 @@ const StatDash: React.FC = () => {
   const pendingCountRef = useRef(0);
   const queueRef = useRef<QueuedEvent[]>([]);
   const markersRestoredRef = useRef(false);
+  const gameLogRestoredRef = useRef(false);
+  const lineupRestoredRef = useRef(false);
+  const recentEventsRef = useRef<SessionStateSnapshot["recentEvents"]>([]);
+  const activeLineupsRef = useRef<SessionStateSnapshot["activeLineups"]>(undefined);
 
   const applyAuthoritativeState = useCallback((state: SessionStateSnapshot) => {
     setHomeScore(state.score.home);
@@ -378,6 +387,32 @@ const StatDash: React.FC = () => {
       return map.get(jersey) ?? `${getTeamIdForSide(side)}_${jersey}`;
     },
     [homePlayerIdByJersey, awayPlayerIdByJersey, getTeamIdForSide],
+  );
+
+  // Real player UUID -> {side, jersey}, the reverse of the maps above. Used to
+  // reconstruct game log rows from backend GameEvent payloads on reconnect
+  // (see gameLogReplay.ts and the bootstrap effect below).
+  const playerRefByPlayerId = useMemo(() => {
+    const map = new Map<string, { side: TeamSide; jersey: number }>();
+    for (const pt of matchForNamesQuery.data?.homeTeam?.playerTeams ?? []) {
+      if (pt.player?.id && pt.jerseyNumber != null) {
+        map.set(pt.player.id, { side: "home", jersey: pt.jerseyNumber });
+      }
+    }
+    for (const pt of matchForNamesQuery.data?.awayTeam?.playerTeams ?? []) {
+      if (pt.player?.id && pt.jerseyNumber != null) {
+        map.set(pt.player.id, { side: "away", jersey: pt.jerseyNumber });
+      }
+    }
+    return map;
+  }, [matchForNamesQuery.data]);
+
+  const resolvePlayerRef = useCallback(
+    (playerId: unknown): { side: TeamSide; jersey: number } | null => {
+      if (typeof playerId !== "string") return null;
+      return playerRefByPlayerId.get(playerId) ?? null;
+    },
+    [playerRefByPlayerId],
   );
 
   const { enqueue, queue, pendingCount, failedCount, isOnline, retryFailed } =
@@ -506,6 +541,7 @@ const StatDash: React.FC = () => {
     async (
       commandType: string,
       payload: Record<string, unknown>,
+      options?: { stampClock?: boolean },
     ): Promise<(CommandAcceptedResponse & { localId: string }) | null> => {
       const context = readStoredSessionContext();
       if (!context) {
@@ -522,8 +558,13 @@ const StatDash: React.FC = () => {
       // way to reconstruct "what quarter/clock was this at" after the fact (see Backend
       // Gap #6 and #11 in docs/BACKEND_GAPS.md). The `clock` command sets these as its own
       // target values with different meaning (where the clock is going), so it's excluded.
+      // The pre-game jump ball also opts out (stampClock: false, see below): it always
+      // happens at Q1/10:00 before the clock has moved, so the stamp is pure noise there —
+      // and dropping it means that one command's payload happens to already match the
+      // live backend's JumpBallCommandDto exactly (see docs/BACKEND_GAPS.md Gap #16).
+      const stampClock = options?.stampClock ?? true;
       const payloadWithClock =
-        commandType === "clock"
+        commandType === "clock" || !stampClock
           ? payload
           : { period: quarter, clockSecondsRemaining: timerSeconds, ...payload };
 
@@ -545,6 +586,13 @@ const StatDash: React.FC = () => {
     },
     [enqueue, homeScore, awayScore, navigate, quarter, timerSeconds],
   );
+  // Bootstrap (below) must not re-run every time commitEventCommand's identity
+  // changes — it changes every second while the clock is running (timerSeconds
+  // is a dep), which was re-triggering the bootstrap fetch and flickering the
+  // "Syncing game session…" status line on and off. Mirror it into a ref instead
+  // so bootstrap always calls the latest version without depending on it.
+  const commitEventCommandRef = useRef(commitEventCommand);
+  commitEventCommandRef.current = commitEventCommand;
 
   const onTick = useCallback(() => {
     setTimerSeconds((s) => Math.max(0, s - 1));
@@ -581,12 +629,26 @@ const StatDash: React.FC = () => {
         applyAuthoritativeState(snapshot);
         writeStoredExpectedVersion(snapshot.version);
         latestVersionRef.current = snapshot.version;
-        const winner = readJumpBallWinner();
-        if (winner && snapshot.status !== "IN_PROGRESS") {
+        recentEventsRef.current = snapshot.recentEvents ?? [];
+        activeLineupsRef.current = snapshot.activeLineups;
+        const winningTeamId = readJumpBallWinnerTeamId();
+        if (winningTeamId && snapshot.status !== "IN_PROGRESS") {
+          // The pre-game JumpBall page only stored this locally before — now it's sent
+          // through the same event pipeline as the in-game re-jump-ball flow, so the
+          // jump ball result actually reaches the backend (and survives reconnect via
+          // recentEvents replay below) instead of being thrown away on navigation.
+          // stampClock: false — this always happens at Q1/10:00, before the clock has
+          // moved, so there's no real "when" to record (unlike an in-game held-ball
+          // re-jump, which can happen at any point and keeps its timestamp).
+          void commitEventCommandRef.current(
+            "jump_ball",
+            { winningTeamId },
+            { stampClock: false },
+          );
           setStartGamePromptOpen(true);
           setQuarterBreakPending(false);
         }
-        clearJumpBallWinner();
+        clearJumpBallWinnerTeamId();
       } catch (error) {
         setBootError(
           error instanceof Error
@@ -626,6 +688,101 @@ const StatDash: React.FC = () => {
       }
     })();
   }, [isBootstrapping, homeTeamColor, awayTeamColor]);
+
+  // After bootstrap, rebuild the play-by-play log from the backend's own event history
+  // (snapshot.recentEvents, stashed in recentEventsRef during the bootstrap effect above)
+  // instead of leaving it blank on reconnect. Waits for match roster data so player/team
+  // names resolve correctly; runs once via the ref guard. See docs/BACKEND_GAPS.md Gap #11 —
+  // this is the frontend half; entries show "—" for period/clock until the backend whitelists
+  // those fields on every command DTO.
+  useEffect(() => {
+    if (isBootstrapping) return;
+    if (gameLogRestoredRef.current) return;
+    if (!matchForNamesQuery.data) return;
+    gameLogRestoredRef.current = true;
+    const events = recentEventsRef.current;
+    if (!events || events.length === 0) return;
+    const context = readStoredSessionContext();
+    const replayed = buildGameLogFromEvents(events, {
+      homeTeamId: context?.homeTeamId,
+      awayTeamId: context?.awayTeamId,
+      homeName: matchForNamesQuery.data.homeTeam?.name ?? homeName,
+      awayName: matchForNamesQuery.data.awayTeam?.name ?? awayName,
+      resolvePlayer: resolvePlayerRef,
+      getPlayerLabel,
+    });
+    if (replayed.length > 0) {
+      setGameLog((prev) => (prev.length > 0 ? prev : replayed));
+    }
+
+    // Rebuild the 2-technicals-=-ejection tally from history too — it's only ever
+    // held in `technicalFoulTallyRef` (not even localStorage), so without this a
+    // refresh would forget a player already had 1 technical foul and silently miss
+    // the ejection prompt on their 2nd. Doesn't reopen the ejection modal on load —
+    // that could re-surface something the statistician already handled before
+    // reconnecting — it only restores the count so the *next* technical (if any)
+    // is judged correctly. Same 25-event window caveat as the game log above.
+    for (const event of events) {
+      if (event.eventType !== "foul") continue;
+      const payload = (event.payload ?? {}) as Record<string, unknown>;
+      if (payload.foulType !== "technical") continue;
+      const foulerRef = resolvePlayerRef(payload.foulerPlayerId);
+      if (!foulerRef) continue;
+      const key = `${foulerRef.side}:${foulerRef.jersey}`;
+      technicalFoulTallyRef.current.set(
+        key,
+        (technicalFoulTallyRef.current.get(key) ?? 0) + 1,
+      );
+    }
+  }, [
+    isBootstrapping,
+    matchForNamesQuery.data,
+    homeName,
+    awayName,
+    resolvePlayerRef,
+    getPlayerLabel,
+  ]);
+
+  // After bootstrap, prefer the backend's own lineup snapshot (snapshot.activeLineups,
+  // stashed in activeLineupsRef) over whatever localStorage has for this browser — the
+  // backend is authoritative once it's populated, and is the only thing that can be
+  // right on a brand-new device. Currently a no-op in practice: the backend never writes
+  // a LineupState row yet (docs/BACKEND_GAPS.md Gap #10), so activeLineups is always null
+  // and this effect finds nothing to apply — it starts working the moment that ships,
+  // with no further frontend change needed.
+  useEffect(() => {
+    if (isBootstrapping) return;
+    if (lineupRestoredRef.current) return;
+    if (!matchForNamesQuery.data) return;
+    lineupRestoredRef.current = true;
+    const active = activeLineupsRef.current;
+    if (!active?.homeLineup || !active?.awayLineup) return;
+
+    const buildLineup = (playerIds: unknown, rosterNumbers: number[]): TeamLineup | null => {
+      if (!Array.isArray(playerIds)) return null;
+      const onCourtJerseys = playerIds
+        .map((id) => resolvePlayerRef(id)?.jersey)
+        .filter((j): j is number => typeof j === "number");
+      if (onCourtJerseys.length === 0) return null;
+      const onCourt = Array.from(
+        { length: LINEUP_SLOTS },
+        (_, i) => onCourtJerseys[i] ?? null,
+      ) as OnCourtSlots;
+      const bench = rosterNumbers.filter((j) => !onCourtJerseys.includes(j));
+      return { onCourt, bench };
+    };
+
+    const restoredHome = buildLineup(active.homeLineup, homeMatchRosterNumbers);
+    const restoredAway = buildLineup(active.awayLineup, awayMatchRosterNumbers);
+    if (restoredHome) setHomeLineup(restoredHome);
+    if (restoredAway) setAwayLineup(restoredAway);
+  }, [
+    isBootstrapping,
+    matchForNamesQuery.data,
+    homeMatchRosterNumbers,
+    awayMatchRosterNumbers,
+    resolvePlayerRef,
+  ]);
 
   useEffect(() => {
     const context = readStoredSessionContext();

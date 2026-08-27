@@ -3,6 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useMatch, useTeams, useUpdateMatch, useDeleteMatch } from '../../api/hooks';
 import type { MatchStatus } from '../../types/api';
 import { useBoxScoreProjection, useShotChartProjection, useSummaryProjection, useRebuildProjection } from '../../services/statdash';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { useToast } from '../../hooks/useToast';
 
 interface QuarterScore {
   q1: number;
@@ -51,6 +54,8 @@ const GameScorePage: React.FC = () => {
   const teamsQuery = useTeams();
   const updateMatch = useUpdateMatch();
   const deleteMatch = useDeleteMatch();
+  const { confirm, dialogProps } = useConfirmDialog();
+  const toast = useToast();
   const rebuildProjection = useRebuildProjection();
 
   const match = matchQuery.data;
@@ -93,7 +98,7 @@ const GameScorePage: React.FC = () => {
     if (!matchId || !match) return;
     updateMatch.mutate(
       { id: matchId, data: { status } },
-      { onError: (e) => alert(e.message) }
+      { onError: (e) => toast.error(e.message) }
     );
   };
 
@@ -105,15 +110,21 @@ const GameScorePage: React.FC = () => {
     } as { quarter1Home?: number; quarter1Away?: number; quarter2Home?: number; quarter2Away?: number; quarter3Home?: number; quarter3Away?: number; quarter4Home?: number; quarter4Away?: number };
     updateMatch.mutate(
       { id: matchId, data },
-      { onError: (e) => alert(e.message) }
+      { onError: (e) => toast.error(e.message) }
     );
   };
 
-  const handleDeleteMatch = () => {
-    if (!matchId || !tournamentId || !window.confirm('Delete this match? This cannot be undone.')) return;
+  const handleDeleteMatch = async () => {
+    if (!matchId || !tournamentId) return;
+    const ok = await confirm({
+      description: 'Delete this match? This cannot be undone.',
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
+    if (!ok) return;
     deleteMatch.mutate(matchId, {
       onSuccess: () => navigate(`/tournaments/${tournamentId}/fixtures`),
-      onError: (e) => alert(e.message),
+      onError: (e) => toast.error(e.message),
     });
   };
 
@@ -1600,7 +1611,8 @@ const GameScorePage: React.FC = () => {
       
       {/* Bottom Spacing */}
       <div className="h-32"></div>
-    </div>  
+      <ConfirmDialog {...dialogProps} />
+    </div>
   );
 };
 

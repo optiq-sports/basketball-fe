@@ -1,13 +1,29 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiSearch, FiFilter, FiChevronDown, FiEdit2, FiTrash, FiUserMinus, FiUpload, FiCopy, FiCheck } from 'react-icons/fi';
 import { MdCancel } from 'react-icons/md';
 import { Country } from 'country-state-city';
+import type { ColumnDef } from '@tanstack/react-table';
 import { usePlayers, useTeams, useCreatePlayerForTeam, useUpdatePlayer, useDeletePlayer, useRemovePlayerFromTeam, useUploadPlayersExcel, useUploadFile, useMergePlayers } from '../../api/hooks';
 import type { Player as ApiPlayer } from '../../types/api';
-import { resolvePlayerPhotoUrl } from '../../utils/playerPhotoPlaceholder';
+import { resolvePlayerPhotoUrl, handlePhotoLoadError } from '../../utils/playerPhotoPlaceholder';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { useToast } from '../../hooks/useToast';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import DataTable from '../../components/ui/DataTable';
+import PlayerProfileModal from './PlayerProfileModal';
 
 const allCountries = Country.getAllCountries().sort((a, b) => a.name.localeCompare(b.name));
+
+/** Display-only formatting — position data stays as-is for filtering/matching. */
+function toTitleCase(value: string): string {
+  return value
+    .toLowerCase()
+    .split(' ')
+    .map((word) => (word ? word[0].toUpperCase() + word.slice(1) : word))
+    .join(' ');
+}
 
 const POSITION_OPTIONS = [
   { value: 'POINT_GUARD', label: 'Point Guard' },
@@ -36,7 +52,6 @@ const Players: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [teamFilter, setTeamFilter] = useState<string>('All');
   const [positionFilter, setPositionFilter] = useState<string>('All');
-  const [currentPage, setCurrentPage] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<PlayerDisplay | null>(null);
   const [releasePlayer, setReleasePlayer] = useState<PlayerDisplay | null>(null);
@@ -49,7 +64,8 @@ const Players: React.FC = () => {
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [mergeDuplicateId, setMergeDuplicateId] = useState('');
   const [mergeTargetId, setMergeTargetId] = useState('');
-  const itemsPerPage = 10;
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+  const debouncedSearchQuery = useDebouncedValue(searchQuery, 250);
 
   const playersQuery = usePlayers();
   const teamsQuery = useTeams();
@@ -60,6 +76,8 @@ const Players: React.FC = () => {
   const uploadPlayersExcel = useUploadPlayersExcel();
   const uploadImageFile = useUploadFile();
   const mergePlayers = useMergePlayers();
+  const { confirm, dialogProps } = useConfirmDialog();
+  const toast = useToast();
 
   const teamMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -119,8 +137,8 @@ const Players: React.FC = () => {
       const posValue = POSITION_OPTIONS.find((o) => o.label === positionFilter)?.value ?? positionFilter;
       filtered = filtered.filter((p) => p.position === positionFilter || p.position.replace(/\s/g, '_') === posValue);
     }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
+    if (debouncedSearchQuery.trim()) {
+      const q = debouncedSearchQuery.toLowerCase().trim();
       filtered = filtered.filter(
         (p) =>
           p.name.toLowerCase().includes(q) ||
@@ -131,21 +149,11 @@ const Players: React.FC = () => {
       );
     }
     return filtered;
-  }, [searchQuery, teamFilter, positionFilter, players]);
+  }, [debouncedSearchQuery, teamFilter, positionFilter, players]);
 
-  // Calculate pagination
-  const totalPages = Math.ceil(filteredPlayers.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedPlayers = filteredPlayers.slice(startIndex, endIndex);
-
-  React.useEffect(() => {
-    setCurrentPage(1);
-  }, [teamFilter, positionFilter, searchQuery]);
-
-  const handlePlayerClick = (player: PlayerDisplay) => {
-    navigate(`/players-management/${player.id}`);
-  };
+  const handlePlayerClick = useCallback((player: PlayerDisplay) => {
+    setSelectedPlayerId(player.id);
+  }, []);
 
   const handleEditPlayer = (player: PlayerDisplay, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -165,10 +173,15 @@ const Players: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleDeletePlayer = (player: PlayerDisplay, e: React.MouseEvent) => {
+  const handleDeletePlayer = async (player: PlayerDisplay, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (window.confirm(`Delete ${player.name} ${player.surname}? This cannot be undone.`)) {
-      deletePlayer.mutate(player.id, { onError: (err) => alert(err.message) });
+    const ok = await confirm({
+      description: `Delete ${player.name} ${player.surname}? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    });
+    if (ok) {
+      deletePlayer.mutate(player.id, { onError: (err) => toast.error(err.message) });
     }
   };
 
@@ -182,7 +195,7 @@ const Players: React.FC = () => {
     if (!releasePlayer || !releasePlayer.teamId) return;
     removePlayerFromTeam.mutate(
       { playerId: releasePlayer.id, teamId: releasePlayer.teamId },
-      { onSuccess: () => { setReleasePlayer(null); setReleaseDate(''); }, onError: (e) => alert(e.message) }
+      { onSuccess: () => { setReleasePlayer(null); setReleaseDate(''); }, onError: (e) => toast.error(e.message) }
     );
   };
 
@@ -195,16 +208,16 @@ const Players: React.FC = () => {
 
   const handleUploadExcel = () => {
     if (!uploadTeamId) {
-      alert('Please select a team');
+      toast.error('Please select a team');
       return;
     }
     if (!uploadFile) {
-      alert('Please select an Excel file (.xlsx)');
+      toast.error('Please select an Excel file (.xlsx)');
       return;
     }
     const ext = uploadFile.name.toLowerCase().split('.').pop();
     if (ext !== 'xlsx') {
-      alert('Only .xlsx files are supported');
+      toast.error('Only .xlsx files are supported');
       return;
     }
     uploadPlayersExcel.mutate(
@@ -260,12 +273,12 @@ const Players: React.FC = () => {
 
   const handleSavePlayer = () => {
     if (!formData.name || !formData.surname || !formData.number) {
-      alert('Please fill in first name, last name and jersey number');
+      toast.error('Please fill in first name, last name and jersey number');
       return;
     }
     const jerseyNum = parseInt(formData.number, 10);
     if (Number.isNaN(jerseyNum)) {
-      alert('Jersey number must be a number');
+      toast.error('Jersey number must be a number');
       return;
     }
     const position = formData.position as 'POINT_GUARD' | 'SHOOTING_GUARD' | 'SMALL_FORWARD' | 'POWER_FORWARD' | 'CENTER';
@@ -289,7 +302,7 @@ const Players: React.FC = () => {
             setPortraitPreview(null);
             setFormData({ name: '', surname: '', number: '', teamId: '', teamName: '', position: 'POINT_GUARD', country: '', height: '', dob: '' });
           },
-          onError: (e) => alert(e.message),
+          onError: (e) => toast.error(e.message),
         }
       );
     };
@@ -303,8 +316,8 @@ const Players: React.FC = () => {
         position,
         height: formData.height || undefined,
         dateOfBirth: formData.dob || undefined,
+        photo: photoUrl || undefined,
       };
-      if (photoUrl) (payload as Record<string, unknown>).photo = photoUrl;
       createPlayer.mutate(payload, {
         onSuccess: () => {
           setIsModalOpen(false);
@@ -312,7 +325,7 @@ const Players: React.FC = () => {
           setPortraitPreview(null);
           setFormData({ name: '', surname: '', number: '', teamId: '', teamName: '', position: 'POINT_GUARD', country: '', height: '', dob: '' });
         },
-        onError: (e) => alert(e.message),
+        onError: (e) => toast.error(e.message),
       });
     };
 
@@ -325,7 +338,7 @@ const Players: React.FC = () => {
             const res = await uploadImageFile.mutateAsync(portraitFile);
             photoUrl = res.url;
           } catch (err) {
-            alert(err instanceof Error ? err.message : 'Photo upload failed');
+            toast.error(err instanceof Error ? err.message : 'Photo upload failed');
             return;
           }
         }
@@ -335,7 +348,7 @@ const Players: React.FC = () => {
 
       // For creates, avoid uploading images before we know the user can create players.
       if (!formData.teamId) {
-        alert('Please select a team');
+        toast.error('Please select a team');
         return;
       }
 
@@ -353,7 +366,7 @@ const Players: React.FC = () => {
         };
         created = await createPlayer.mutateAsync(payload);
       } catch (err) {
-        alert(err instanceof Error ? err.message : 'Failed to create player');
+        toast.error(err instanceof Error ? err.message : 'Failed to create player');
         return;
       }
 
@@ -384,7 +397,7 @@ const Players: React.FC = () => {
           data: { photo: res.url },
         });
       } catch (err) {
-        alert(err instanceof Error ? err.message : 'Photo upload failed');
+        toast.error(err instanceof Error ? err.message : 'Photo upload failed');
         // Even if photo upload fails, the player was created successfully.
       } finally {
         setIsModalOpen(false);
@@ -407,16 +420,116 @@ const Players: React.FC = () => {
     runSubmit();
   };
 
+  const columns = useMemo<ColumnDef<PlayerDisplay>[]>(
+    () => [
+      {
+        accessorKey: 'number',
+        header: '#',
+        cell: ({ row }) => <span className="font-bold text-gray-900 dark:text-white">{row.original.number}</span>,
+      },
+      {
+        accessorKey: 'name',
+        header: 'Player',
+        cell: ({ row }) => {
+          const player = row.original;
+          return (
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full overflow-hidden shrink-0">
+                <img
+                  src={player.image}
+                  onError={handlePhotoLoadError(player.id)}
+                  alt={`${player.name} ${player.surname}`}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <div className="font-bold text-gray-900 dark:text-white">
+                {player.name} {player.surname}
+              </div>
+            </div>
+          );
+        },
+      },
+      {
+        accessorKey: 'teamName',
+        header: 'Team',
+        cell: ({ row }) => {
+          const player = row.original;
+          return player.teamId ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/teams-management/${player.teamId}`);
+              }}
+              className="text-brand-600 dark:text-brand-300 hover:underline font-medium text-left"
+            >
+              {player.teamName}
+            </button>
+          ) : (
+            <span>{player.teamName}</span>
+          );
+        },
+      },
+      {
+        accessorKey: 'position',
+        header: 'Position',
+        cell: ({ row }) => toTitleCase(row.original.position),
+      },
+      { accessorKey: 'country', header: 'Country' },
+      {
+        accessorKey: 'height',
+        header: 'Height',
+        cell: ({ row }) => row.original.height || '—',
+      },
+      {
+        id: 'actions',
+        header: 'Actions',
+        enableSorting: false,
+        cell: ({ row }) => {
+          const player = row.original;
+          return (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={(e) => handleEditPlayer(player, e)}
+                className="p-2 text-brand-600 hover:bg-brand-50 rounded-lg transition-colors dark:text-brand-400 dark:hover:bg-brand-500/10"
+                title="Edit Player"
+              >
+                <FiEdit2 size={18} />
+              </button>
+              {player.teamId && (
+                <button
+                  onClick={(e) => handleReleaseClick(player, e)}
+                  className="p-2 text-warning-600 hover:bg-warning-50 rounded-lg transition-colors dark:text-warning-500 dark:hover:bg-warning-500/10"
+                  title="Remove from team"
+                >
+                  <FiUserMinus size={18} />
+                </button>
+              )}
+              <button
+                onClick={(e) => handleDeletePlayer(player, e)}
+                className="p-2 text-error-600 hover:bg-error-50 rounded-lg transition-colors dark:text-error-500 dark:hover:bg-error-500/10"
+                title="Delete player"
+              >
+                <FiTrash size={18} />
+              </button>
+            </div>
+          );
+        },
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [navigate],
+  );
 
   return (
-    <div className="min-h-screen bg-white p-8">
+    <div className="min-h-screen bg-white p-8 dark:bg-gray-950">
       {/* Header Section */}
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-4xl font-bold text-gray-900">Players</h1>
+        <h1 className="text-4xl font-bold text-gray-900 dark:text-white">Players</h1>
       </div>
 
       {playersQuery.error && (
-        <div className="mb-6 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+        <div className="mb-6 px-4 py-3 rounded-lg bg-error-50 border border-error-100 text-error-700 text-sm dark:bg-error-500/10 dark:border-error-500/30 dark:text-error-500">
           {playersQuery.error.message}
         </div>
       )}
@@ -424,14 +537,14 @@ const Players: React.FC = () => {
       <div className="flex flex-wrap items-center gap-3 mb-8">
         <button
           onClick={handleAddPlayer}
-          className="px-6 py-3 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors whitespace-nowrap"
+          className="px-6 py-3 bg-brand-500 text-white rounded-lg font-medium hover:bg-brand-600 transition-colors whitespace-nowrap"
         >
           Add Player
         </button>
         <button
           onClick={handleOpenUploadModal}
           disabled={uniqueTeams.length === 0}
-          className="px-6 py-3 bg-white text-blue-900 border border-blue-900 rounded-lg font-medium hover:bg-blue-50 transition-colors whitespace-nowrap flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-6 py-3 bg-white text-brand-600 border border-brand-500 rounded-lg font-medium hover:bg-brand-50 transition-colors whitespace-nowrap flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-900 dark:text-brand-400 dark:border-brand-500 dark:hover:bg-brand-500/10"
         >
           <FiUpload size={18} />
           Upload Excel
@@ -439,201 +552,77 @@ const Players: React.FC = () => {
         <button
           onClick={() => { setMergeDuplicateId(''); setMergeTargetId(''); setShowMergeModal(true); }}
           disabled={players.length < 2}
-          className="px-6 py-3 bg-white text-gray-700 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-6 py-3 bg-white text-gray-700 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-white/5"
         >
           Merge Players
         </button>
         <div className="relative" style={{ width: '250px', minWidth: '200px' }}>
-          <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+          <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500" size={20} />
           <input
             type="text"
             placeholder="Search Player"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500"
           />
         </div>
         <div className="relative">
           <select
             value={teamFilter}
             onChange={(e) => setTeamFilter(e.target.value)}
-            className="appearance-none pl-10 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white cursor-pointer min-w-[160px]"
+            className="appearance-none pl-10 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent bg-white text-gray-900 cursor-pointer min-w-[160px] dark:border-gray-700 dark:bg-gray-900 dark:text-white"
           >
             <option value="All">All Teams</option>
             {uniqueTeams.map((team) => (
               <option key={team.id} value={team.name}>{team.name}</option>
             ))}
           </select>
-          <FiFilter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
-          <FiChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+          <FiFilter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" size={18} />
+          <FiChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" size={18} />
         </div>
         <div className="relative">
           <select
             value={positionFilter}
             onChange={(e) => setPositionFilter(e.target.value)}
-            className="appearance-none pl-10 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white cursor-pointer min-w-[160px]"
+            className="appearance-none pl-10 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent bg-white text-gray-900 cursor-pointer min-w-[160px] dark:border-gray-700 dark:bg-gray-900 dark:text-white"
           >
             <option value="All">All Positions</option>
             {uniquePositions.map((position) => (
               <option key={position} value={position}>{position}</option>
             ))}
           </select>
-          <FiFilter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
-          <FiChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+          <FiFilter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" size={18} />
+          <FiChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 pointer-events-none" size={18} />
         </div>
       </div>
 
-      {playersQuery.isPending ? (
-        <div className="py-12 text-center text-gray-500">Loading players...</div>
-      ) : (
-      <div className="overflow-x-auto rounded-lg border border-gray-200 mb-8">
-        <table className="w-full">
-          <thead>
-            <tr style={{ background: '#F5F8FF' }}>
-              <th className="text-left py-3 px-4 text-xs font-bold text-blue-900">#</th>
-              <th className="text-left py-3 px-4 text-xs font-bold text-blue-900">PLAYER</th>
-              <th className="text-left py-3 px-4 text-xs font-bold text-blue-900">TEAM</th>
-              <th className="text-left py-3 px-4 text-xs font-bold text-blue-900">POSITION</th>
-              <th className="text-left py-3 px-4 text-xs font-bold text-blue-900">COUNTRY</th>
-              <th className="text-center py-3 px-4 text-xs font-bold text-blue-900">HEIGHT</th>
-              <th className="text-center py-3 px-4 text-xs font-bold text-blue-900">ACTIONS</th>
-            </tr>
-          </thead>
-          <tbody>
-            {paginatedPlayers.length > 0 ? (
-              paginatedPlayers.map((player, index) => (
-                <tr
-                  key={player.id}
-                  className={`${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'} hover:bg-blue-50 cursor-pointer transition-colors`}
-                  onClick={() => handlePlayerClick(player)}
-                >
-                  <td className="py-3 px-4 text-sm font-bold text-blue-900">{player.number}</td>
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full overflow-hidden">
-                        <img src={player.image} alt={`${player.name} ${player.surname}`} className="w-full h-full object-cover" />
-                      </div>
-                      <div className="text-sm font-bold text-blue-900">{player.name} {player.surname}</div>
-                    </div>
-                  </td>
-                  <td className="py-3 px-4 text-sm text-gray-700">
-                    {player.teamId ? (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); navigate(`/teams-management/${player.teamId}`); }}
-                        className="text-[#21409A] hover:underline font-medium text-left"
-                      >
-                        {player.teamName}
-                      </button>
-                    ) : (
-                      <span>{player.teamName}</span>
-                    )}
-                  </td>
-                  <td className="py-3 px-4 text-sm text-gray-700">{player.position}</td>
-                  <td className="py-3 px-4 text-sm text-gray-700">{player.country}</td>
-                  <td className="text-center py-3 px-4 text-sm text-gray-700">{player.height || '—'}</td>
-                  <td className="text-center py-3 px-4">
-                    <div className="flex items-center justify-center gap-2">
-                      <button
-                        onClick={(e) => handleEditPlayer(player, e)}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                        title="Edit Player"
-                      >
-                        <FiEdit2 size={18} />
-                      </button>
-                      {player.teamId && (
-                        <button
-                          onClick={(e) => handleReleaseClick(player, e)}
-                          className="p-2 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
-                          title="Remove from team"
-                        >
-                          <FiUserMinus size={18} />
-                        </button>
-                      )}
-                      <button
-                        onClick={(e) => handleDeletePlayer(player, e)}
-                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Delete player"
-                      >
-                        <FiTrash size={18} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={7} className="text-center py-12">
-                  <p className="text-gray-500 text-lg">No players found</p>
-                  <p className="text-gray-400 text-sm mt-2">Try adjusting your search or filter criteria</p>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      )}
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex justify-center items-center gap-2">
-          <button
-            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-            disabled={currentPage === 1}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              currentPage === 1
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-            }`}
-          >
-            Previous
-          </button>
-          
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-            <button
-              key={page}
-              onClick={() => setCurrentPage(page)}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                currentPage === page
-                  ? 'bg-blue-900 text-white'
-                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              {page}
-            </button>
-          ))}
-
-          <button
-            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-            disabled={currentPage === totalPages}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-              currentPage === totalPages
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-            }`}
-          >
-            Next
-          </button>
-        </div>
-      )}
+      <DataTable
+        columns={columns}
+        data={filteredPlayers}
+        onRowClick={handlePlayerClick}
+        isLoading={playersQuery.isPending}
+        error={playersQuery.error ? (playersQuery.error as Error).message || 'Failed to load players.' : null}
+        onRetry={() => playersQuery.refetch()}
+        emptyMessage="No players found. Try adjusting your search or filter criteria."
+      />
 
       {/* Merge Players Modal */}
       {showMergeModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-            <div className="p-6 border-b border-gray-200">
-              <h2 className="text-xl font-semibold text-gray-800">Merge Players</h2>
-              <p className="text-sm text-gray-500 mt-1">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md dark:bg-gray-900">
+            <div className="p-6 border-b border-gray-200 dark:border-gray-800">
+              <h2 className="text-xl font-semibold text-gray-800 dark:text-white">Merge Players</h2>
+              <p className="text-sm text-gray-500 mt-1 dark:text-gray-400">
                 The duplicate player's stats and team assignments are moved to the target player, then the duplicate is removed.
               </p>
             </div>
             <div className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Duplicate player (will be removed)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Duplicate player (will be removed)</label>
                 <select
                   value={mergeDuplicateId}
                   onChange={e => setMergeDuplicateId(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
                 >
                   <option value="">Select duplicate…</option>
                   {players.filter(p => p.id !== mergeTargetId).map(p => (
@@ -644,11 +633,11 @@ const Players: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Target player (will be kept)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Target player (will be kept)</label>
                 <select
                   value={mergeTargetId}
                   onChange={e => setMergeTargetId(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
                 >
                   <option value="">Select target…</option>
                   {players.filter(p => p.id !== mergeDuplicateId).map(p => (
@@ -659,15 +648,15 @@ const Players: React.FC = () => {
                 </select>
               </div>
               {mergeDuplicateId && mergeTargetId && (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                <div className="p-3 bg-warning-50 border border-warning-100 rounded-lg text-sm text-warning-700 dark:bg-warning-500/10 dark:border-warning-500/30 dark:text-warning-500">
                   <strong>{players.find(p => p.id === mergeDuplicateId)?.name} {players.find(p => p.id === mergeDuplicateId)?.surname}</strong> will be merged into <strong>{players.find(p => p.id === mergeTargetId)?.name} {players.find(p => p.id === mergeTargetId)?.surname}</strong> and permanently deleted.
                 </div>
               )}
             </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-200">
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-800">
               <button
                 onClick={() => setShowMergeModal(false)}
-                className="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50"
+                className="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
               >
                 Cancel
               </button>
@@ -678,11 +667,11 @@ const Players: React.FC = () => {
                     { duplicatePlayerId: mergeDuplicateId, targetPlayerId: mergeTargetId },
                     {
                       onSuccess: () => { setShowMergeModal(false); setMergeDuplicateId(''); setMergeTargetId(''); },
-                      onError: (e) => alert(e.message),
+                      onError: (e) => toast.error(e.message),
                     }
                   );
                 }}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-error-500 text-white rounded-lg font-medium hover:bg-error-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {mergePlayers.isPending ? 'Merging…' : 'Confirm Merge'}
               </button>
@@ -693,22 +682,22 @@ const Players: React.FC = () => {
 
       {/* Release Player Modal */}
       {releasePlayer && (
-        <div className="fixed inset-0 bg-white/20 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg w-full max-w-md shadow-lg">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h2 className="text-xl font-semibold text-gray-900">Release Player</h2>
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg w-full max-w-md shadow-lg dark:bg-gray-900">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-800">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Release Player</h2>
               <button
                 onClick={() => {
                   setReleasePlayer(null);
                   setReleaseDate('');
                 }}
-                className="text-gray-600 hover:text-gray-900 transition-colors"
+                className="text-gray-600 hover:text-gray-900 transition-colors dark:text-gray-400 dark:hover:text-white"
               >
                 <MdCancel size={20} />
               </button>
             </div>
             <div className="p-6 space-y-4">
-              <p className="text-sm text-gray-700">
+              <p className="text-sm text-gray-700 dark:text-gray-300">
                 Remove{' '}
                 <span className="font-semibold">
                   {releasePlayer.name} {releasePlayer.surname}
@@ -716,17 +705,17 @@ const Players: React.FC = () => {
                 {' '}from this team? They can be assigned to another team later.
               </p>
             </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-200">
+            <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-800">
               <button
                 onClick={() => { setReleasePlayer(null); setReleaseDate(''); }}
-                className="px-5 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                className="px-5 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-white/5"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirmRelease}
                 disabled={removePlayerFromTeam.isPending}
-                className="px-5 py-2.5 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors disabled:opacity-70"
+                className="px-5 py-2.5 bg-brand-500 text-white rounded-lg font-medium hover:bg-brand-600 transition-colors disabled:opacity-70"
               >
                 {removePlayerFromTeam.isPending ? 'Removing...' : 'Remove from team'}
               </button>
@@ -737,46 +726,46 @@ const Players: React.FC = () => {
 
       {/* Upload Excel Modal */}
       {isUploadModalOpen && (
-        <div className="fixed inset-0 bg-white/20 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg w-full max-w-lg shadow-lg">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h2 className="text-xl font-semibold text-gray-900">Upload Player List (Excel)</h2>
-              <button onClick={handleCloseUploadModal} className="text-gray-600 hover:text-gray-900 transition-colors">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg w-full max-w-lg shadow-lg dark:bg-gray-900">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-800">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Upload Player List (Excel)</h2>
+              <button onClick={handleCloseUploadModal} className="text-gray-600 hover:text-gray-900 transition-colors dark:text-gray-400 dark:hover:text-white">
                 <MdCancel size={20} />
               </button>
             </div>
             <div className="p-6 space-y-4">
               {uploadResult ? (
                 <div className="space-y-4 max-h-[60vh] overflow-y-auto">
-                  <div className="px-4 py-3 rounded-lg bg-green-50 border border-green-200 text-green-800 text-sm">
+                  <div className="px-4 py-3 rounded-lg bg-success-50 border border-success-100 text-success-700 text-sm dark:bg-success-500/10 dark:border-success-500/30 dark:text-success-500">
                     <p><strong>Upload complete.</strong></p>
                     <p>
                       Processed: {uploadResult.totalProcessed ?? 0} |
                       Created: {uploadResult.created ?? uploadResult.createdCount ?? 0} |
-                      <span className="text-red-600"> Duplicates: {uploadResult.duplicatesFound ?? uploadResult.duplicatesCount ?? 0}</span>
+                      <span className="text-error-600 dark:text-error-500"> Duplicates: {uploadResult.duplicatesFound ?? uploadResult.duplicatesCount ?? 0}</span>
                     </p>
                   </div>
                   {uploadResult.details && uploadResult.details.length > 0 && (
                     <>
                       <div>
                         <div className="flex items-center justify-between mb-2">
-                          <h3 className="text-sm font-semibold text-gray-700">Upload details</h3>
+                          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Upload details</h3>
                           <button
                             onClick={handleCopyUploadResult}
-                            className={`p-1.5 rounded transition-colors ${copiedToClipboard ? 'text-green-600 bg-green-50' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
+                            className={`p-1.5 rounded transition-colors ${copiedToClipboard ? 'text-success-600 bg-success-50 dark:text-success-500 dark:bg-success-500/10' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-300 dark:hover:bg-white/5'}`}
                             title={copiedToClipboard ? 'Copied!' : 'Copy to clipboard'}
                             aria-label={copiedToClipboard ? 'Copied to clipboard' : 'Copy upload result to clipboard'}
                           >
                             {copiedToClipboard ? <FiCheck size={16} /> : <FiCopy size={16} />}
                           </button>
                         </div>
-                        <ul className="text-sm text-gray-600 space-y-1.5 max-h-48 overflow-y-auto rounded border border-gray-200 p-3 bg-gray-50">
+                        <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1.5 max-h-48 overflow-y-auto rounded border border-gray-200 p-3 bg-gray-50 dark:border-gray-800 dark:bg-white/[0.02]">
                           {uploadResult.details.map((d, i) => (
                             <li key={i} className="flex flex-wrap gap-x-2 gap-y-0.5">
-                              <span className="font-medium text-gray-800">Row {d.row}:</span>
+                              <span className="font-medium text-gray-800 dark:text-gray-200">Row {d.row}:</span>
                               <span>{d.player}</span>
-                              {d.matchScore != null && <span className="text-gray-500">({d.matchScore}% match)</span>}
-                              {d.action && <span className="text-amber-600">— {d.action}</span>}
+                              {d.matchScore != null && <span className="text-gray-500 dark:text-gray-400">({d.matchScore}% match)</span>}
+                              {d.action && <span className="text-warning-600 dark:text-warning-500">— {d.action}</span>}
                             </li>
                           ))}
                         </ul>
@@ -788,15 +777,15 @@ const Players: React.FC = () => {
                         if (potentialDuplicates.length === 0) return null;
                         return (
                           <div>
-                            <h3 className="text-sm font-semibold text-amber-800 mb-2">Potential duplicates (review)</h3>
-                            <p className="text-xs text-gray-600 mb-2">Lower-confidence matches. Merge into existing player or create as new.</p>
-                            <ul className="text-sm space-y-2 max-h-48 overflow-y-auto rounded border border-amber-200 p-3 bg-amber-50">
+                            <h3 className="text-sm font-semibold text-warning-700 dark:text-warning-500 mb-2">Potential duplicates (review)</h3>
+                            <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">Lower-confidence matches. Merge into existing player or create as new.</p>
+                            <ul className="text-sm space-y-2 max-h-48 overflow-y-auto rounded border border-warning-100 p-3 bg-warning-50 dark:border-warning-500/30 dark:bg-warning-500/10">
                               {potentialDuplicates.map((d, i) => (
                                 <li key={i} className="flex flex-wrap items-center gap-2">
-                                  <span className="font-medium text-gray-800">Row {d.row}:</span>
+                                  <span className="font-medium text-gray-800 dark:text-gray-200">Row {d.row}:</span>
                                   <span>{d.player}</span>
-                                  {d.matchScore != null && <span className="text-gray-600">({d.matchScore}% match)</span>}
-                                  <span className="text-gray-500">→ existing ID: {d.existingPlayerId}</span>
+                                  {d.matchScore != null && <span className="text-gray-600 dark:text-gray-400">({d.matchScore}% match)</span>}
+                                  <span className="text-gray-500 dark:text-gray-400">→ existing ID: {d.existingPlayerId}</span>
                                   <span className="flex gap-1 ml-auto">
                                     {d.newPlayerId && d.existingPlayerId && (
                                       <button
@@ -811,17 +800,17 @@ const Players: React.FC = () => {
                                                   details: (prev.details ?? []).filter((x) => !(x.row === d.row && x.existingPlayerId === d.existingPlayerId)),
                                                 } : null);
                                               },
-                                              onError: (e) => alert(e.message),
+                                              onError: (e) => toast.error(e.message),
                                             }
                                           );
                                         }}
                                         disabled={mergePlayers.isPending}
-                                        className="px-2 py-1 text-xs font-medium bg-blue-900 text-white rounded hover:bg-blue-800 disabled:opacity-70"
+                                        className="px-2 py-1 text-xs font-medium bg-brand-500 text-white rounded hover:bg-brand-600 disabled:opacity-70"
                                       >
                                         Merge with existing
                                       </button>
                                     )}
-                                    <span className="text-xs text-gray-500 self-center" title="Add manually from Players if needed">Create as new (add from Players)</span>
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 self-center" title="Add manually from Players if needed">Create as new (add from Players)</span>
                                   </span>
                                 </li>
                               ))}
@@ -845,7 +834,7 @@ const Players: React.FC = () => {
                   )} */}
                   <button
                     onClick={handleCloseUploadModal}
-                    className="w-full px-4 py-2.5 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800"
+                    className="w-full px-4 py-2.5 bg-brand-500 text-white rounded-lg font-medium hover:bg-brand-600"
                   >
                     Done
                   </button>
@@ -853,11 +842,11 @@ const Players: React.FC = () => {
               ) : (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Team *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">Team *</label>
                     <select
                       value={uploadTeamId}
                       onChange={(e) => setUploadTeamId(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                       aria-label="Select team for upload"
                     >
                       <option value="">Select team</option>
@@ -867,17 +856,17 @@ const Players: React.FC = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Excel file (.xlsx) *</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">Excel file (.xlsx) *</label>
                     <input
                       type="file"
                       accept=".xlsx"
                       onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:bg-blue-50 file:text-blue-700"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:bg-brand-50 file:text-brand-700 dark:border-gray-700 dark:text-white dark:file:bg-brand-500/10 dark:file:text-brand-400"
                     />
-                    {uploadFile && <p className="mt-1 text-sm text-gray-600">{uploadFile.name}</p>}
+                    {uploadFile && <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">{uploadFile.name}</p>}
                   </div>
                   {uploadPlayersExcel.error && (
-                    <div className="px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                    <div className="px-4 py-3 rounded-lg bg-error-50 border border-error-100 text-error-700 text-sm dark:bg-error-500/10 dark:border-error-500/30 dark:text-error-500">
                       {uploadPlayersExcel.error.message}
                     </div>
                   )}
@@ -885,17 +874,17 @@ const Players: React.FC = () => {
               )}
             </div>
             {!uploadResult && (
-              <div className="flex justify-end gap-3 p-6 border-t border-gray-200">
+              <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-800">
                 <button
                   onClick={handleCloseUploadModal}
-                  className="px-5 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50"
+                  className="px-5 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-white/5"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleUploadExcel}
                   disabled={uploadPlayersExcel.isPending || !uploadTeamId || !uploadFile}
-                  className="px-5 py-2.5 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 disabled:opacity-70 disabled:cursor-not-allowed"
+                  className="px-5 py-2.5 bg-brand-500 text-white rounded-lg font-medium hover:bg-brand-600 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
                   {uploadPlayersExcel.isPending ? 'Uploading...' : 'Upload'}
                 </button>
@@ -907,11 +896,11 @@ const Players: React.FC = () => {
 
       {/* Add/Edit Player Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-white/20 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto dark:bg-gray-900">
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h2 className="text-2xl font-semibold text-gray-900">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-800">
+              <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
                 {editingPlayer ? 'Edit Player' : 'Add Player'}
               </h2>
               <button
@@ -922,7 +911,7 @@ const Players: React.FC = () => {
                   setPortraitPreview(null);
                   setFormData({ name: '', surname: '', number: '', teamId: '', teamName: '', position: 'POINT_GUARD', country: '', height: '', dob: '' });
                 }}
-                className="text-gray-600 hover:text-gray-900 transition-colors"
+                className="text-gray-600 hover:text-gray-900 transition-colors dark:text-gray-400 dark:hover:text-white"
               >
                 <MdCancel size={20} />
               </button>
@@ -933,9 +922,9 @@ const Players: React.FC = () => {
               <div className="space-y-6">
                 {/* Player portrait (PNG) */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Player portrait (optional)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">Player portrait (optional)</label>
                   <div className="flex items-center gap-4">
-                    <div className="w-24 h-24 rounded-full overflow-hidden bg-gray-100 border border-gray-300 flex-shrink-0">
+                    <div className="w-24 h-24 rounded-full overflow-hidden bg-gray-100 border border-gray-300 flex-shrink-0 dark:bg-white/5 dark:border-gray-700">
                       {portraitPreview ? (
                         <img src={portraitPreview} alt="Portrait preview" className="w-full h-full object-cover" />
                       ) : (
@@ -948,6 +937,9 @@ const Players: React.FC = () => {
                                   `new-${formData.name}-${formData.surname}-${formData.number}`
                                 )
                           }
+                          onError={handlePhotoLoadError(
+                            editingPlayer?.id ?? `new-${formData.name}-${formData.surname}-${formData.number}`
+                          )}
                           alt={editingPlayer ? 'Player portrait' : 'Default portrait preview'}
                           className="h-full w-full object-cover"
                         />
@@ -965,56 +957,56 @@ const Players: React.FC = () => {
                             setPortraitPreview(url);
                           }
                         }}
-                        className="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded file:border-0 file:bg-blue-50 file:text-blue-700"
+                        className="w-full text-sm text-gray-600 dark:text-gray-400 file:mr-3 file:py-2 file:px-4 file:rounded file:border-0 file:bg-brand-50 file:text-brand-700 dark:file:bg-brand-500/10 dark:file:text-brand-400"
                       />
-                      <p className="text-xs text-gray-500 mt-1">PNG or JPEG recommended</p>
+                      <p className="text-xs text-gray-500 mt-1 dark:text-gray-400">PNG or JPEG recommended</p>
                     </div>
                   </div>
                 </div>
 
                 {/* Name */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">First Name *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">First Name *</label>
                   <input
                     type="text"
                     placeholder="Enter first name"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                   />
                 </div>
 
                 {/* Surname */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Last Name *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">Last Name *</label>
                   <input
                     type="text"
                     placeholder="Enter last name"
                     value={formData.surname}
                     onChange={(e) => setFormData({ ...formData, surname: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                   />
                 </div>
 
                 {/* Number */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Jersey Number *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">Jersey Number *</label>
                   <input
                     type="text"
                     placeholder="Enter jersey number"
                     value={formData.number}
                     onChange={(e) => setFormData({ ...formData, number: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                   />
                 </div>
 
                 {/* Position */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Position</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">Position</label>
                   <select
                     value={formData.position}
                     onChange={(e) => setFormData({ ...formData, position: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                   >
                     {POSITION_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -1024,14 +1016,14 @@ const Players: React.FC = () => {
 
                 {!editingPlayer && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Team *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">Team *</label>
                   <select
                     value={formData.teamId}
                     onChange={(e) => {
                       const team = uniqueTeams.find((t) => t.id === e.target.value);
                       setFormData({ ...formData, teamId: e.target.value, teamName: team?.name ?? '' });
                     }}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                   >
                     <option value="">Select team</option>
                     {uniqueTeams.map((team) => (
@@ -1043,11 +1035,11 @@ const Players: React.FC = () => {
 
                 {/* Country */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Country</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">Country</label>
                   <select
                     value={formData.country}
                     onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                   >
                     <option value="">Select country</option>
                     {allCountries.map((c) => (
@@ -1058,30 +1050,30 @@ const Players: React.FC = () => {
 
                 {/* Height */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Height</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">Height</label>
                   <input
                     type="text"
                     placeholder="e.g., 6'3&quot;"
                     value={formData.height}
                     onChange={(e) => setFormData({ ...formData, height: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                   />
                 </div>
 
                 {/* Date of Birth */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Date of Birth</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">Date of Birth</label>
                   <input
                     type="date"
                     value={formData.dob}
                     onChange={(e) => setFormData({ ...formData, dob: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:[color-scheme:dark]"
                   />
                 </div>
               </div>
             </div>
 
-            <div className="flex justify-end gap-4 p-6 border-t border-gray-200">
+            <div className="flex justify-end gap-4 p-6 border-t border-gray-200 dark:border-gray-800">
               <button
                 onClick={() => {
                   setIsModalOpen(false);
@@ -1090,14 +1082,14 @@ const Players: React.FC = () => {
                   setPortraitPreview(null);
                   setFormData({ name: '', surname: '', number: '', teamId: '', teamName: '', position: 'POINT_GUARD', country: '', height: '', dob: '' });
                 }}
-                className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-white/5"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSavePlayer}
                 disabled={createPlayer.isPending || updatePlayer.isPending}
-                className="px-6 py-2.5 bg-blue-900 text-white rounded-lg font-medium hover:bg-blue-800 transition-colors disabled:opacity-70"
+                className="px-6 py-2.5 bg-brand-500 text-white rounded-lg font-medium hover:bg-brand-600 transition-colors disabled:opacity-70"
               >
                 {createPlayer.isPending || updatePlayer.isPending ? 'Saving...' : editingPlayer ? 'Update' : 'Create'}
               </button>
@@ -1105,6 +1097,8 @@ const Players: React.FC = () => {
           </div>
         </div>
       )}
+      <ConfirmDialog {...dialogProps} />
+      <PlayerProfileModal playerId={selectedPlayerId} onClose={() => setSelectedPlayerId(null)} />
     </div>
   );
 };

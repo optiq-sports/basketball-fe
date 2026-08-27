@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useMatches, useUpdateMatch } from '../../api/hooks';
 import type { Match } from '../../types/api';
+import { useToast } from '../../hooks/useToast';
 
 const CopyIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -69,6 +70,7 @@ const Schedules: React.FC = () => {
   const navigate = useNavigate();
   const matchesQuery = useMatches(id);
   const updateMatch = useUpdateMatch();
+  const toast = useToast();
 
   const [activeGroup, setActiveGroup] = useState('A');
   const [activeFilter, setActiveFilter] = useState<'all' | 'unplayed'>('all');
@@ -78,7 +80,7 @@ const Schedules: React.FC = () => {
   const handleCopyCode = (matchCode: string, e: React.MouseEvent) => {
     e.stopPropagation();
     navigator.clipboard.writeText(matchCode);
-    alert('Match code copied!');
+    toast.success('Match code copied!');
   };
 
   const openEdit = (match: Match) => {

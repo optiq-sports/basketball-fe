@@ -209,6 +209,7 @@ export interface PlayerCreateForTeam {
   dateOfBirth?: string;
   nationality?: string;
   confirmDuplicate?: boolean;
+  photo?: string;
 }
 
 export interface PlayerBulkItem {

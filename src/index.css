@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+/* Admin shell design tokens + structural styles (ported from the TailAdmin template —
+   see docs on the ported files in src/assets/admin/ for what was trimmed and why). */
+@import "./assets/admin/themes.css";
+@import "./assets/admin/menu.css";
+
+html {
+  scroll-behavior: smooth;
+}
+input, textarea, button, select, a {
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Statistician game log: very thin scrollbar (reference: narrow track + thumb) */
 .statdash-log-scroll {
   scrollbar-width: thin;
