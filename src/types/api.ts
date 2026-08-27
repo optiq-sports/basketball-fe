@@ -396,7 +396,7 @@ export interface MatchStatRecord {
   fouls: number;
   turnovers: number;
   minutesPlayed?: number;
-  player?: { id: string; firstName: string; lastName: string };
+  player?: { id: string; firstName: string; lastName: string; position?: string; dateOfBirth?: string; height?: string };
   match?: { id: string; homeTeam?: { id: string; name: string }; awayTeam?: { id: string; name: string } };
 }
 

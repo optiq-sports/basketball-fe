@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCreateTournament, useUploadTournamentFlyer } from '../../api/hooks';
 import { useToast } from '../../hooks/useToast';
+import type { TournamentDivision } from '../../types/api';
 
 interface Official {
   id: number;
@@ -33,7 +34,7 @@ const StartNew: React.FC = () => {
   const toast = useToast();
   const [competitionName, setCompetitionName] = useState('');
   const [competitionShortName, setCompetitionShortName] = useState('');
-  const [division, setDivision] = useState('');
+  const [division, setDivision] = useState<TournamentDivision | ''>('');
   const [numberOfGames, setNumberOfGames] = useState('28');
   const [numberOfQuarters, setNumberOfQuarters] = useState('4');
   const [quarterDuration, setQuarterDuration] = useState('10 Mins');
@@ -179,7 +180,7 @@ const StartNew: React.FC = () => {
                   </label>
                   <select
                     value={division}
-                    onChange={(e) => setDivision(e.target.value)}
+                    onChange={(e) => setDivision(e.target.value as TournamentDivision | '')}
                     className="w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
                   >
                     <option value="">Select Division</option>

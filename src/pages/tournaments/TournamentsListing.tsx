@@ -4,7 +4,7 @@ import { FaMapMarkerAlt, FaCalendar } from 'react-icons/fa';
 import { FiEdit2, FiTrash } from 'react-icons/fi';
 import { LuTrophy } from 'react-icons/lu';
 import { useTournaments, useCreateTournament, useUpdateTournament, useDeleteTournament } from '../../api/hooks';
-import type { Tournament } from '../../types/api';
+import type { Tournament, TournamentDivision } from '../../types/api';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { useToast } from '../../hooks/useToast';
@@ -17,6 +17,13 @@ function formatDateRange(start?: string, end?: string): string {
       return new Date(start).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
     } catch {
       return start;
+    }
+  }
+  if (!start) {
+    try {
+      return new Date(end).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch {
+      return end;
     }
   }
   try {
@@ -49,7 +56,7 @@ const TournamentsListing: React.FC = () => {
   const [editingTournament, setEditingTournament] = useState<Tournament | null>(null);
   const [formData, setFormData] = useState({
     name: '',
-    division: 'PREMIER' as string,
+    division: 'PREMIER' as TournamentDivision,
     numberOfGames: DEFAULT_NUM_GAMES,
     numberOfQuarters: DEFAULT_QUARTERS,
     quarterDuration: DEFAULT_QUARTER_DURATION,
@@ -313,7 +320,7 @@ const TournamentsListing: React.FC = () => {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Division</label>
                   <select
                     value={formData.division}
-                    onChange={(e) => setFormData({ ...formData, division: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, division: e.target.value as TournamentDivision })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
                   >
                     <option value="PREMIER">Premier</option>

@@ -4,7 +4,7 @@ import { FiMapPin, FiCalendar, FiEdit2, FiTrash2, FiUserPlus, FiChevronLeft, FiC
 import { LuTrophy } from 'react-icons/lu';
 import type { ColumnDef } from '@tanstack/react-table';
 import { useTournament, useMatches, useTeams, useUpdateTournament, useDeleteTournament, useTournamentAddTeams } from '../../api/hooks';
-import type { Match as ApiMatch } from '../../types/api';
+import type { Match as ApiMatch, TournamentDivision } from '../../types/api';
 import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { useToast } from '../../hooks/useToast';
@@ -94,7 +94,7 @@ const CompetitionDetailPage: React.FC = () => {
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
   const [editForm, setEditForm] = useState({
     name: '',
-    division: 'PREMIER' as string,
+    division: 'PREMIER' as TournamentDivision,
     numberOfGames: 10,
     numberOfQuarters: 4,
     quarterDuration: 10,
@@ -218,7 +218,7 @@ const CompetitionDetailPage: React.FC = () => {
     if (!t) return;
     setEditForm({
       name: t.name,
-      division: (t.division as string) ?? 'PREMIER',
+      division: t.division ?? 'PREMIER',
       numberOfGames: (t.numberOfGames as number) ?? 10,
       numberOfQuarters: (t.numberOfQuarters as number) ?? 4,
       quarterDuration: (t.quarterDuration as number) ?? 10,
@@ -292,7 +292,7 @@ const CompetitionDetailPage: React.FC = () => {
       </div>
     );
   }
-  if (tournamentQuery.error || !tournamentQuery.data) {
+  if (tournamentQuery.error || !tournament) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 p-6">
         <div className="max-w-7xl mx-auto text-error-600 dark:text-error-500">

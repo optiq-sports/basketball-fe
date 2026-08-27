@@ -24,7 +24,7 @@ const ShotChart: React.FC = () => {
   const filteredShots = shots.filter((shot) => {
     if (activeQuarter !== 'all') {
       const q = Number(activeQuarter.replace('q', ''));
-      if ((shot as Record<string, unknown>).period !== q) return false;
+      if ((shot as unknown as Record<string, unknown>).period !== q) return false;
     }
     if (!showMade && shot.result === 'made') return false;
     if (!showMissed && shot.result !== 'made') return false;
