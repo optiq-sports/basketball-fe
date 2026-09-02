@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react';
 import { FiX } from 'react-icons/fi';
 import type { TeamSide } from '../types';
-import { jerseyAccentSurfaceStyle } from '../../../contexts/StatisticianTeamColorsContext';
+import { getContrastTextColor, normalizeHex } from '../../../contexts/StatisticianTeamColorsContext';
+import { GATEWAY_DISPLAY_FONT_STACK } from '../../../authGatewayTheme';
 import type { PanelFoulPick } from '../foulRecordingUtils';
-import { STAT_DASH } from '../statDashTheme';
 
 export interface FoulPanelPickerModalProps {
   homeName: string;
@@ -18,23 +18,15 @@ export interface FoulPanelPickerModalProps {
 
 function PanelFooter({ onCancel }: { onCancel: () => void }) {
   return (
-    <div className="flex shrink-0 items-stretch border-t border-gray-200 bg-sky-100/80 px-2 py-2.5 sm:px-3">
-      <div className="flex flex-1 justify-start">
-        <span className="w-11" aria-hidden />
-      </div>
-      <div className="flex flex-1 justify-center">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="flex flex-col items-center gap-0.5 rounded px-2 py-0.5 text-gray-900 hover:bg-sky-200/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-        >
-          <FiX size={16} strokeWidth={2.2} aria-hidden />
-          <span className="text-[11px] font-medium">Cancel</span>
-        </button>
-      </div>
-      <div className="flex flex-1 justify-end">
-        <span className="w-11" aria-hidden />
-      </div>
+    <div className="flex h-14 shrink-0 items-center justify-center border-t border-gray-200 bg-gray-50">
+      <button
+        type="button"
+        onClick={onCancel}
+        className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 transition-colors hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
+      >
+        <FiX size={16} strokeWidth={2.2} aria-hidden />
+        Cancel
+      </button>
     </div>
   );
 }
@@ -48,20 +40,22 @@ function JerseyButton({
   accentColor: string;
   onClick: () => void;
 }) {
+  const normalized = normalizeHex(accentColor) ?? accentColor;
+  const text = getContrastTextColor(normalized);
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex aspect-square w-9 shrink-0 cursor-pointer select-none items-center justify-center rounded-md border-none text-xs font-bold hover:brightness-[1.03] focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:w-10 sm:text-sm"
-      style={jerseyAccentSurfaceStyle(accentColor)}
+      className="flex aspect-square w-10 shrink-0 cursor-pointer select-none items-center justify-center border-none font-bold leading-none shadow-sm transition-all hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:w-11"
+      style={{ background: normalized, color: text, fontFamily: GATEWAY_DISPLAY_FONT_STACK, fontSize: 16 }}
     >
       {jersey}
     </button>
   );
 }
 
-const grayPill =
-  'w-full rounded-lg bg-gray-200 px-3 py-3 text-center text-[11px] font-bold uppercase tracking-wide text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:text-[12px]';
+const neutralPill =
+  'w-full border border-gray-300 bg-white px-3 py-2.5 text-center text-[11px] font-bold uppercase tracking-wide text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:text-xs';
 
 function SideColumn({
   side,
@@ -80,13 +74,13 @@ function SideColumn({
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
-      <span className="text-center text-[10px] font-semibold text-gray-600">{teamName}</span>
+      <span className="text-center text-[11px] font-bold uppercase tracking-wide text-gray-500">{teamName}</span>
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden">
-        <div className="flex flex-col gap-1">
-          <span className="text-center text-[8px] font-semibold uppercase tracking-wide text-gray-500">
+        <div className="flex flex-col gap-2">
+          <span className="text-center text-[9px] font-semibold uppercase tracking-wide text-gray-400">
             Bench
           </span>
-          <div className="flex flex-col items-center gap-1">
+          <div className="flex flex-col items-center gap-1.5">
             {benchSorted.map((n, idx) => (
               <JerseyButton
                 key={`${side}-bench-${idx}-${n}`}
@@ -96,10 +90,10 @@ function SideColumn({
               />
             ))}
           </div>
-          <button type="button" onClick={() => onPick({ kind: 'bench' })} className={`${grayPill} mt-0.5`}>
+          <button type="button" onClick={() => onPick({ kind: 'bench' })} className={`${neutralPill} mt-1`}>
             Bench
           </button>
-          <button type="button" onClick={() => onPick({ kind: 'coach' })} className={grayPill}>
+          <button type="button" onClick={() => onPick({ kind: 'coach' })} className={neutralPill}>
             Coach
           </button>
         </div>
@@ -121,22 +115,25 @@ const FoulPanelPickerModal: React.FC<FoulPanelPickerModalProps> = ({
   onPick,
   onCancel,
 }) => {
-  const titleClass =
-    'mb-2 text-center text-[11px] font-bold uppercase leading-tight tracking-wide sm:mb-3 sm:text-xs';
-  const titleStyle = { color: STAT_DASH.accentBlue };
-
   return (
     <div
-      className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border-[3px] border-gray-500 bg-white shadow-sm"
+      className="flex h-full min-h-0 w-full flex-col overflow-hidden border-2 border-gray-800 bg-white shadow-[0_30px_60px_-20px_rgba(15,23,42,0.5)]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="foul-panel-picker-title"
     >
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-2 pt-3 sm:px-3 sm:pt-4">
-        <h2 id="foul-panel-picker-title" className={titleClass} style={titleStyle}>
-          Select fouler: bench jersey, team bench, or coach
+      <div className="shrink-0 border-b border-gray-200 bg-gray-900 px-4 py-3 sm:px-6">
+        <h2
+          id="foul-panel-picker-title"
+          className="text-white"
+          style={{ fontFamily: GATEWAY_DISPLAY_FONT_STACK, fontSize: 18, letterSpacing: 0.5 }}
+        >
+          Select fouler
         </h2>
-        <div className="flex min-h-0 flex-row justify-center gap-3 sm:gap-6">
+        <p className="mt-0.5 text-[11px] font-medium text-gray-400">Bench jersey, team bench, or coach</p>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 sm:px-6 sm:py-4">
+        <div className="flex min-h-0 flex-row justify-center gap-4 sm:gap-8">
           <SideColumn
             side="home"
             teamName={homeName}

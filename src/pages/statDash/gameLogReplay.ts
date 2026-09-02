@@ -1,5 +1,6 @@
 import type { GameLogEntry, TeamSide } from './types';
 import { formatClock } from './components/GameTimer';
+import { formatPeriodLabel } from './periodLabel';
 
 export interface ReplayPlayerRef {
   side: TeamSide;
@@ -52,7 +53,7 @@ function periodClockFromPayload(payload: Record<string, unknown>): {
   period: string;
   clock: string;
 } {
-  const period = typeof payload.period === 'number' ? `Q${payload.period}` : '—';
+  const period = typeof payload.period === 'number' ? formatPeriodLabel(payload.period) : '—';
   const clock =
     typeof payload.clockSecondsRemaining === 'number'
       ? formatClock(payload.clockSecondsRemaining)

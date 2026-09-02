@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { FiArrowRight } from 'react-icons/fi';
+import { FiArrowRight, FiLogOut } from 'react-icons/fi';
 import { queryKeys, useMatch } from '../../api/hooks';
 import StatisticianLayout from '../../components/StatisticianLayout';
 import StartersFlow, { type StartersFlowHandle } from './StartersFlow';
 import { readStoredSessionContext, writeStoredLineups } from '../../features/statdash/sessionContextStorage';
-
-const TOKEN_KEY = 'access_token';
+import { performLogout } from '../../auth/authSession';
+import { GATEWAY_DISPLAY_FONT_STACK, GATEWAY_FONT_STACK } from '../../authGatewayTheme';
 
 const Starters: React.FC = () => {
   const navigate = useNavigate();
@@ -68,35 +68,60 @@ const Starters: React.FC = () => {
   }, [navigate]);
 
   const handleLogout = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem('user_name');
+    performLogout();
     queryClient.removeQueries({ queryKey: queryKeys.auth.profile });
     navigate('/login');
   }, [navigate, queryClient]);
 
   return (
     <StatisticianLayout>
-      <div className="flex min-h-0 flex-1 flex-col bg-[#F0F2F5] font-sans">
-        <div className="flex shrink-0 items-center justify-between px-8 pt-4">
+      <div
+        className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-[#F7F8FA]"
+        style={{ fontFamily: GATEWAY_FONT_STACK }}
+      >
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-cover bg-center bg-no-repeat"
+          style={{
+            backgroundImage: "url('/starters-bg.jpg')",
+            opacity: 0.32,
+            filter: 'blur(24px)',
+            transform: 'scale(1.08)',
+          }}
+        />
+        <header className="relative z-10 flex shrink-0 items-center justify-between border-b border-white/60 bg-white/70 px-6 py-3 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur-md sm:px-8">
           <button
             type="button"
             onClick={handleLogout}
-            className="rounded text-sm text-gray-600 underline-offset-2 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            className="flex items-center gap-1.5 rounded text-sm font-medium text-gray-500 transition-colors hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
           >
+            <FiLogOut size={15} />
             Log out
           </button>
+
           <button
             type="button"
             disabled={isSubmitting}
             onClick={handleContinue}
-            className="group flex items-center gap-2 text-sm font-semibold text-gray-700 transition-colors hover:text-gray-900"
+            className="flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-sky-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
           >
-            <FiArrowRight size={18} className="transition-transform group-hover:translate-x-0.5" />
-            <span>{isSubmitting ? 'Saving…' : 'Continue'}</span>
+            {isSubmitting ? 'Saving…' : 'Continue'}
+            <FiArrowRight size={16} />
           </button>
-        </div>
+        </header>
 
-        <div className="min-h-0 flex-1 overflow-hidden px-6 pb-20 pt-4">
+        <div className="relative z-10 min-h-0 flex-1 overflow-y-auto px-6 pb-8 pt-6 sm:px-8">
+          <div className="mx-auto mb-5 w-full max-w-6xl sm:mb-6">
+            <h1
+              className="text-[2.1rem] leading-none text-gray-900 sm:text-[2.4rem]"
+              style={{ fontFamily: GATEWAY_DISPLAY_FONT_STACK }}
+            >
+              Set the starting lineups
+            </h1>
+            <p className="mt-2 text-sm text-gray-600">
+              Mark who&rsquo;s playing, then lock in exactly five starters per team.
+            </p>
+          </div>
           <StartersFlow
             ref={startersFlowRef}
             variant="page"

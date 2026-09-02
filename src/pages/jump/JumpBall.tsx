@@ -1,43 +1,100 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiArrowLeft, FiArrowRight } from 'react-icons/fi';
+import { FiArrowLeft, FiArrowRight, FiCheck } from 'react-icons/fi';
 import StatisticianLayout from '../../components/StatisticianLayout';
 import {
+  getContrastTextColor,
+  isLightColor,
   jerseyAccentSurfaceStyle,
+  normalizeHex,
   useStatisticianTeamColors,
 } from '../../contexts/StatisticianTeamColorsContext';
 import { readGameSetupOrientation } from '../gameSetupOrientation';
 import { writeJumpBallWinnerTeamId } from '../jumpBallWinner';
 import { readStoredSessionContext } from '../../features/statdash/sessionContextStorage';
+import { GATEWAY_DISPLAY_FONT_STACK, GATEWAY_FONT_STACK } from '../../authGatewayTheme';
 
 const PLAYERS = [1, 2, 3, 4, 5] as const;
 
-const PlayerBtn: React.FC<{
+const JerseyTile: React.FC<{
   num: number;
+  color: string;
   selected: boolean;
   onClick: () => void;
-}> = ({ num, selected, onClick }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    className={`h-[72px] w-[72px] select-none rounded text-3xl font-bold transition-all ${
-      selected
-        ? 'bg-gray-500 text-white shadow-inner'
-        : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
-    }`}
-  >
-    {num}
-  </button>
+}> = ({ num, color, selected, onClick }) => {
+  const normalized = normalizeHex(color) ?? '#3B82F6';
+  const safe = isLightColor(normalized) ? '#334155' : normalized;
+  const fg = getContrastTextColor(safe);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={`flex h-14 w-14 select-none items-center justify-center rounded-lg text-xl transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
+        selected ? 'scale-105' : 'hover:scale-105'
+      }`}
+      style={{
+        fontFamily: GATEWAY_DISPLAY_FONT_STACK,
+        backgroundColor: selected ? safe : '#F1F5F9',
+        color: selected ? fg : '#64748B',
+        boxShadow: selected ? `0 6px 14px -5px ${safe}99` : 'inset 0 0 0 1px rgba(15,23,42,0.08)',
+      }}
+    >
+      {num}
+    </button>
+  );
+};
+
+const TeamPanel: React.FC<{
+  label: string;
+  color: string;
+  picks: number | null;
+  onPick: (n: number) => void;
+}> = ({ label, color, picks, onPick }) => (
+  <div className="flex min-w-0 flex-col items-center gap-4 rounded-xl border border-gray-100 bg-gray-50/60 px-3 py-5 sm:px-5">
+    <span
+      className="rounded-md px-4 py-1.5 text-xs font-bold uppercase tracking-wide"
+      style={jerseyAccentSurfaceStyle(color)}
+    >
+      {label}
+    </span>
+    <div className="flex gap-1.5 sm:gap-2">
+      {PLAYERS.map((n) => (
+        <JerseyTile key={n} num={n} color={color} selected={picks === n} onClick={() => onPick(n)} />
+      ))}
+    </div>
+  </div>
 );
 
-const SelectedTile: React.FC<{ num: number | null }> = ({ num }) => (
-  <div
-    className={`flex h-[80px] w-[80px] items-center justify-center rounded text-3xl font-bold transition-all ${
-      num !== null ? 'bg-gray-500 text-white shadow' : 'bg-transparent'
+const BasketballGlyph: React.FC = () => (
+  <svg width={56} height={56} viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+    <circle cx={32} cy={32} r={29} fill="#EA580C" stroke="#111827" strokeWidth={2} />
+    <path d="M3 32 H61" stroke="#111827" strokeWidth={2} />
+    <path d="M32 3 V61" stroke="#111827" strokeWidth={2} />
+    <path d="M9 11 Q30 32 9 53" fill="none" stroke="#111827" strokeWidth={2} />
+    <path d="M55 11 Q34 32 55 53" fill="none" stroke="#111827" strokeWidth={2} />
+  </svg>
+);
+
+const WinnerButton: React.FC<{
+  label: string;
+  color: string;
+  selected: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}> = ({ label, color, selected, disabled, onClick }) => (
+  <button
+    type="button"
+    disabled={disabled}
+    onClick={onClick}
+    className={`flex items-center gap-2 rounded-lg px-9 py-3 text-sm font-bold uppercase tracking-wide transition-all disabled:cursor-not-allowed ${
+      selected ? 'scale-105 ring-2 ring-offset-2 ring-gray-900' : 'opacity-90 hover:opacity-100 hover:scale-[1.02]'
     }`}
+    style={jerseyAccentSurfaceStyle(color)}
   >
-    {num ?? ''}
-  </div>
+    {selected && <FiCheck size={16} strokeWidth={3} />}
+    {label}
+  </button>
 );
 
 const JumpBall: React.FC = () => {
@@ -84,107 +141,81 @@ const JumpBall: React.FC = () => {
 
   return (
     <StatisticianLayout>
-      <div className="flex min-h-0 flex-1 flex-col bg-[#F0F2F5] font-sans">
-        <div className="flex shrink-0 items-center justify-between px-6 py-3">
+      <div
+        className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-[#F7F8FA]"
+        style={{ fontFamily: GATEWAY_FONT_STACK }}
+      >
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-cover bg-center bg-no-repeat"
+          style={{
+            backgroundImage: "url('/starters-bg.jpg')",
+            opacity: 0.28,
+            filter: 'blur(24px)',
+            transform: 'scale(1.08)',
+          }}
+        />
+
+        <header className="relative z-10 flex shrink-0 items-center justify-between border-b border-white/60 bg-white/70 px-6 py-3 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur-md sm:px-8">
           <button
             type="button"
             onClick={() => navigate('/choose-sides')}
-            className="flex items-center gap-1.5 text-sm font-medium text-gray-700 transition-colors hover:text-gray-900"
+            className="flex items-center gap-1.5 rounded text-sm font-medium text-gray-500 transition-colors hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
           >
-            <FiArrowLeft size={16} />
-            <span>Back</span>
+            <FiArrowLeft size={15} />
+            Back
           </button>
-          {winner !== null && !isSaving && (
-            <button
-              type="button"
-              onClick={() => navigate('/stat-dash')}
-              className="flex items-center gap-1.5 text-sm font-medium text-gray-700 transition-colors hover:text-gray-900"
+          <button
+            type="button"
+            disabled={winner === null || isSaving}
+            onClick={() => navigate('/stat-dash')}
+            className="flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-sky-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
+          >
+            Continue
+            <FiArrowRight size={16} />
+          </button>
+        </header>
+
+        <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-6 py-8 sm:px-8">
+          <div className="mb-6 text-center sm:mb-8">
+            <h1
+              className="text-[2.1rem] leading-none text-gray-900 sm:text-[2.4rem]"
+              style={{ fontFamily: GATEWAY_DISPLAY_FONT_STACK }}
             >
-              <span>Continue</span>
-              <FiArrowRight size={16} />
-            </button>
-          )}
-        </div>
-
-        <div className="pb-8 pt-6 text-center">
-          <h1 className="text-2xl font-bold text-gray-900">Select Players for Jump Ball</h1>
-        </div>
-
-        <div className="flex flex-col items-center gap-8 px-8 pb-8">
-          <div className="flex items-center gap-3">
-            <span
-              className="shrink-0 rounded px-3 py-2 text-xs font-bold"
-              style={jerseyAccentSurfaceStyle(leftBadgeColor)}
-            >
-              {leftBadgeLabel}
-            </span>
-
-            <div className="flex gap-2">
-              {PLAYERS.map((n) => (
-                <PlayerBtn
-                  key={n}
-                  num={n}
-                  selected={team1Pick === n}
-                  onClick={() => handleTeam1Pick(n)}
-                />
-              ))}
-            </div>
-
-            <div className="w-10" />
-
-            <div className="flex gap-2">
-              {PLAYERS.map((n) => (
-                <PlayerBtn
-                  key={n}
-                  num={n}
-                  selected={team2Pick === n}
-                  onClick={() => handleTeam2Pick(n)}
-                />
-              ))}
-            </div>
-
-            <span
-              className="shrink-0 rounded px-3 py-2 text-xs font-bold"
-              style={jerseyAccentSurfaceStyle(rightBadgeColor)}
-            >
-              {rightBadgeLabel}
-            </span>
+              Jump ball
+            </h1>
+            <p className="mt-2 text-sm text-gray-600">
+              Pick who&rsquo;s jumping for each team, then mark who controls the tip.
+            </p>
           </div>
 
-          <div className="flex items-center gap-4">
-            <SelectedTile num={team1Pick} />
-            <SelectedTile num={team2Pick} />
-          </div>
+          <div className="flex w-full max-w-4xl flex-col items-center gap-8 rounded-2xl border border-gray-200 bg-white p-5 shadow-[0_20px_45px_-24px_rgba(15,23,42,0.3)] sm:p-8">
+            <div className="grid w-full grid-cols-1 items-center gap-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+              <TeamPanel label={leftBadgeLabel} color={leftBadgeColor} picks={team1Pick} onPick={handleTeam1Pick} />
+              <div className="flex items-center justify-center">
+                <BasketballGlyph />
+              </div>
+              <TeamPanel label={rightBadgeLabel} color={rightBadgeColor} picks={team2Pick} onPick={handleTeam2Pick} />
+            </div>
 
-          <div className="flex flex-col items-center gap-5">
-            <p className="text-base font-semibold text-gray-800">Select Team that Won the Jump Ball</p>
-            <div className="flex items-center gap-6">
-              <button
-                type="button"
-                disabled={isSaving}
-                onClick={() => selectWinner('left')}
-                className={`rounded px-10 py-2.5 text-sm font-bold transition-all ${
-                  winner === 'left'
-                    ? 'scale-105 opacity-100 ring-4 ring-offset-2 ring-gray-400'
-                    : 'opacity-90 hover:opacity-100'
-                }`}
-                style={jerseyAccentSurfaceStyle(leftBadgeColor)}
-              >
-                {leftBadgeLabel}
-              </button>
-              <button
-                type="button"
-                disabled={isSaving}
-                onClick={() => selectWinner('right')}
-                className={`rounded px-10 py-2.5 text-sm font-bold transition-all ${
-                  winner === 'right'
-                    ? 'scale-105 opacity-100 ring-4 ring-offset-2 ring-gray-400'
-                    : 'opacity-90 hover:opacity-100'
-                }`}
-                style={jerseyAccentSurfaceStyle(rightBadgeColor)}
-              >
-                {rightBadgeLabel}
-              </button>
+            <div className="flex w-full flex-col items-center gap-4 border-t border-gray-100 pt-6">
+              <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Who won the tip?</p>
+              <div className="flex flex-wrap items-center justify-center gap-4">
+                <WinnerButton
+                  label={leftBadgeLabel}
+                  color={leftBadgeColor}
+                  selected={winner === 'left'}
+                  disabled={isSaving}
+                  onClick={() => selectWinner('left')}
+                />
+                <WinnerButton
+                  label={rightBadgeLabel}
+                  color={rightBadgeColor}
+                  selected={winner === 'right'}
+                  disabled={isSaving}
+                  onClick={() => selectWinner('right')}
+                />
+              </div>
             </div>
           </div>
         </div>

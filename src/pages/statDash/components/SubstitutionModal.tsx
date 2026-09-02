@@ -1,6 +1,11 @@
 import React from 'react';
 import { FiArrowRight, FiX } from 'react-icons/fi';
-import { jerseyAccentSurfaceStyle } from '../../../contexts/StatisticianTeamColorsContext';
+import {
+  getContrastTextColor,
+  jerseyAccentSurfaceStyle,
+  normalizeHex,
+} from '../../../contexts/StatisticianTeamColorsContext';
+import { GATEWAY_DISPLAY_FONT_STACK } from '../../../authGatewayTheme';
 import type { TeamLineup } from '../substitutionLineupUtils';
 import {
   LINEUP_SLOTS,
@@ -34,6 +39,9 @@ function TeamColumn({
   lineup: TeamLineup;
   onChange: (next: TeamLineup) => void;
 }) {
+  const normalizedAccent = normalizeHex(badgeColor) ?? badgeColor;
+  const onCourtText = getContrastTextColor(normalizedAccent);
+
   const onSlotClick = (slotIndex: number) => {
     onChange(moveSlotToBench(lineup, slotIndex));
   };
@@ -52,40 +60,46 @@ function TeamColumn({
   };
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-3 border-gray-200 px-2 sm:px-3">
+    <div className="flex min-w-0 flex-1 flex-col gap-4 px-4 py-4 sm:px-6 sm:py-5">
       <div
-        className="mx-auto w-full max-w-[140px] rounded-md px-2 py-1 text-center text-[10px] font-bold uppercase tracking-wide sm:text-[11px]"
+        className="mx-auto w-full max-w-[180px] px-3 py-2 text-center text-xs font-bold uppercase tracking-wide"
         style={jerseyAccentSurfaceStyle(badgeColor)}
       >
         {teamName}
       </div>
 
-      <div className="flex flex-col items-start gap-1">
-        <div className="flex w-full items-center justify-between gap-2">
-          <span className="text-[9px] font-semibold uppercase text-gray-600">Players On</span>
+      <div className="flex flex-col items-center gap-2">
+        <div className="flex w-full max-w-[300px] items-center justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Players On</span>
           <button
             type="button"
             onClick={onClearOnCourt}
             disabled={lineup.onCourt.every((j) => j === null)}
-            className="rounded border border-gray-300 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+            className="border border-gray-300 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Clear
           </button>
         </div>
-        <div className="flex w-full flex-wrap justify-center gap-1">
+        <div className="flex flex-wrap justify-center gap-2">
           {Array.from({ length: LINEUP_SLOTS }, (_, i) => {
             const j = lineup.onCourt[i];
+            const empty = j === null;
             return (
               <button
                 key={`slot-${i}`}
                 type="button"
                 onClick={() => onSlotClick(i)}
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded border text-xs font-bold sm:h-10 sm:w-10 sm:text-sm ${
-                  j === null
-                    ? 'border-dashed border-gray-400 bg-gray-200 text-gray-500'
-                    : 'border-gray-400 bg-gray-300 text-gray-900 hover:bg-gray-400/80'
+                className={`flex h-12 w-12 shrink-0 items-center justify-center border font-bold leading-none transition-all sm:h-14 sm:w-14 ${
+                  empty
+                    ? 'border-dashed border-gray-300 bg-gray-50 text-gray-300'
+                    : 'border-transparent shadow-sm hover:brightness-110'
                 }`}
-                aria-label={j === null ? `Empty slot ${i + 1}` : `On court #${j}, move to bench`}
+                style={{
+                  fontFamily: GATEWAY_DISPLAY_FONT_STACK,
+                  fontSize: 'clamp(16px, 1.6vw, 20px)',
+                  ...(empty ? {} : { background: normalizedAccent, color: onCourtText }),
+                }}
+                aria-label={empty ? `Empty slot ${i + 1}` : `On court #${j}, move to bench`}
               >
                 {j ?? ''}
               </button>
@@ -94,16 +108,22 @@ function TeamColumn({
         </div>
       </div>
 
-      <div className="flex flex-col items-start gap-1">
-        <span className="text-[9px] font-semibold uppercase text-gray-600">Bench</span>
-        <div className="flex w-full flex-wrap justify-center gap-1">
+      <div className="flex flex-col items-center gap-2">
+        <span className="w-full max-w-[300px] text-[10px] font-bold uppercase tracking-wide text-gray-500">
+          Bench
+        </span>
+        <div className="flex min-h-[3rem] w-full max-w-[300px] flex-wrap justify-center gap-2 sm:min-h-[3.5rem]">
+          {lineup.bench.length === 0 && (
+            <span className="pt-2 text-[11px] text-gray-300">No bench players</span>
+          )}
           {lineup.bench.map((j, benchIdx) => (
             <button
               key={`bench-${j}-${benchIdx}`}
               type="button"
               onClick={() => onBenchClick(benchIdx)}
               disabled={!lineup.onCourt.some((x) => x === null)}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded border-2 border-gray-900 bg-white text-xs font-bold text-gray-900 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 sm:h-10 sm:w-10 sm:text-sm"
+              className="flex h-12 w-12 shrink-0 items-center justify-center border-2 border-gray-800 bg-white font-bold leading-none text-gray-900 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 sm:h-14 sm:w-14"
+              style={{ fontFamily: GATEWAY_DISPLAY_FONT_STACK, fontSize: 'clamp(16px, 1.6vw, 20px)' }}
               aria-label={`Bench #${j}, move to open court slot`}
             >
               {j}
@@ -134,22 +154,23 @@ const SubstitutionModal: React.FC<SubstitutionModalProps> = ({
 
   return (
     <div
-      className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border-[3px] border-gray-500 bg-white shadow-sm"
+      className="flex max-h-full w-full flex-col overflow-hidden border-2 border-gray-800 bg-white shadow-[0_30px_60px_-20px_rgba(15,23,42,0.5)]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="sub-modal-title"
     >
-      <div className="shrink-0 border-b border-gray-200 px-3 py-2 sm:px-4 sm:py-3">
+      <div className="shrink-0 border-b border-gray-200 bg-gray-900 px-4 py-3 sm:px-6">
         <h2
           id="sub-modal-title"
-          className="text-left text-xs font-bold uppercase tracking-wider text-gray-400 sm:text-sm"
+          className="text-left text-white"
+          style={{ fontFamily: GATEWAY_DISPLAY_FONT_STACK, fontSize: 20, letterSpacing: 1 }}
         >
           Substitution
         </h2>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-2 sm:py-3">
-        <div className="flex divide-x divide-gray-300">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+        <div className="flex divide-x divide-gray-200">
           <TeamColumn
             teamName={homeName}
             badgeColor={homeColor}
@@ -164,29 +185,29 @@ const SubstitutionModal: React.FC<SubstitutionModalProps> = ({
           />
         </div>
         {!canFinish && (
-          <p className="mt-2 px-3 text-center text-[10px] text-amber-800 sm:text-[11px]">
+          <p className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-center text-xs font-medium text-amber-800">
             Each team needs 5 players on the court to finish.
           </p>
         )}
       </div>
 
-      <div className="flex shrink-0 items-stretch justify-between border-t border-gray-200 bg-sky-100/80 px-2 py-2.5 sm:px-3">
+      <div className="flex shrink-0 items-center justify-between border-t border-gray-200 bg-gray-50 px-4 py-3 sm:px-6">
         <button
           type="button"
           onClick={onCancel}
-          className="flex flex-col items-center gap-0.5 rounded px-2 py-0.5 text-gray-900 hover:bg-sky-200/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+          className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 transition-colors hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
         >
           <FiX size={16} strokeWidth={2.2} aria-hidden />
-          <span className="text-[11px] font-medium">Cancel</span>
+          Cancel
         </button>
         <button
           type="button"
           disabled={!canFinish}
           onClick={onFinish}
-          className="flex flex-col items-center gap-0.5 rounded px-2 py-0.5 text-gray-900 hover:bg-sky-200/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex items-center gap-1.5 bg-gray-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 disabled:cursor-not-allowed disabled:opacity-40"
         >
+          Finish
           <FiArrowRight size={16} strokeWidth={2.2} aria-hidden />
-          <span className="text-[11px] font-medium">Finish</span>
         </button>
       </div>
     </div>

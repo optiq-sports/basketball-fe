@@ -3,7 +3,6 @@ import TeamScorecard from './TeamScorecard';
 import GameTimer from './GameTimer';
 import ActionButtons from './ActionButtons';
 import { cl } from '../utils/cl';
-import { STAT_DASH } from '../statDashTheme';
 
 export interface GameHeaderProps {
   homeName: string;
@@ -50,56 +49,46 @@ const GameHeader: React.FC<GameHeaderProps> = (props) => {
     onQuarterFinish,
   } = props;
 
-  const gap = cl('6px', '1vw', '14px');
-
   return (
     <div
-      className="w-full rounded-xl border font-sans shadow-sm"
-      style={{
-        borderColor: STAT_DASH.cardBorder,
-        background: 'rgba(243, 244, 246, 0.95)',
-        padding: cl('8px', '1vw', '14px'),
-      }}
+      className={`flex w-full items-stretch divide-x divide-gray-200 border-b border-gray-200 bg-white font-sans ${
+        reverseSides ? 'flex-row-reverse' : ''
+      }`}
     >
-      <div className={`flex items-stretch ${reverseSides ? 'flex-row-reverse' : ''}`} style={{ gap }}>
-        <TeamScorecard
-          teamName={homeName}
-          score={homeScore}
-          accentColor={homeColor}
-          accentSide={reverseSides ? 'right' : 'left'}
+      <TeamScorecard
+        teamName={homeName}
+        score={homeScore}
+        accentColor={homeColor}
+        accentSide={reverseSides ? 'right' : 'left'}
+      />
+      <div
+        className="flex min-w-0 shrink-0 flex-col items-stretch"
+        style={{ minWidth: cl('200px', '26vw', '360px') }}
+      >
+        <GameTimer
+          quarter={quarter}
+          timerSeconds={timerSeconds}
+          isRunning={isRunning}
+          onStartStop={onStartStop}
+          onTick={onTick}
+          onAdjustMinutes={onAdjustMinutes}
+          onAdjustSeconds={onAdjustSeconds}
+          showQuarterFinish={showQuarterFinish}
+          onQuarterFinish={onQuarterFinish}
         />
         <div
-          className="flex min-w-0 shrink-0 flex-col items-stretch gap-2"
-          style={{ minWidth: cl('200px', '26vw', '360px') }}
+          className="w-full border-t border-gray-200 bg-gray-50"
+          style={{ padding: cl('6px', '0.6vw', '10px') }}
         >
-          <GameTimer
-            quarter={quarter}
-            timerSeconds={timerSeconds}
-            isRunning={isRunning}
-            onStartStop={onStartStop}
-            onTick={onTick}
-            onAdjustMinutes={onAdjustMinutes}
-            onAdjustSeconds={onAdjustSeconds}
-            showQuarterFinish={showQuarterFinish}
-            onQuarterFinish={onQuarterFinish}
-          />
-          <div
-            className="w-full rounded-lg"
-            style={{
-              background: 'rgba(229, 231, 235, 0.95)',
-              padding: cl('6px', '0.6vw', '10px'),
-            }}
-          >
-            <ActionButtons onTimeout={onTimeout} onJumpBall={onJumpBall} onSub={onSub} />
-          </div>
+          <ActionButtons onTimeout={onTimeout} onJumpBall={onJumpBall} onSub={onSub} />
         </div>
-        <TeamScorecard
-          teamName={awayName}
-          score={awayScore}
-          accentColor={awayColor}
-          accentSide={reverseSides ? 'left' : 'right'}
-        />
       </div>
+      <TeamScorecard
+        teamName={awayName}
+        score={awayScore}
+        accentColor={awayColor}
+        accentSide={reverseSides ? 'left' : 'right'}
+      />
     </div>
   );
 };

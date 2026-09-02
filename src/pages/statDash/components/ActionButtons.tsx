@@ -19,7 +19,7 @@ const ActionButtons: React.FC<ActionButtonsProps> = ({ onTimeout, onJumpBall, on
           key={btn}
           type="button"
           onClick={handlers[i]}
-          className="cursor-pointer rounded-md border border-gray-300/90 bg-white font-bold uppercase text-gray-900 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3B82F6] focus-visible:ring-offset-1"
+          className="cursor-pointer border border-gray-300/90 bg-white font-bold uppercase text-gray-700 transition-colors hover:border-gray-400 hover:bg-gray-50 hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3B82F6] focus-visible:ring-offset-1"
           style={{
             flex: i === 1 ? '1.35 1 0%' : '1 1 0%',
             minWidth: 0,

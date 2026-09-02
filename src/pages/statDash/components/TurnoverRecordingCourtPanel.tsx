@@ -4,7 +4,6 @@ import type { TeamSide } from '../types';
 import type { ActiveTurnoverFlow, TurnoverTypeId } from '../turnoverRecordingUtils';
 import { TURNOVER_TYPE_OPTIONS } from '../turnoverRecordingUtils';
 import { opponentOf } from '../foulRecordingUtils';
-import { STAT_DASH } from '../statDashTheme';
 
 export interface TurnoverRecordingCourtPanelProps {
   flow: ActiveTurnoverFlow;
@@ -34,41 +33,33 @@ function PanelFooter({
   onCancel: () => void;
 }) {
   return (
-    <div className="flex shrink-0 items-stretch border-t border-gray-200 bg-sky-100/80 px-2 py-2.5 sm:px-3">
-      <div className="flex flex-1 justify-start">
-        {showBack ? (
-          <button
-            type="button"
-            onClick={onBack}
-            className="flex flex-col items-center gap-0.5 rounded px-2 py-0.5 text-gray-900 hover:bg-sky-200/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-          >
-            <FiArrowLeft size={16} strokeWidth={2.2} aria-hidden />
-            <span className="text-[11px] font-medium">Back</span>
-          </button>
-        ) : (
-          <span className="w-11" aria-hidden />
-        )}
-      </div>
-      <div className="flex flex-1 justify-center">
+    <div className="flex h-14 shrink-0 items-center justify-between border-t border-gray-200 bg-gray-50 px-4 sm:px-6">
+      {showBack ? (
         <button
           type="button"
-          onClick={onCancel}
-          className="flex flex-col items-center gap-0.5 rounded px-2 py-0.5 text-gray-900 hover:bg-sky-200/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+          onClick={onBack}
+          className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 transition-colors hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
         >
-          <FiX size={16} strokeWidth={2.2} aria-hidden />
-          <span className="text-[11px] font-medium">Cancel</span>
+          <FiArrowLeft size={16} strokeWidth={2.2} aria-hidden />
+          Back
         </button>
-      </div>
-      <div className="flex flex-1 justify-end">
-        <span className="w-11" aria-hidden />
-      </div>
+      ) : (
+        <span aria-hidden />
+      )}
+      <button
+        type="button"
+        onClick={onCancel}
+        className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 transition-colors hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
+      >
+        <FiX size={16} strokeWidth={2.2} aria-hidden />
+        Cancel
+      </button>
     </div>
   );
 }
 
 const titleClass =
-  'mb-2 text-center text-[10px] font-bold uppercase leading-tight tracking-wide sm:mb-3 sm:text-[11px]';
-const titleStyle = { color: STAT_DASH.accentBlue };
+  'mb-2 border-b border-gray-200 pb-2 text-center text-xs font-bold uppercase leading-tight tracking-wide text-gray-900 sm:mb-3 sm:pb-3 sm:text-sm';
 
 const TurnoverRecordingCourtPanel: React.FC<TurnoverRecordingCourtPanelProps> = ({
   flow,
@@ -96,18 +87,18 @@ const TurnoverRecordingCourtPanel: React.FC<TurnoverRecordingCourtPanelProps> = 
 
   return (
     <div
-      className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border-[3px] border-gray-500 bg-white shadow-sm"
+      className="flex h-full min-h-0 w-full flex-col overflow-hidden border-2 border-gray-800 bg-white shadow-[0_30px_60px_-20px_rgba(15,23,42,0.5)]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="turnover-flow-title"
     >
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-2 pt-2 sm:px-3 sm:pt-3">
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto overflow-x-hidden px-2 pb-2 pt-2 sm:px-3 sm:pt-3">
         {step === 'pickPlayer' && (
           <>
-            <h2 id="turnover-flow-title" className={titleClass} style={titleStyle}>
+            <h2 id="turnover-flow-title" className={titleClass}>
               Select player for turnover
             </h2>
-            <div className="mx-auto max-w-[360px] rounded-lg bg-gray-100 px-4 py-4 text-center">
+            <div className="mx-auto max-w-[360px] border border-gray-300 bg-gray-50 px-4 py-4 text-center">
               <p className="text-sm font-semibold text-gray-700">Select player from side jersey lists</p>
               <p className="mt-1 text-xs text-gray-500">{committingName} players are selectable by the court sides.</p>
             </div>
@@ -116,7 +107,7 @@ const TurnoverRecordingCourtPanel: React.FC<TurnoverRecordingCourtPanelProps> = 
 
         {step === 'turnoverType' && (
           <>
-            <h2 id="turnover-flow-title" className={titleClass} style={titleStyle}>
+            <h2 id="turnover-flow-title" className={titleClass}>
               Select turnover type
             </h2>
             <div className="mx-auto grid max-w-[340px] grid-cols-3 gap-2 sm:gap-2.5">
@@ -125,7 +116,7 @@ const TurnoverRecordingCourtPanel: React.FC<TurnoverRecordingCourtPanelProps> = 
                   key={id}
                   type="button"
                   onClick={() => onSelectTurnoverType(id)}
-                  className="rounded-lg bg-gray-200 px-2 py-2.5 text-center text-[10px] font-medium leading-tight text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:px-2.5 sm:text-[11px]"
+                  className="border border-gray-300 bg-gray-50 px-2 py-2.5 text-center text-[10px] font-medium leading-tight text-gray-800 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:px-2.5 sm:text-[11px]"
                 >
                   {label}
                 </button>
@@ -136,14 +127,14 @@ const TurnoverRecordingCourtPanel: React.FC<TurnoverRecordingCourtPanelProps> = 
 
         {step === 'steal' && (
           <>
-            <h2 id="turnover-flow-title" className={titleClass} style={titleStyle}>
+            <h2 id="turnover-flow-title" className={titleClass}>
               Select player for steal
             </h2>
             <div className="mx-auto flex max-w-[240px] flex-col items-center gap-3">
               <button
                 type="button"
                 onClick={onSelectNoSteal}
-                className="w-full rounded-lg bg-gray-200 px-3 py-2.5 text-center text-[11px] font-medium text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                className="w-full border border-gray-300 bg-gray-50 px-3 py-2.5 text-center text-[11px] font-medium text-gray-800 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
               >
                 No Steal
               </button>

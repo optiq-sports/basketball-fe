@@ -1,7 +1,9 @@
 import React from 'react';
-import { jerseyAccentSurfaceStyle } from '../../../contexts/StatisticianTeamColorsContext';
+import { FiList } from 'react-icons/fi';
+import { getContrastTextColor, normalizeHex } from '../../../contexts/StatisticianTeamColorsContext';
 import type { TeamSide } from '../types';
 import { cl } from '../utils/cl';
+import { GATEWAY_DISPLAY_FONT_STACK } from '../../../authGatewayTheme';
 
 export interface PlayerPanelProps {
   side: TeamSide;
@@ -17,9 +19,17 @@ export interface PlayerPanelProps {
   onPlayerShotContextMenu: (side: TeamSide, jersey: number, e: React.MouseEvent) => void;
   onFoul: (side: TeamSide) => void;
   onTurnover: (side: TeamSide) => void;
+  /** Opens/closes this team's roster + stats drawer */
+  onToggleRoster?: () => void;
+  rosterOpen?: boolean;
 }
 
 const EXTRA = ['FOUL', 'TURNOVER'] as const;
+
+const EXTRA_STYLE = {
+  FOUL: { border: '#FCD34D', bg: '#FFFBEB', text: '#92400E' },
+  TURNOVER: { border: '#FDA4AF', bg: '#FFF1F2', text: '#9F1239' },
+} as const;
 
 const PlayerPanel: React.FC<PlayerPanelProps> = ({
   side,
@@ -31,76 +41,82 @@ const PlayerPanel: React.FC<PlayerPanelProps> = ({
   onPlayerShotContextMenu,
   onFoul,
   onTurnover,
+  onToggleRoster,
+  rosterOpen = false,
 }) => {
-  const btnW = cl('48px', '5.1vw', '68px');
+  const tileGap = cl('6px', '0.6vw', '10px');
+  const panelW = cl('120px', '12.5vw', '180px');
+  const normalizedAccent = normalizeHex(accentColor) ?? accentColor;
+  const jerseyText = getContrastTextColor(normalizedAccent);
 
   return (
-    <div
-      className="flex shrink-0 flex-col font-sans"
-      style={{
-        gap: cl('5px', '0.55vw', '8px'),
-        width: btnW,
-      }}
-    >
-      {playerNumbers.map((n, idx) => {
-        const name = rosterByJersey?.get(n);
-        return (
-          <button
-            key={`${side}-jersey-${idx}-${n}`}
-            type="button"
-            disabled={interactionsLocked}
-            onClick={() => onPlayerFoulClick(side, n)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              if (interactionsLocked) return;
-              onPlayerShotContextMenu(side, n, e);
-            }}
-            className="flex shrink-0 cursor-pointer select-none flex-col items-center justify-center border-none font-bold hover:brightness-[1.03] focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
-            style={{
-              ...jerseyAccentSurfaceStyle(accentColor),
-              width: btnW,
-              minHeight: btnW,
-              padding: name ? `${cl('4px', '0.4vh', '6px')} 2px` : undefined,
-              aspectRatio: name ? undefined : '1',
-              fontSize: cl('16px', '1.9vw', '28px'),
-              borderRadius: 6,
-            }}
-            aria-label={`${side} player ${n}${name ? ` (${name})` : ''}. Left-click: select player. Right-click: made shot.`}
-          >
-            {n}
-            {name && (
-              <span
-                style={{
-                  fontSize: cl('7px', '0.68vw', '10px'),
-                  fontWeight: 500,
-                  lineHeight: 1.2,
-                  marginTop: 2,
-                  maxWidth: '100%',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  display: 'block',
-                }}
-              >
-                {name}
-              </span>
-            )}
-          </button>
-        );
-      })}
+    <div className="flex shrink-0 flex-col font-sans" style={{ gap: tileGap, width: panelW }}>
+      {onToggleRoster && (
+        <button
+          type="button"
+          onClick={onToggleRoster}
+          className={`flex w-full items-center justify-center gap-1.5 border font-bold uppercase tracking-wide shadow-sm transition-colors ${
+            rosterOpen
+              ? 'border-slate-500 bg-slate-700 text-white'
+              : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
+          }`}
+          style={{
+            padding: `${cl('6px', '0.7vh', '10px')} ${cl('4px', '0.4vw', '6px')}`,
+            fontSize: cl('9px', '0.85vw', '12px'),
+            letterSpacing: 0.45,
+          }}
+          aria-pressed={rosterOpen}
+        >
+          <FiList size={13} />
+          Roster
+        </button>
+      )}
+      <div
+        className="grid grid-cols-2"
+        style={{ gap: tileGap }}
+      >
+        {playerNumbers.map((n, idx) => {
+          const name = rosterByJersey?.get(n);
+          return (
+            <button
+              key={`${side}-jersey-${idx}-${n}`}
+              type="button"
+              disabled={interactionsLocked}
+              onClick={() => onPlayerFoulClick(side, n)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                if (interactionsLocked) return;
+                onPlayerShotContextMenu(side, n, e);
+              }}
+              className="flex aspect-square shrink-0 cursor-pointer select-none items-center justify-center border-none font-bold leading-none shadow-sm transition-all hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-gray-500 disabled:cursor-not-allowed disabled:opacity-80"
+              style={{
+                background: normalizedAccent,
+                color: jerseyText,
+                fontSize: cl('22px', '2.6vw', '38px'),
+                fontFamily: GATEWAY_DISPLAY_FONT_STACK,
+              }}
+              aria-label={`${side} player ${n}${name ? ` (${name})` : ''}. Left-click: select player. Right-click: made shot.`}
+              title={name}
+            >
+              {n}
+            </button>
+          );
+        })}
+      </div>
       {EXTRA.map((lbl) => (
         <button
           key={lbl}
           type="button"
           onClick={() => (lbl === 'FOUL' ? onFoul(side) : onTurnover(side))}
-          className="cursor-pointer border border-gray-400/90 bg-gray-200 font-bold uppercase tracking-wide text-gray-900 hover:bg-gray-300/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
+          className="w-full cursor-pointer border font-bold uppercase tracking-wide shadow-sm transition-all hover:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
           style={{
-            width: btnW,
-            padding: `${cl('5px', '0.55vh', '8px')} ${cl('2px', '0.2vw', '4px')}`,
-            fontSize: cl('7px', '0.68vw', '10px'),
+            padding: `${cl('6px', '0.7vh', '10px')} ${cl('4px', '0.4vw', '6px')}`,
+            fontSize: cl('9px', '0.85vw', '12px'),
             letterSpacing: lbl === 'TURNOVER' ? 0.15 : 0.45,
-            borderRadius: 6,
             lineHeight: 1.15,
+            borderColor: EXTRA_STYLE[lbl].border,
+            background: EXTRA_STYLE[lbl].bg,
+            color: EXTRA_STYLE[lbl].text,
           }}
         >
           {lbl}

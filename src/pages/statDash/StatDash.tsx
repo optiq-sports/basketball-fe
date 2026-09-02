@@ -9,7 +9,6 @@ import { useNavigate } from "react-router-dom";
 import StatisticianFullscreenGate from "../../components/StatisticianFullscreenGate";
 import MenuBar from "./components/MenuBar";
 import EdgeTeamDrawer from "./components/EdgeTeamDrawer";
-import StatusStrip from "./components/StatusStrip";
 import GameHeader from "./components/GameHeader";
 import GameCenter from "./components/GameCenter";
 import SubstitutionModal from "./components/SubstitutionModal";
@@ -21,12 +20,9 @@ import type { CourtMarker } from "./components/BasketballCourt";
 import GameLog from "./components/GameLog";
 import { formatClock } from "./components/GameTimer";
 import { useStatisticianTeamColors } from "../../contexts/StatisticianTeamColorsContext";
-import {
-  STAT_DASH,
-  STAT_DASH_MAIN_INNER,
-  STAT_DASH_MAIN_OUTER,
-} from "./statDashTheme";
+import { STAT_DASH } from "./statDashTheme";
 import type { GameLogEntry, TeamSide } from "./types";
+import { formatPeriodLabel, REGULATION_QUARTERS } from "./periodLabel";
 import type {
   ActiveShotFlow,
   ReboundOutcomeId,
@@ -109,8 +105,19 @@ import type { QueuedEvent } from "../../features/statdash/eventQueue/types";
 const DEFAULT_HOME = "TEAM 1";
 const DEFAULT_AWAY = "TEAM 2";
 const QUARTER_DURATION_SEC = 10 * 60;
-/** Upper bound for manual clock adjustment (seconds). */
-const MAX_TIMER_SECONDS = 60 * 60;
+const DEFAULT_OVERTIME_MINUTES = 5;
+/**
+ * Upper bound for manual clock adjustment (seconds). Matches the backend's
+ * `ClockCommandDto.clockSecondsRemaining` cap (`@Max(720)`) — anything past this would be
+ * accepted locally but silently rejected (400) when the `clock` command is sent.
+ */
+const MAX_TIMER_SECONDS = 12 * 60;
+/**
+ * `ClockCommandDto.period` on the backend caps at 10 (@Max(10)) — 4 regulation quarters
+ * leaves room for 6 overtimes. A 7th OT would fail the clock command's validation; vanishingly
+ * rare in practice, but worth knowing if it ever comes up.
+ */
+const MAX_PERIOD = 10;
 
 type ShotFlowState = "idle" | ActiveShotFlow;
 type FoulFlowState = "idle" | ActiveFoulFlow;
@@ -121,31 +128,6 @@ function newLogId(): string {
     return crypto.randomUUID();
   }
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function StatDashStatusLine(props: {
-  dotClassName: string;
-  blink: boolean;
-  textClassName?: string;
-  children: React.ReactNode;
-}) {
-  const {
-    dotClassName,
-    blink,
-    textClassName = "text-xs text-gray-700",
-    children,
-  } = props;
-  return (
-    <div className={`flex items-center gap-2 px-4 pt-2 ${textClassName}`}>
-      <span
-        className={`inline-block size-2 shrink-0 rounded-full ${dotClassName} ${
-          blink ? "motion-safe:animate-status-dot-blink" : ""
-        }`}
-        aria-hidden
-      />
-      <div className="min-w-0 leading-snug">{children}</div>
-    </div>
-  );
 }
 
 const StatDash: React.FC = () => {
@@ -199,6 +181,14 @@ const StatDash: React.FC = () => {
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [bootError, setBootError] = useState<string | null>(null);
   const [isStartingGame, setIsStartingGame] = useState(false);
+  // Backend GameSession.status (PENDING/IN_PROGRESS/PAUSED/COMPLETED/CANCELLED) — distinct from
+  // `isRunning`, which only tracks the local clock. Drives the Pause/Resume/Finish/Cancel menu.
+  const [sessionStatus, setSessionStatus] = useState<string>("PENDING");
+  const [isTogglingPause, setIsTogglingPause] = useState(false);
+  const [finishConfirmOpen, setFinishConfirmOpen] = useState(false);
+  const [isFinishingSession, setIsFinishingSession] = useState(false);
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+  const [isCancellingSession, setIsCancellingSession] = useState(false);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [realtimeReconnecting, setRealtimeReconnecting] = useState(false);
@@ -243,6 +233,12 @@ const StatDash: React.FC = () => {
   /** After "Not yet" on quarter-ended modal: show yellow Finish to reopen that modal. */
   const [quarterEndAwaitingFinish, setQuarterEndAwaitingFinish] =
     useState(false);
+  // Overtime: prompted whenever regulation (or a prior OT) ends tied, however many times
+  // that takes. Length defaults to 5 minutes but is editable per-overtime in the modal.
+  const [overtimeModalOpen, setOvertimeModalOpen] = useState(false);
+  const [overtimeMinutesDraft, setOvertimeMinutesDraft] = useState(
+    DEFAULT_OVERTIME_MINUTES,
+  );
   const [editingLog, setEditingLog] = useState<GameLogEntry | null>(null);
   const [editDraft, setEditDraft] = useState<Record<string, unknown>>({});
   const [isReconcilingLog, setIsReconcilingLog] = useState(false);
@@ -330,10 +326,26 @@ const StatDash: React.FC = () => {
   }, []);
 
   const clockLabel = formatClock(timerSeconds);
-  const periodLabel = `Q${quarter}`;
+  const periodLabel = formatPeriodLabel(quarter);
 
   const appendLog = useCallback((row: Omit<GameLogEntry, "id">) => {
-    setGameLog((prev) => [{ id: newLogId(), ...row }, ...prev]);
+    // Stamp who was actually on the court for each team at the moment this play
+    // happened — the log editor uses this to restrict player pickers (you can't
+    // have shot/rebounded/stolen the ball while sitting on the bench). Read via
+    // ref so appendLog's identity stays stable across renders.
+    const onCourt = activeRosterRef.current;
+    setGameLog((prev) => [
+      {
+        id: newLogId(),
+        ...row,
+        meta: {
+          ...(row.meta ?? {}),
+          onCourtHome: onCourt.home,
+          onCourtAway: onCourt.away,
+        },
+      },
+      ...prev,
+    ]);
   }, []);
   const latestVersionRef = useRef<number>(readStoredExpectedVersion());
   const pendingCountRef = useRef(0);
@@ -342,7 +354,8 @@ const StatDash: React.FC = () => {
   const gameLogRestoredRef = useRef(false);
   const lineupRestoredRef = useRef(false);
   const recentEventsRef = useRef<SessionStateSnapshot["recentEvents"]>([]);
-  const activeLineupsRef = useRef<SessionStateSnapshot["activeLineups"]>(undefined);
+  const activeLineupsRef =
+    useRef<SessionStateSnapshot["activeLineups"]>(undefined);
 
   const applyAuthoritativeState = useCallback((state: SessionStateSnapshot) => {
     setHomeScore(state.score.home);
@@ -350,6 +363,7 @@ const StatDash: React.FC = () => {
     setQuarter(state.quarter);
     setTimerSeconds(state.clockSecondsRemaining);
     setIsRunning(state.status === "IN_PROGRESS");
+    setSessionStatus(state.status);
   }, []);
 
   const getTeamIdForSide = useCallback((side: TeamSide): string => {
@@ -415,8 +429,15 @@ const StatDash: React.FC = () => {
     [playerRefByPlayerId],
   );
 
-  const { enqueue, queue, pendingCount, failedCount, isOnline, retryFailed } =
-    useEventQueue({
+  const {
+    enqueue,
+    queue,
+    pendingCount,
+    failedCount,
+    isOnline,
+    retryFailed,
+    discardEvent,
+  } = useEventQueue({
       onCommandAccepted: (event, response) => {
         writeStoredExpectedVersion(response.version);
         latestVersionRef.current = response.version;
@@ -566,7 +587,11 @@ const StatDash: React.FC = () => {
       const payloadWithClock =
         commandType === "clock" || !stampClock
           ? payload
-          : { period: quarter, clockSecondsRemaining: timerSeconds, ...payload };
+          : {
+              period: quarter,
+              clockSecondsRemaining: timerSeconds,
+              ...payload,
+            };
 
       enqueue({
         sessionId: context.sessionId,
@@ -598,19 +623,27 @@ const StatDash: React.FC = () => {
     setTimerSeconds((s) => Math.max(0, s - 1));
   }, []);
 
-  // End-of-quarter flow: show CTA, then arm next quarter without auto-start.
+  // End-of-period flow: show CTA, then arm the next period without auto-start. Regulation
+  // quarters always prompt for the next quarter. Once regulation is over (or a previous
+  // overtime just ended), a tied score prompts for another overtime — however many it takes
+  // — and an untied score just stops the clock (game over).
   useEffect(() => {
     if (!isRunning) return;
     if (timerSeconds !== 0) return;
     setIsRunning(false);
-    if (quarter >= 4) {
-      setTimerSeconds(0);
+    if (quarter < REGULATION_QUARTERS) {
+      setQuarterBreakPending(true);
+      setQuarterBreakModalOpen(true);
+      setQuarterEndAwaitingFinish(false);
       return;
     }
-    setQuarterBreakPending(true);
-    setQuarterBreakModalOpen(true);
-    setQuarterEndAwaitingFinish(false);
-  }, [isRunning, timerSeconds, quarter]);
+    if (homeScore === awayScore) {
+      setOvertimeModalOpen(true);
+      setQuarterEndAwaitingFinish(false);
+      return;
+    }
+    setTimerSeconds(0);
+  }, [isRunning, timerSeconds, quarter, homeScore, awayScore]);
 
   // Jump-ball page -> StatDash: prompt before starting the game clock.
   useEffect(() => {
@@ -662,8 +695,13 @@ const StatDash: React.FC = () => {
     void bootstrap();
   }, [applyAuthoritativeState, navigate]);
 
-  // After bootstrap, restore shot markers from the server-side shot chart projection.
-  // Runs once — the ref guard prevents re-runs if homeTeamColor/awayTeamColor update later.
+  // After bootstrap, restore shot markers from the server-side shot chart projection —
+  // but only the current period's shots, matching the same "court overlay shows this
+  // period only" rule that handleQuarterBreakConfirm/handleOvertimeConfirm enforce during
+  // a live, uninterrupted session (they clear the overlay on every period change). Without
+  // this filter, reconnecting mid-game would dump every shot from every earlier quarter
+  // onto the court at once. Runs once — the ref guard prevents re-runs if
+  // homeTeamColor/awayTeamColor update later.
   useEffect(() => {
     if (isBootstrapping) return;
     if (markersRestoredRef.current) return;
@@ -674,7 +712,7 @@ const StatDash: React.FC = () => {
       try {
         const shots = await projectionsApi.getShotChart(context.sessionId);
         const markers = shots
-          .filter((s) => s.x != null && s.y != null)
+          .filter((s) => s.x != null && s.y != null && s.period === quarter)
           .map((s) => ({
             nx: s.x as number,
             ny: s.y as number,
@@ -687,7 +725,7 @@ const StatDash: React.FC = () => {
         // Court markers are cosmetic — silently ignore fetch failures on reconnect
       }
     })();
-  }, [isBootstrapping, homeTeamColor, awayTeamColor]);
+  }, [isBootstrapping, homeTeamColor, awayTeamColor, quarter]);
 
   // After bootstrap, rebuild the play-by-play log from the backend's own event history
   // (snapshot.recentEvents, stashed in recentEventsRef during the bootstrap effect above)
@@ -758,7 +796,10 @@ const StatDash: React.FC = () => {
     const active = activeLineupsRef.current;
     if (!active?.homeLineup || !active?.awayLineup) return;
 
-    const buildLineup = (playerIds: unknown, rosterNumbers: number[]): TeamLineup | null => {
+    const buildLineup = (
+      playerIds: unknown,
+      rosterNumbers: number[],
+    ): TeamLineup | null => {
       if (!Array.isArray(playerIds)) return null;
       const onCourtJerseys = playerIds
         .map((id) => resolvePlayerRef(id)?.jersey)
@@ -883,12 +924,86 @@ const StatDash: React.FC = () => {
     setStartGamePromptOpen(false);
   }, []);
 
+  // Pause/Resume/Finish/Cancel all change the backend's GameSession.status (distinct from the
+  // local clock's isRunning). Resume reuses /start — the backend only forbids it from a
+  // COMPLETED/CANCELLED session, so it works from PENDING or PAUSED alike.
+  const handlePauseResume = useCallback(async () => {
+    const context = readStoredSessionContext();
+    if (!context) {
+      navigate("/match-key", { replace: true });
+      return;
+    }
+    setIsTogglingPause(true);
+    try {
+      if (sessionStatus === "PAUSED") {
+        await sessionsApi.startSession(context.sessionId);
+      } else {
+        await sessionsApi.pauseSession(context.sessionId);
+      }
+      const latest = await sessionsApi.getSessionState(context.sessionId);
+      writeStoredExpectedVersion(latest.version);
+      latestVersionRef.current = latest.version;
+      applyAuthoritativeState(latest);
+    } catch (error) {
+      setSyncNotice(
+        error instanceof Error
+          ? error.message
+          : "Failed to update session status",
+      );
+    } finally {
+      setIsTogglingPause(false);
+    }
+  }, [applyAuthoritativeState, navigate, sessionStatus]);
+
+  const handleFinishMatchConfirm = useCallback(async () => {
+    const context = readStoredSessionContext();
+    if (!context) {
+      navigate("/match-key", { replace: true });
+      return;
+    }
+    setIsFinishingSession(true);
+    try {
+      await sessionsApi.completeSession(context.sessionId);
+      setFinishConfirmOpen(false);
+      navigate("/match-key", { replace: true });
+    } catch (error) {
+      setSyncNotice(
+        error instanceof Error ? error.message : "Failed to finish match",
+      );
+    } finally {
+      setIsFinishingSession(false);
+    }
+  }, [navigate]);
+
+  const handleCancelMatchConfirm = useCallback(async () => {
+    const context = readStoredSessionContext();
+    if (!context) {
+      navigate("/match-key", { replace: true });
+      return;
+    }
+    setIsCancellingSession(true);
+    try {
+      await sessionsApi.cancelSession(context.sessionId);
+      setCancelConfirmOpen(false);
+      navigate("/match-key", { replace: true });
+    } catch (error) {
+      setSyncNotice(
+        error instanceof Error ? error.message : "Failed to cancel match",
+      );
+    } finally {
+      setIsCancellingSession(false);
+    }
+  }, [navigate]);
+
   const onAdjustMinutes = useCallback(
     (delta: number) => {
-      const next = Math.max(0, Math.min(MAX_TIMER_SECONDS, timerSeconds + delta));
+      const next = Math.max(
+        0,
+        Math.min(MAX_TIMER_SECONDS, timerSeconds + delta),
+      );
       setTimerSeconds(next);
       void commitEventCommand("clock", {
-        quarter,
+        period: quarter,
         clockSecondsRemaining: next,
         isRunning,
       });
@@ -898,10 +1013,13 @@ const StatDash: React.FC = () => {
 
   const onAdjustSeconds = useCallback(
     (delta: number) => {
-      const next = Math.max(0, Math.min(MAX_TIMER_SECONDS, timerSeconds + delta));
+      const next = Math.max(
+        0,
+        Math.min(MAX_TIMER_SECONDS, timerSeconds + delta),
+      );
       setTimerSeconds(next);
       void commitEventCommand("clock", {
-        quarter,
+        period: quarter,
         clockSecondsRemaining: next,
         isRunning,
       });
@@ -913,7 +1031,7 @@ const StatDash: React.FC = () => {
     const next = !isRunning;
     setIsRunning(next);
     void commitEventCommand("clock", {
-      quarter,
+      period: quarter,
       clockSecondsRemaining: timerSeconds,
       isRunning: next,
     });
@@ -945,31 +1063,33 @@ const StatDash: React.FC = () => {
       const foulerTeamName = draft.foulerSide === "home" ? homeName : awayName;
       const fouledSide = opponentOf(draft.foulerSide!);
       const fouledTeamName = fouledSide === "home" ? homeName : awayName;
-      // Bench/coach fouls: backend requires foulerPlayerId so we can't submit them
-      let committed = null;
-      if (draft.foulerRole === "player") {
-        committed = await commitEventCommand("foul", {
-          teamId: draft.foulerSide
-            ? getTeamIdForSide(draft.foulerSide)
-            : undefined,
-          foulerPlayerId:
-            draft.foulerSide && typeof draft.foulerJersey === "number"
-              ? getPlayerId(draft.foulerSide, draft.foulerJersey)
-              : undefined,
-          ...(!isTechnical &&
-          draft.foulerSide !== null &&
-          typeof draft.fouledJersey === "number"
-            ? {
-                fouledPlayerId: getPlayerId(
-                  opponentOf(draft.foulerSide),
-                  draft.fouledJersey,
-                ),
-              }
-            : {}),
-          foulType: foulTypeToApiType(draft.foulType),
-        });
-        if (!committed) return;
-      }
+      // Bench/coach fouls now send `foulerRole` instead of `foulerPlayerId` — the backend's
+      // FoulCommandDto made foulerPlayerId optional and added foulerRole for exactly this case.
+      const committed = await commitEventCommand("foul", {
+        teamId: draft.foulerSide
+          ? getTeamIdForSide(draft.foulerSide)
+          : undefined,
+        foulerRole: draft.foulerRole,
+        ...(draft.foulerRole === "player" &&
+        draft.foulerSide !== null &&
+        typeof draft.foulerJersey === "number"
+          ? {
+              foulerPlayerId: getPlayerId(draft.foulerSide, draft.foulerJersey),
+            }
+          : {}),
+        ...(!isTechnical &&
+        draft.foulerSide !== null &&
+        typeof draft.fouledJersey === "number"
+          ? {
+              fouledPlayerId: getPlayerId(
+                opponentOf(draft.foulerSide),
+                draft.fouledJersey,
+              ),
+            }
+          : {}),
+        foulType: foulTypeToApiType(draft.foulType),
+      });
+      if (!committed) return;
       appendLog({
         period: periodLabel,
         clock: clockLabel,
@@ -2085,7 +2205,8 @@ const StatDash: React.FC = () => {
         // taken from — always 2 points, at a fixed rim position (never the original
         // miss's court click, which may have been from well beyond the arc).
         const rimPos = getRimPosition(side, homeAttacksLeft);
-        const putbackType = shotType === "dunk" ? "putback-dunk" : "putback-layup";
+        const putbackType =
+          shotType === "dunk" ? "putback-dunk" : "putback-layup";
 
         void (async () => {
           const teamName = side === "home" ? homeName : awayName;
@@ -2929,50 +3050,64 @@ const StatDash: React.FC = () => {
       getPlayerId("away", jersey),
     );
     void (async () => {
-      const submitTeamSubs = async (
-        side: TeamSide,
-        diff: { out: number[]; in: number[] },
-      ): Promise<boolean> => {
-        if (diff.out.length !== diff.in.length) {
-          setSyncNotice(
-            "Substitution mismatch detected. Keep one-out/one-in pairs per team.",
-          );
-          return false;
-        }
-        for (let idx = 0; idx < diff.out.length; idx += 1) {
-          const committed = await commitEventCommand("substitution", {
-            teamId: getTeamIdForSide(side),
-            playerOutId: getPlayerId(side, diff.out[idx]),
-            playerInId: getPlayerId(side, diff.in[idx]),
-            homeLineup: homeLineupIds,
-            awayLineup: awayLineupIds,
-          });
-          if (!committed) return false;
-        }
-        return true;
-      };
+      try {
+        const submitTeamSubs = async (
+          side: TeamSide,
+          diff: { out: number[]; in: number[] },
+        ): Promise<boolean> => {
+          if (diff.out.length !== diff.in.length) {
+            setSyncNotice(
+              "Substitution mismatch detected. Keep one-out/one-in pairs per team.",
+            );
+            return false;
+          }
+          for (let idx = 0; idx < diff.out.length; idx += 1) {
+            const committed = await commitEventCommand("substitution", {
+              teamId: getTeamIdForSide(side),
+              playerOutId: getPlayerId(side, diff.out[idx]),
+              playerInId: getPlayerId(side, diff.in[idx]),
+              homeLineup: homeLineupIds,
+              awayLineup: awayLineupIds,
+            });
+            if (!committed) {
+              setSyncNotice(
+                "Couldn't save this substitution — your session may have expired. Try again.",
+              );
+              return false;
+            }
+          }
+          return true;
+        };
 
-      if (!(await submitTeamSubs("home", homeDiff))) return;
-      if (!(await submitTeamSubs("away", awayDiff))) return;
+        if (!(await submitTeamSubs("home", homeDiff))) return;
+        if (!(await submitTeamSubs("away", awayDiff))) return;
 
-      appendLog({
-        period: periodLabel,
-        clock: clockLabel,
-        team: "—",
-        player: "—",
-        action: "substitution",
-        result: summary,
-      });
-      const nextHomeLineup = cloneLineup(subDraftHome);
-      const nextAwayLineup = cloneLineup(subDraftAway);
-      setHomeLineup(nextHomeLineup);
-      setAwayLineup(nextAwayLineup);
-      // Persist so a refresh/remount (including resuming an in-progress game) picks up
-      // this substitution instead of reverting to the pre-game Starters submission.
-      writeStoredLineups({ home: nextHomeLineup, away: nextAwayLineup });
-      setSubModalOpen(false);
-      setSyncNotice(null);
-      setEjectionNotice(null);
+        appendLog({
+          period: periodLabel,
+          clock: clockLabel,
+          team: "—",
+          player: "—",
+          action: "substitution",
+          result: summary,
+        });
+        const nextHomeLineup = cloneLineup(subDraftHome);
+        const nextAwayLineup = cloneLineup(subDraftAway);
+        setHomeLineup(nextHomeLineup);
+        setAwayLineup(nextAwayLineup);
+        // Persist so a refresh/remount (including resuming an in-progress game) picks up
+        // this substitution instead of reverting to the pre-game Starters submission.
+        writeStoredLineups({ home: nextHomeLineup, away: nextAwayLineup });
+        setSubModalOpen(false);
+        setSyncNotice(null);
+        setEjectionNotice(null);
+      } catch (error) {
+        console.error("[StatDash] Substitution finish failed:", error);
+        setSyncNotice(
+          error instanceof Error
+            ? `Substitution failed: ${error.message}`
+            : "Substitution failed unexpectedly. Please try again.",
+        );
+      }
     })();
   }, [
     subDraftHome,
@@ -3100,7 +3235,7 @@ const StatDash: React.FC = () => {
     setCourtShotMarkers([]);
     setCourtFoulMarkers([]);
     void commitEventCommand("clock", {
-      quarter: nextQuarter,
+      period: nextQuarter,
       clockSecondsRemaining: QUARTER_DURATION_SEC,
       isRunning: false,
     });
@@ -3112,7 +3247,41 @@ const StatDash: React.FC = () => {
   }, []);
 
   const handleQuarterFinishReopen = useCallback(() => {
-    setQuarterBreakModalOpen(true);
+    if (quarter >= REGULATION_QUARTERS) {
+      setOvertimeModalOpen(true);
+    } else {
+      setQuarterBreakModalOpen(true);
+    }
+  }, [quarter]);
+
+  const handleOvertimeConfirm = useCallback(() => {
+    const nextQuarter = Math.min(MAX_PERIOD, quarter + 1);
+    const minutes = Math.max(
+      1,
+      Math.min(
+        MAX_TIMER_SECONDS / 60,
+        overtimeMinutesDraft || DEFAULT_OVERTIME_MINUTES,
+      ),
+    );
+    const durationSec = Math.round(minutes * 60);
+    setQuarter(nextQuarter);
+    setTimerSeconds(durationSec);
+    setOvertimeModalOpen(false);
+    setQuarterEndAwaitingFinish(false);
+    // Court overlay only ever shows the current period's shots — the full shot history
+    // still lives on the backend and is what the post-game shot chart page reads from.
+    setCourtShotMarkers([]);
+    setCourtFoulMarkers([]);
+    void commitEventCommand("clock", {
+      period: nextQuarter,
+      clockSecondsRemaining: durationSec,
+      isRunning: false,
+    });
+  }, [commitEventCommand, quarter, overtimeMinutesDraft]);
+
+  const handleOvertimeKeepReviewing = useCallback(() => {
+    setOvertimeModalOpen(false);
+    setQuarterEndAwaitingFinish(true);
   }, []);
 
   const handleClearGameLog = useCallback(() => {
@@ -3121,10 +3290,34 @@ const StatDash: React.FC = () => {
     setGameLog([]);
   }, []);
 
-  const handleOpenLogEditor = useCallback((entry: GameLogEntry) => {
-    setEditingLog(entry);
-    setEditDraft(entry.meta ? { ...entry.meta } : {});
-  }, []);
+  const handleOpenLogEditor = useCallback(
+    (entry: GameLogEntry) => {
+      // An "assist" row isn't its own backend event — it's the `assistPlayerId`
+      // field on the parent shot command (same localId), split into two log rows
+      // purely for display. Editing it as a standalone event sends a
+      // differently-shaped correction than the backend expects and silently
+      // fails to apply. Always edit the shot (and its assist) together instead.
+      let target = entry;
+      if (entry.action === "assist" && entry.localId) {
+        const parentShot = gameLog.find(
+          (row) => row.action === "shot" && row.localId === entry.localId,
+        );
+        if (parentShot) target = parentShot;
+      }
+      setEditingLog(target);
+      const draft: Record<string, unknown> = target.meta
+        ? { ...target.meta }
+        : {};
+      if (target.action === "shot" && target.localId) {
+        const companionAssist = gameLog.find(
+          (row) => row.action === "assist" && row.localId === target.localId,
+        );
+        draft.assistJersey = companionAssist?.meta?.assistJersey ?? "none";
+      }
+      setEditDraft(draft);
+    },
+    [gameLog],
+  );
 
   const handleCloseLogEditor = useCallback(() => {
     setEditingLog(null);
@@ -3133,7 +3326,11 @@ const StatDash: React.FC = () => {
 
   const handleSaveEditingLog = useCallback(() => {
     if (editingLog === null) return;
-    if (!editingLog.backendEventId) {
+    // Narrow once here — the async IIFE below closes over `editingLog`, and TS
+    // can't carry the `!editingLog.backendEventId` guard's narrowing across
+    // that closure boundary, so it re-widens back to `string | undefined`.
+    const backendEventId = editingLog.backendEventId;
+    if (!backendEventId) {
       setSyncNotice("Waiting for sync confirmation. Try again in a moment.");
       return;
     }
@@ -3149,26 +3346,45 @@ const StatDash: React.FC = () => {
         const action = editingLog.action;
         if (action === "shot") {
           const side = editDraft.side as TeamSide;
+          const result = (editDraft.result as string) ?? "made";
+          const hasPosition = editDraft.x != null && editDraft.y != null;
+          // Point value is derived from where the shot was taken on the court,
+          // never a free-floating field — changing the shooter or make/miss
+          // must not silently change how many points the shot is worth. If we
+          // don't have a recorded position (older entry), keep whatever value
+          // was already there instead of guessing.
+          const shotValue = hasPosition
+            ? isCourtClickThreePointer(
+                editDraft.x as number,
+                editDraft.y as number,
+                side,
+                homeAttacksLeft,
+              )
+              ? 3
+              : 2
+            : ((editDraft.shotValue as number) ?? 2);
           correctedPayload = {
             teamId: getTeamIdForSide(side),
             shooterPlayerId: getPlayerId(
               side,
               editDraft.shooterJersey as number,
             ),
-            shotValue: editDraft.shotValue as number,
-            result: editDraft.result as string,
-            ...(editDraft.x != null ? { x: editDraft.x } : {}),
-            ...(editDraft.y != null ? { y: editDraft.y } : {}),
-          };
-        } else if (action === "assist") {
-          const side = editDraft.side as TeamSide;
-          correctedPayload = {
-            teamId: getTeamIdForSide(side),
-            playerId: getPlayerId(side, editDraft.assistJersey as number),
-            assistedPlayerId: getPlayerId(
-              side,
-              editDraft.assistedJersey as number,
-            ),
+            shotValue,
+            result,
+            ...(hasPosition ? { x: editDraft.x, y: editDraft.y } : {}),
+            // Assist lives on the same backend event as the shot (see
+            // handleOpenLogEditor) — submit it here instead of as a separate
+            // correction with a payload shape the backend doesn't expect.
+            ...(result === "made" &&
+            editDraft.assistJersey &&
+            editDraft.assistJersey !== "none"
+              ? {
+                  assistPlayerId: getPlayerId(
+                    side,
+                    editDraft.assistJersey as number,
+                  ),
+                }
+              : {}),
           };
         } else if (action === "foul") {
           const foulerSide = editDraft.foulerSide as TeamSide;
@@ -3235,13 +3451,10 @@ const StatDash: React.FC = () => {
           return;
         }
 
-        const response = await commandsApi.correctEvent(
-          editingLog.backendEventId,
-          {
-            reason: "Corrected from StatDash log editor",
-            correctedPayload,
-          },
-        );
+        const response = await commandsApi.correctEvent(backendEventId, {
+          reason: "Corrected from StatDash log editor",
+          correctedPayload,
+        });
         writeStoredExpectedVersion(response.version);
         latestVersionRef.current = response.version;
         const latest = await sessionsApi.getSessionState(context.sessionId);
@@ -3268,7 +3481,8 @@ const StatDash: React.FC = () => {
 
   const handleReverseEditingLog = useCallback(() => {
     if (editingLog === null) return;
-    if (!editingLog.backendEventId) {
+    const backendEventId = editingLog.backendEventId;
+    if (!backendEventId) {
       setSyncNotice("Waiting for sync confirmation. Try again in a moment.");
       return;
     }
@@ -3281,7 +3495,7 @@ const StatDash: React.FC = () => {
     void (async () => {
       try {
         const response = await commandsApi.reverseEvent(
-          editingLog.backendEventId!,
+          backendEventId,
           {
             reason: "Reversed from StatDash log editor",
           },
@@ -3309,6 +3523,25 @@ const StatDash: React.FC = () => {
     })();
   }, [applyAuthoritativeState, editingLog, navigate]);
 
+  // A queued command that the backend permanently rejected (status 'failed',
+  // e.g. a validation error) never gets a backendEventId and so can never be
+  // corrected or reversed via the server — there's nothing there to reverse.
+  // This removes it locally only: no backend call, since none is possible.
+  const handleDiscardEditingLog = useCallback(() => {
+    if (editingLog === null) return;
+    if (editingLog.localId) {
+      discardEvent(editingLog.localId);
+      setGameLog((prev) => prev.filter((e) => e.localId !== editingLog.localId));
+    } else {
+      setGameLog((prev) => prev.filter((e) => e.id !== editingLog.id));
+    }
+    setEditingLog(null);
+    setEditDraft({});
+    setSyncNotice(
+      "Discarded. The server rejected this action and never applied it, so there was nothing to reverse.",
+    );
+  }, [discardEvent, editingLog]);
+
   useEffect(() => {
     const onEscape = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
@@ -3329,6 +3562,12 @@ const StatDash: React.FC = () => {
       if (quarterBreakModalOpen) {
         e.preventDefault();
         setQuarterBreakModalOpen(false);
+        setQuarterEndAwaitingFinish(true);
+        return;
+      }
+      if (overtimeModalOpen) {
+        e.preventDefault();
+        setOvertimeModalOpen(false);
         setQuarterEndAwaitingFinish(true);
         return;
       }
@@ -3379,6 +3618,7 @@ const StatDash: React.FC = () => {
     editingLog,
     subModalOpen,
     quarterBreakModalOpen,
+    overtimeModalOpen,
     switchSidesOpen,
     startersModalOpen,
     timeoutModalOpen,
@@ -3395,14 +3635,36 @@ const StatDash: React.FC = () => {
 
   return (
     <div
-      className="relative flex min-h-[90dvh] flex-col overflow-hidden text-gray-900"
+      className="relative flex h-[100dvh] min-h-0 flex-col overflow-hidden text-gray-900"
       style={{ fontFamily: STAT_DASH.fontStack, background: STAT_DASH.pageBg }}
     >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-cover bg-center bg-no-repeat"
+        style={{
+          backgroundImage: "url('/starters-bg.jpg')",
+          opacity: 0.22,
+          filter: "blur(28px)",
+          transform: "scale(1.08)",
+        }}
+      />
       <StatisticianFullscreenGate />
       <MenuBar
         onSwitchTeamSide={() => setSwitchSidesOpen(true)}
         onStarters={() => setStartersModalOpen(true)}
         onClearGameLog={handleClearGameLog}
+        sessionStatus={sessionStatus}
+        onPauseResume={handlePauseResume}
+        pauseInFlight={isTogglingPause}
+        onFinishMatch={() => setFinishConfirmOpen(true)}
+        onCancelGame={() => setCancelConfirmOpen(true)}
+        realtimeConnected={realtimeConnected}
+        realtimeReconnecting={realtimeReconnecting}
+        isOnline={isOnline}
+        failedCount={failedCount}
+        pendingCount={pendingCount}
+        onRetryFailed={retryFailed}
+        isBootstrapping={isBootstrapping}
       />
 
       <EdgeTeamDrawer
@@ -3413,9 +3675,7 @@ const StatDash: React.FC = () => {
         rosterByJersey={homeOnLeft ? homeRosterByJersey : awayRosterByJersey}
         entries={gameLog}
         open={activeDrawer === "left"}
-        onToggle={() =>
-          setActiveDrawer((cur) => (cur === "left" ? null : "left"))
-        }
+        onClose={() => setActiveDrawer(null)}
       />
       <EdgeTeamDrawer
         edge="right"
@@ -3425,119 +3685,64 @@ const StatDash: React.FC = () => {
         rosterByJersey={homeOnLeft ? awayRosterByJersey : homeRosterByJersey}
         entries={gameLog}
         open={activeDrawer === "right"}
-        onToggle={() =>
-          setActiveDrawer((cur) => (cur === "right" ? null : "right"))
-        }
+        onClose={() => setActiveDrawer(null)}
       />
 
-      <div className="flex min-h-0 flex-1 flex-col">
-        <StatDashStatusLine
-          dotClassName={
-            realtimeReconnecting
-              ? "bg-amber-500"
-              : realtimeConnected
-                ? "bg-emerald-500"
-                : "bg-gray-400"
-          }
-          blink={realtimeReconnecting}
-        >
-          {realtimeReconnecting
-            ? "Realtime: reconnecting…"
-            : realtimeConnected
-              ? "Realtime: connected"
-              : "Realtime: offline"}
-        </StatDashStatusLine>
-        <StatDashStatusLine
-          dotClassName={
-            !isOnline
-              ? "bg-orange-500"
-              : failedCount > 0
-                ? "bg-red-500"
-                : pendingCount > 0
-                  ? "bg-amber-500"
-                  : "bg-emerald-500"
-          }
-          blink={!isOnline || failedCount > 0 || pendingCount > 0}
-        >
-          {!isOnline ? (
-            "Offline — recording locally"
-          ) : failedCount > 0 ? (
-            <>
-              {failedCount} event(s) failed to sync{" "}
-              <button type="button" className="underline" onClick={retryFailed}>
-                Retry
-              </button>
-            </>
-          ) : pendingCount > 0 ? (
-            <>{pendingCount} event(s) queued</>
-          ) : (
-            "All events synced"
-          )}
-        </StatDashStatusLine>
-        {isBootstrapping && (
-          <StatDashStatusLine
-            dotClassName="bg-amber-500"
-            blink
-            textClassName="text-sm text-gray-600"
-          >
-            Syncing game session…
-          </StatDashStatusLine>
-        )}
-        {/* {bootError && (
-          <StatDashStatusLine dotClassName="bg-red-500" blink textClassName="text-sm text-red-600">
-            {bootError}
-          </StatDashStatusLine>
-        )}
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col">
         {syncNotice && (
-          <StatDashStatusLine dotClassName="bg-amber-500" blink textClassName="text-sm text-amber-800">
-            {syncNotice}
-          </StatDashStatusLine>
-        )} */}
+          <div className="absolute left-1/2 top-3 z-[260] flex max-w-xl -translate-x-1/2 items-start gap-3 border-2 border-gray-800 bg-gray-900 px-4 py-3 shadow-lg">
+            <p className="text-sm font-semibold text-white">{syncNotice}</p>
+            <button
+              type="button"
+              onClick={() => setSyncNotice(null)}
+              className="shrink-0 p-0.5 text-gray-300 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
+              aria-label="Dismiss sync notice"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         {ejectionNotice && (
-          <div className="absolute left-1/2 top-3 z-[260] flex max-w-xl -translate-x-1/2 items-start gap-3 rounded-lg border border-red-300 bg-red-50 px-4 py-3 shadow-lg">
+          <div className="absolute left-1/2 top-3 z-[260] flex max-w-xl -translate-x-1/2 items-start gap-3 border-2 border-red-300 bg-red-50 px-4 py-3 shadow-lg">
             <p className="text-sm font-semibold text-red-800">
               {ejectionNotice}
             </p>
             <button
               type="button"
               onClick={() => setEjectionNotice(null)}
-              className="shrink-0 rounded p-0.5 text-red-700 hover:bg-red-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+              className="shrink-0 p-0.5 text-red-700 hover:bg-red-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
               aria-label="Dismiss ejection notice"
             >
               ✕
             </button>
           </div>
         )}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-hidden py-4 pl-12 pr-12 sm:pl-14 sm:pr-14">
-          <div className="flex min-w-0 shrink-0 items-center justify-evenly sm:gap-4">
-            <StatusStrip />
-            <div className="min-w-0 flex-1">
-              <GameHeader
-                homeName={homeName}
-                awayName={awayName}
-                homeScore={homeScore}
-                awayScore={awayScore}
-                homeColor={homeTeamColor}
-                awayColor={awayTeamColor}
-                quarter={quarter}
-                timerSeconds={timerSeconds}
-                isRunning={isRunning}
-                onStartStop={onStartStop}
-                onTick={onTick}
-                onAdjustMinutes={onAdjustMinutes}
-                onAdjustSeconds={onAdjustSeconds}
-                onTimeout={openTimeoutModal}
-                onJumpBall={openJumpBallModal}
-                onSub={openSubstitutionModal}
-                reverseSides={!homeOnLeft}
-                showQuarterFinish={quarterEndAwaitingFinish}
-                onQuarterFinish={handleQuarterFinishReopen}
-              />
-            </div>
-          </div>
-
-          <div className="relative">
+        <div className="m-5 flex min-h-0 min-w-0 flex-1 overflow-hidden border border-gray-200 bg-white">
+          <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden px-6 py-3 sm:px-10 sm:py-4">
             <GameCenter
+              headerSlot={
+                <GameHeader
+                  homeName={homeName}
+                  awayName={awayName}
+                  homeScore={homeScore}
+                  awayScore={awayScore}
+                  homeColor={homeTeamColor}
+                  awayColor={awayTeamColor}
+                  quarter={quarter}
+                  timerSeconds={timerSeconds}
+                  isRunning={isRunning}
+                  onStartStop={onStartStop}
+                  onTick={onTick}
+                  onAdjustMinutes={onAdjustMinutes}
+                  onAdjustSeconds={onAdjustSeconds}
+                  onTimeout={openTimeoutModal}
+                  onJumpBall={openJumpBallModal}
+                  onSub={openSubstitutionModal}
+                  reverseSides={!homeOnLeft}
+                  showQuarterFinish={quarterEndAwaitingFinish}
+                  onQuarterFinish={handleQuarterFinishReopen}
+                />
+              }
               homeColor={homeTeamColor}
               awayColor={awayTeamColor}
               homeActivePlayers={homePanelNumbers}
@@ -3595,10 +3800,22 @@ const StatDash: React.FC = () => {
               onJumpBallSelect={handleJumpBallSelect}
               onJumpBallCancel={handleJumpBallCancel}
               reverseSides={!homeOnLeft}
+              onToggleRoster={(side) => {
+                const edge =
+                  (side === "home") === homeOnLeft ? "left" : "right";
+                setActiveDrawer((cur) => (cur === edge ? null : edge));
+              }}
+              activeRosterSide={
+                activeDrawer === null
+                  ? null
+                  : (activeDrawer === "left") === homeOnLeft
+                    ? "home"
+                    : "away"
+              }
             />
             {subModalOpen && (
-              <div className="absolute inset-0 z-30 flex items-center justify-center">
-                <div className="flex h-full w-full max-w-[min(100%,980px)] px-3 py-1 sm:px-4 sm:py-2">
+              <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+                <div className="flex max-h-full w-full max-w-[min(100%,760px)] px-3 py-1 sm:px-4 sm:py-2">
                   <SubstitutionModal
                     open={subModalOpen}
                     homeName={homeName}
@@ -3617,19 +3834,21 @@ const StatDash: React.FC = () => {
             )}
           </div>
 
-          <div className={`${STAT_DASH_MAIN_OUTER} shrink-0`}>
+          <div className="flex w-[280px] shrink-0 flex-col overflow-hidden border-l border-gray-200 bg-white sm:w-[340px]">
             <div
-              className={`${STAT_DASH_MAIN_INNER} h-[min(220px,42dvh)] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm sm:h-[min(141px,36dvh)]`}
+              className="shrink-0 bg-[#111827] px-4 py-2.5 text-xs font-bold uppercase text-white"
+              style={{ letterSpacing: 1.5 }}
             >
-              <GameLog entries={gameLog} onRowClick={handleOpenLogEditor} />
+              Game Log
             </div>
+            <GameLog entries={gameLog} onRowClick={handleOpenLogEditor} />
           </div>
         </div>
       </div>
 
       {quarterBreakModalOpen && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30">
-          <div className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-4 shadow-lg">
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-md border-2 border-gray-800 bg-white p-5 shadow-[0_30px_60px_-20px_rgba(15,23,42,0.5)]">
             <h3 className="text-base font-bold text-gray-900">Quarter ended</h3>
             <p className="mt-2 text-sm text-gray-700">
               Have you finished adding all data for this quarter?
@@ -3638,14 +3857,14 @@ const StatDash: React.FC = () => {
               <button
                 type="button"
                 onClick={handleQuarterBreakKeepReviewing}
-                className="rounded border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+                className="border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
               >
                 Not yet
               </button>
               <button
                 type="button"
                 onClick={handleQuarterBreakConfirm}
-                className="rounded bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700"
+                className="bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700"
               >
                 Yes, next quarter
               </button>
@@ -3654,9 +3873,68 @@ const StatDash: React.FC = () => {
         </div>
       )}
 
+      {overtimeModalOpen && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-md border-2 border-gray-800 bg-white p-5 shadow-[0_30px_60px_-20px_rgba(15,23,42,0.5)]">
+            <h3 className="text-base font-bold text-gray-900">
+              {quarter === REGULATION_QUARTERS
+                ? "Game tied after regulation"
+                : `Still tied after ${formatPeriodLabel(quarter)}`}
+            </h3>
+            <p className="mt-2 text-sm text-gray-700">
+              {homeName} {homeScore} – {awayScore} {awayName}. Have you finished
+              adding all data for this period?
+            </p>
+            <div className="mt-3 flex items-center gap-2">
+              <label
+                htmlFor="overtime-minutes"
+                className="text-sm font-medium text-gray-700"
+              >
+                Overtime length
+              </label>
+              <input
+                id="overtime-minutes"
+                type="number"
+                min={1}
+                max={MAX_TIMER_SECONDS / 60}
+                value={overtimeMinutesDraft}
+                onChange={(e) => {
+                  const parsed = Number(e.target.value);
+                  setOvertimeMinutesDraft(
+                    Number.isFinite(parsed)
+                      ? Math.max(1, Math.min(MAX_TIMER_SECONDS / 60, parsed))
+                      : DEFAULT_OVERTIME_MINUTES,
+                  );
+                }}
+                className="w-16 border border-gray-300 px-2 py-1 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-sky-400/40"
+              />
+              <span className="text-sm text-gray-600">
+                minutes (up to {MAX_TIMER_SECONDS / 60})
+              </span>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleOvertimeKeepReviewing}
+                className="border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Not yet
+              </button>
+              <button
+                type="button"
+                onClick={handleOvertimeConfirm}
+                className="bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700"
+              >
+                Start overtime
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {startGamePromptOpen && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30">
-          <div className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-4 shadow-lg">
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-md border-2 border-gray-800 bg-white p-5 shadow-[0_30px_60px_-20px_rgba(15,23,42,0.5)]">
             <h3 className="text-base font-bold text-gray-900">Start game?</h3>
             <p className="mt-2 text-sm text-gray-700">
               Jump ball is set. Do you want to start the game clock now?
@@ -3665,7 +3943,7 @@ const StatDash: React.FC = () => {
               <button
                 type="button"
                 onClick={handleStartGamePromptSkip}
-                className="rounded border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+                className="border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
               >
                 Not yet
               </button>
@@ -3673,9 +3951,69 @@ const StatDash: React.FC = () => {
                 type="button"
                 disabled={isStartingGame}
                 onClick={handleStartGamePromptConfirm}
-                className="rounded bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700"
+                className="bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700"
               >
                 {isStartingGame ? "Starting…" : "Start game"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {finishConfirmOpen && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-md border-2 border-gray-800 bg-white p-5 shadow-[0_30px_60px_-20px_rgba(15,23,42,0.5)]">
+            <h3 className="text-base font-bold text-gray-900">Finish match?</h3>
+            <p className="mt-2 text-sm text-gray-700">
+              This marks the game as completed. You won't be able to record any
+              more events for this match afterward.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setFinishConfirmOpen(false)}
+                className="border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isFinishingSession}
+                onClick={handleFinishMatchConfirm}
+                className="bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700"
+              >
+                {isFinishingSession ? "Finishing…" : "Finish match"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cancelConfirmOpen && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="w-full max-w-md border-2 border-gray-800 bg-white p-5 shadow-[0_30px_60px_-20px_rgba(15,23,42,0.5)]">
+            <h3 className="text-base font-bold text-gray-900">
+              Cancel this game?
+            </h3>
+            <p className="mt-2 text-sm text-gray-700">
+              This marks the game as cancelled. This cannot be undone from here
+              — the match will need to be reopened by an admin.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setCancelConfirmOpen(false)}
+                className="border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                Stay
+              </button>
+              <button
+                type="button"
+                disabled={isCancellingSession}
+                onClick={handleCancelMatchConfirm}
+                className="bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700"
+              >
+                {isCancellingSession ? "Cancelling…" : "Cancel game"}
               </button>
             </div>
           </div>
@@ -3686,40 +4024,97 @@ const StatDash: React.FC = () => {
         (() => {
           const action = editingLog.action;
           const hasSyncId = Boolean(editingLog.backendEventId);
+          // A 'failed' queue entry was rejected by the backend and will never get
+          // a backendEventId — it was never applied server-side, so it can only be
+          // discarded locally, never "reversed" (there's nothing there to reverse).
+          const queuedEntry = editingLog.localId
+            ? queue.find((q) => q.localId === editingLog.localId)
+            : undefined;
+          const isFailedLocally = !hasSyncId && queuedEntry?.status === "failed";
           // Determine team side from meta for player roster lookups
           const editSide = (editDraft.side ?? editDraft.foulerSide) as
             | TeamSide
             | undefined;
-          const editRosterNums =
-            editSide === "home"
-              ? homeRosterList
-              : editSide === "away"
-                ? awayRosterList
-                : [];
+
+          // Who could actually have made this play: whoever was on the court for
+          // that team at the moment it happened (stamped by appendLog), not the
+          // full roster — you can't shoot, rebound, or steal from the bench.
+          // Falls back to the full roster for older entries logged before this
+          // snapshot existed, and always keeps the play's original player
+          // selectable even if a lineup mismatch would otherwise exclude them.
+          const onCourtRosterFor = (
+            side: TeamSide | undefined,
+            currentValue: unknown,
+          ): number[] => {
+            if (!side) return [];
+            const snapshot =
+              side === "home"
+                ? (editingLog.meta?.onCourtHome as number[] | undefined)
+                : (editingLog.meta?.onCourtAway as number[] | undefined);
+            const base =
+              snapshot && snapshot.length > 0
+                ? snapshot
+                : side === "home"
+                  ? homeRosterList
+                  : awayRosterList;
+            const withCurrent =
+              typeof currentValue === "number" && !base.includes(currentValue)
+                ? [...base, currentValue]
+                : base;
+            return [...withCurrent].sort((a, b) => a - b);
+          };
+
+          const editRosterNums = onCourtRosterFor(
+            editSide,
+            editDraft.shooterJersey ??
+              editDraft.jersey ??
+              editDraft.assistJersey,
+          );
           const foulerSideEdit = editDraft.foulerSide as TeamSide | undefined;
           const fouledSideEdit = foulerSideEdit
             ? opponentOf(foulerSideEdit)
             : undefined;
-          const foulerRoster =
-            foulerSideEdit === "home"
-              ? homeRosterList
-              : foulerSideEdit === "away"
-                ? awayRosterList
-                : [];
-          const fouledRoster =
-            fouledSideEdit === "home"
-              ? homeRosterList
-              : fouledSideEdit === "away"
-                ? awayRosterList
-                : [];
+          const foulerRoster = onCourtRosterFor(
+            foulerSideEdit,
+            editDraft.foulerJersey,
+          );
+          const fouledRoster = onCourtRosterFor(
+            fouledSideEdit,
+            editDraft.fouledJersey,
+          );
+          const assistCandidates = onCourtRosterFor(
+            editSide,
+            editDraft.assistJersey,
+          ).filter((j) => j !== editDraft.shooterJersey);
+
+          // Point value follows the shot's recorded court position, same rule
+          // the live recording flow uses — it's derived, not a separate field
+          // the statistician can set independently of where the shot was taken.
+          const hasShotPosition = editDraft.x != null && editDraft.y != null;
+          const derivedShotValue =
+            action === "shot" && editSide
+              ? hasShotPosition
+                ? isCourtClickThreePointer(
+                    editDraft.x as number,
+                    editDraft.y as number,
+                    editSide,
+                    homeAttacksLeft,
+                  )
+                  ? 3
+                  : 2
+                : ((editDraft.shotValue as number) ?? 2)
+              : 2;
 
           const sel =
-            "rounded border border-gray-300 px-2 py-1.5 text-sm w-full";
+            "border border-gray-300 px-2 py-1.5 text-sm w-full focus:outline-none focus:ring-2 focus:ring-sky-400/50";
           const lbl = "flex flex-col gap-1 text-xs font-semibold text-gray-700";
 
+          // "assist" isn't independently editable — handleOpenLogEditor always
+          // redirects an assist row to its parent shot, which carries the
+          // assist field too. It only reaches here if that redirect couldn't
+          // find a parent (data anomaly), where "cannot be edited" is correct.
           const canEdit = [
             "shot",
-            "assist",
             "foul",
             "free throw",
             "turnover",
@@ -3729,8 +4124,8 @@ const StatDash: React.FC = () => {
           ].includes(action);
 
           return (
-            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/35 px-3">
-              <div className="w-full max-w-lg rounded-lg border border-gray-200 bg-white p-4 shadow-lg">
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 px-3 backdrop-blur-sm">
+              <div className="w-full max-w-lg border-2 border-gray-800 bg-white p-5 shadow-[0_30px_60px_-20px_rgba(15,23,42,0.5)]">
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <h3 className="text-base font-bold text-gray-900 capitalize">
@@ -3742,8 +4137,14 @@ const StatDash: React.FC = () => {
                     </p>
                   </div>
                   {!hasSyncId && (
-                    <span className="shrink-0 rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-                      Pending sync
+                    <span
+                      className={`shrink-0 px-2 py-0.5 text-xs font-semibold ${
+                        isFailedLocally
+                          ? "bg-rose-100 text-rose-700"
+                          : "bg-amber-100 text-amber-700"
+                      }`}
+                    >
+                      {isFailedLocally ? "Sync failed" : "Pending sync"}
                     </span>
                   )}
                 </div>
@@ -3753,6 +4154,9 @@ const StatDash: React.FC = () => {
                     <>
                       <label className={lbl}>
                         Shooter
+                        <span className="text-[10px] font-normal normal-case text-gray-400">
+                          Only players on the court for this play
+                        </span>
                         <select
                           className={sel}
                           value={(editDraft.shooterJersey as number) ?? ""}
@@ -3786,66 +4190,48 @@ const StatDash: React.FC = () => {
                           <option value="missed">Missed</option>
                         </select>
                       </label>
-                      <label className={lbl}>
-                        Shot value
-                        <select
-                          className={sel}
-                          value={(editDraft.shotValue as number) ?? 2}
-                          onChange={(e) =>
-                            setEditDraft((d) => ({
-                              ...d,
-                              shotValue: +e.target.value,
-                            }))
-                          }
-                        >
-                          <option value={1}>1 pt (Free throw)</option>
-                          <option value={2}>2 pt</option>
-                          <option value={3}>3 pt</option>
-                        </select>
-                      </label>
-                    </>
-                  )}
 
-                  {action === "assist" && editSide && (
-                    <>
-                      <label className={lbl}>
-                        Assister
-                        <select
-                          className={sel}
-                          value={(editDraft.assistJersey as number) ?? ""}
-                          onChange={(e) =>
-                            setEditDraft((d) => ({
-                              ...d,
-                              assistJersey: +e.target.value,
-                            }))
-                          }
-                        >
-                          {editRosterNums.map((j) => (
-                            <option key={j} value={j}>
-                              {getPlayerLabel(editSide, j)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className={lbl}>
-                        Assisted player
-                        <select
-                          className={sel}
-                          value={(editDraft.assistedJersey as number) ?? ""}
-                          onChange={(e) =>
-                            setEditDraft((d) => ({
-                              ...d,
-                              assistedJersey: +e.target.value,
-                            }))
-                          }
-                        >
-                          {editRosterNums.map((j) => (
-                            <option key={j} value={j}>
-                              {getPlayerLabel(editSide, j)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                      <div className="flex items-center justify-between border border-gray-200 bg-gray-50 px-3 py-2">
+                        <span className="text-xs font-semibold text-gray-700">
+                          Shot value
+                        </span>
+                        <span className="text-sm font-bold text-gray-900">
+                          {derivedShotValue} pt
+                        </span>
+                      </div>
+                      <p className="-mt-2 text-[10px] text-gray-400">
+                        {hasShotPosition
+                          ? "Set from where the shot was taken on the court — changing the shooter or result won't change this."
+                          : "No court position was recorded for this shot, so the original point value is kept as-is."}
+                      </p>
+
+                      {editDraft.result === "made" && (
+                        <label className={lbl}>
+                          Assist
+                          <select
+                            className={sel}
+                            value={(editDraft.assistJersey as
+                              | number
+                              | "none") ?? "none"}
+                            onChange={(e) =>
+                              setEditDraft((d) => ({
+                                ...d,
+                                assistJersey:
+                                  e.target.value === "none"
+                                    ? "none"
+                                    : +e.target.value,
+                              }))
+                            }
+                          >
+                            <option value="none">No assist</option>
+                            {assistCandidates.map((j) => (
+                              <option key={j} value={j}>
+                                {getPlayerLabel(editSide, j)}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
                     </>
                   )}
 
@@ -3906,8 +4292,10 @@ const StatDash: React.FC = () => {
                         | TeamSide
                         | undefined;
                       if (!ftSide) return null;
-                      const ftRoster =
-                        ftSide === "home" ? homeRosterList : awayRosterList;
+                      const ftRoster = onCourtRosterFor(
+                        ftSide,
+                        editDraft.shooterJersey,
+                      );
                       return (
                         <>
                           <p className="text-xs text-gray-500 -mb-1">
@@ -4050,9 +4438,19 @@ const StatDash: React.FC = () => {
                   )}
 
                   {!canEdit && (
-                    <p className="text-sm text-gray-600 rounded bg-gray-50 p-3">
+                    <p className="text-sm text-gray-600 border border-gray-200 bg-gray-50 p-3">
                       This event type cannot be edited directly. Use{" "}
                       <strong>Reverse</strong> to undo it.
+                    </p>
+                  )}
+
+                  {!hasSyncId && (
+                    <p
+                      className={`text-xs p-2 ${isFailedLocally ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-700"}`}
+                    >
+                      {isFailedLocally
+                        ? "The server rejected this action, so it was never applied — Save and Reverse aren't available since there's nothing to correct or undo server-side. Discard removes it from your log."
+                        : "Still syncing to the server. Save and Reverse unlock once this action is confirmed."}
                     </p>
                   )}
                 </div>
@@ -4062,24 +4460,32 @@ const StatDash: React.FC = () => {
                     type="button"
                     disabled={isReconcilingLog}
                     onClick={handleCloseLogEditor}
-                    className="rounded border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+                    className="border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
-                    disabled={isReconcilingLog || !hasSyncId}
-                    onClick={handleReverseEditingLog}
-                    className="rounded bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-40"
+                    disabled={isReconcilingLog || (!hasSyncId && !isFailedLocally)}
+                    onClick={
+                      isFailedLocally
+                        ? handleDiscardEditingLog
+                        : handleReverseEditingLog
+                    }
+                    className="bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-40"
                   >
-                    {isReconcilingLog ? "Applying…" : "Reverse"}
+                    {isReconcilingLog
+                      ? "Applying…"
+                      : isFailedLocally
+                        ? "Discard"
+                        : "Reverse"}
                   </button>
                   {canEdit && (
                     <button
                       type="button"
                       disabled={isReconcilingLog || !hasSyncId}
                       onClick={handleSaveEditingLog}
-                      className="rounded bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-40"
+                      className="bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-40"
                     >
                       {isReconcilingLog ? "Saving…" : "Save"}
                     </button>

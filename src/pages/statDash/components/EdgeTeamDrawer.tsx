@@ -1,10 +1,9 @@
 import React, { useMemo } from 'react';
-import { IoChevronBack, IoChevronForward } from 'react-icons/io5';
 import type { GameLogEntry } from '../types';
 import { getContrastTextColor } from '../../../contexts/StatisticianTeamColorsContext';
 
 /** MenuBar height — keep in sync with `MenuBar.tsx` */
-const MENU_BAR_PX = 36;
+const MENU_BAR_PX = 44;
 
 function parseJerseyFromPlayerField(playerField: string): number | null {
   const s = playerField.trim();
@@ -180,11 +179,12 @@ export interface EdgeTeamDrawerProps {
   rosterByJersey?: Map<number, string>;
   entries: GameLogEntry[];
   open: boolean;
-  onToggle: () => void;
+  onClose: () => void;
 }
 
 /**
- * Click chevron to toggle side stats drawer.
+ * Slide-out roster/stats panel. Opened via a button next to that team's players
+ * on the court (see PlayerPanel); this component only renders the panel itself.
  */
 const EdgeTeamDrawer: React.FC<EdgeTeamDrawerProps> = ({
   edge,
@@ -194,46 +194,34 @@ const EdgeTeamDrawer: React.FC<EdgeTeamDrawerProps> = ({
   rosterByJersey,
   entries,
   open,
-  onToggle,
+  onClose,
 }) => {
   const isLeft = edge === 'left';
-  const Chevron = isLeft ? IoChevronBack : IoChevronForward;
-  const label = isLeft ? 'Home team roster and stats' : 'Away team roster and stats';
-
-  const strip = (
-    <button
-      type="button"
-      onClick={onToggle}
-      className="flex w-9 shrink-0 cursor-pointer items-center justify-center bg-[#f3f4f6]/90 sm:w-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-      aria-label={label}
-    >
-      <span className="pointer-events-none flex" style={{ color: teamColor }} aria-hidden>
-        <Chevron size={18} />
-      </span>
-    </button>
-  );
-
-  const rail = (
-    <div
-      className={`flex h-full min-h-0 min-w-0 items-center overflow-hidden transition-[width] duration-300 ease-out ${
-        open ? 'w-[min(100vw-2.5rem,22rem)]' : 'w-0'
-      }`}
-    >
-      <div className="flex h-auto min-w-0 w-[min(100vw-2.5rem,22rem)] shrink-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg ring-1 ring-black/5">
-        <TeamStatsTable teamName={teamName} teamColor={teamColor} roster={roster} rosterByJersey={rosterByJersey} entries={entries} />
-      </div>
-    </div>
-  );
 
   return (
     <div
-      className={`pointer-events-auto fixed bottom-0 z-40 flex items-stretch ${
-        isLeft ? 'left-0 flex-row' : 'right-0 flex-row-reverse'
+      className={`pointer-events-none fixed bottom-0 z-40 flex items-stretch ${
+        isLeft ? 'left-0' : 'right-0'
       }`}
       style={{ top: MENU_BAR_PX }}
     >
-      {strip}
-      {rail}
+      <div
+        className={`flex h-full min-h-0 min-w-0 items-center overflow-hidden transition-[width] duration-300 ease-out ${
+          open ? 'pointer-events-auto w-[min(100vw-2.5rem,22rem)]' : 'w-0'
+        }`}
+      >
+        <div className="relative flex h-auto min-w-0 w-[min(100vw-2.5rem,22rem)] shrink-0 flex-col overflow-hidden border border-gray-200 bg-white shadow-lg ring-1 ring-black/5">
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute right-2 top-2 z-10 flex size-6 items-center justify-center rounded-full bg-black/20 text-white hover:bg-black/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+            aria-label={`Close ${teamName} roster panel`}
+          >
+            ✕
+          </button>
+          <TeamStatsTable teamName={teamName} teamColor={teamColor} roster={roster} rosterByJersey={rosterByJersey} entries={entries} />
+        </div>
+      </div>
     </div>
   );
 };

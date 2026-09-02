@@ -31,40 +31,40 @@ import type {
 } from '../types/api';
 import { ApiError } from '../types/api';
 import { API_BASE } from '../config';
-import { broadcastAuthSessionExpired } from '../auth/authSession';
+import { broadcastAuthSessionExpired, refreshAccessToken } from '../auth/authSession';
 
 const TOKEN_KEY = 'access_token';
+const REFRESH_TOKEN_KEY = 'refresh_token';
 
 function isPublicAuthEndpoint(endpoint: string): boolean {
   const path = endpoint.split('?')[0];
-  return path === '/auth/login' || path === '/auth/register';
+  return path === '/auth/login' || path === '/auth/register' || path === '/auth/refresh' || path === '/auth/logout';
 }
 
 /** When a request included a Bearer token, 401 means session is dead — clear storage and notify router. */
 function clearSessionIfUnauthorized(endpoint: string, status: number, hadAuth: boolean): void {
   if (status !== 401 || !hadAuth || isPublicAuthEndpoint(endpoint)) return;
   localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
   localStorage.removeItem('user_name');
   broadcastAuthSessionExpired();
 }
 
+type RawResponse<T> = { response: Response; data: { data?: T; message?: string; code?: string; details?: unknown } };
 
 class ApiClient {
-  private async request<T>(
+  private async performFetch<T>(
     endpoint: string,
-    options: RequestInit = {}
-  ): Promise<ApiResponse<T>> {
+    options: RequestInit,
+    token: string | null,
+  ): Promise<RawResponse<T>> {
     const url = `${API_BASE}${endpoint}`;
-
     const defaultHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
     };
-
-    const token = localStorage.getItem(TOKEN_KEY);
     if (token) {
       defaultHeaders['Authorization'] = `Bearer ${token}`;
     }
-
     const config: RequestInit = {
       ...options,
       headers: {
@@ -72,14 +72,34 @@ class ApiClient {
         ...(options.headers as Record<string, string>),
       },
     };
+    const response = await fetch(url, config);
+    let data: { data?: T; message?: string; code?: string; details?: unknown } = {};
+    try {
+      data = await response.json();
+    } catch {
+      // non-JSON response
+    }
+    return { response, data };
+  }
+
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<ApiResponse<T>> {
+    let token = localStorage.getItem(TOKEN_KEY);
 
     try {
-      const response = await fetch(url, config);
-      let data: { data?: T; message?: string; code?: string; details?: unknown } = {};
-      try {
-        data = await response.json();
-      } catch {
-        // non-JSON response
+      let { response, data } = await this.performFetch<T>(endpoint, options, token);
+
+      // Access token expired mid-session — try a silent refresh and retry once before
+      // giving up. Only for requests that actually carried a token to a protected endpoint;
+      // never for login/register/refresh/logout themselves (see isPublicAuthEndpoint).
+      if (response.status === 401 && token && !isPublicAuthEndpoint(endpoint)) {
+        const newToken = await refreshAccessToken();
+        if (newToken) {
+          token = newToken;
+          ({ response, data } = await this.performFetch<T>(endpoint, options, token));
+        }
       }
 
       if (!response.ok) {
@@ -129,6 +149,25 @@ class ApiClient {
 
     getProfile: async (): Promise<ApiResponse<{ id: string; email: string; role: string; [key: string]: unknown }>> => {
       return this.request('/auth/profile');
+    },
+
+    /**
+     * Explicit refresh call, e.g. for a "keep me signed in" flow triggered by the UI.
+     * The automatic retry-on-401 inside `request()` does NOT go through this method —
+     * see `refreshAccessToken` in `src/auth/authSession.ts` for why.
+     */
+    refresh: async (refreshToken: string): Promise<ApiResponse<AuthResponse>> => {
+      return this.request<AuthResponse>('/auth/refresh', {
+        method: 'POST',
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+    },
+
+    logout: async (refreshToken: string): Promise<ApiResponse<{ success: boolean }>> => {
+      return this.request<{ success: boolean }>('/auth/logout', {
+        method: 'POST',
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
     },
   };
 

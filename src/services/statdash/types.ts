@@ -56,6 +56,20 @@ export interface SessionBootstrapRequest {
   sessionId?: string;
 }
 
+/** Response shape shared by the session lifecycle endpoints: start, pause, complete, cancel. */
+export interface SessionLifecycleResponse {
+  id: string;
+  matchId: string;
+  status: string;
+  quarter: number;
+  clockSecondsRemaining: number;
+  homeScore: number;
+  awayScore: number;
+  version: number;
+  startedAt?: string | Date | null;
+  endedAt?: string | Date | null;
+}
+
 export interface CommandEnvelope<TPayload = unknown> {
   sessionId: string;
   commandType: string;

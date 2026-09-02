@@ -1,23 +1,33 @@
-import React, { forwardRef, useCallback, useImperativeHandle, useMemo, useState } from 'react';
+import React, {
+  forwardRef,
+  useCallback,
+  useImperativeHandle,
+  useMemo,
+  useState,
+} from "react";
+import { FiCheck, FiStar } from "react-icons/fi";
 import {
   getContrastTextColor,
   isLightColor,
   normalizeHex,
   useStatisticianTeamColors,
-} from '../../contexts/StatisticianTeamColorsContext';
-import type { TeamLineup } from '../statDash/substitutionLineupUtils';
+} from "../../contexts/StatisticianTeamColorsContext";
+import type { TeamLineup } from "../statDash/substitutionLineupUtils";
 import {
   mergeLineupPreserveExtraJerseys,
   startersSetsToTeamLineup,
   startersSetsToTeamLineupWithPlayers,
   STARTER_ROW_COUNT,
   teamLineupToStartersSets,
-} from './startersLineupBridge';
-import FirstFiveIncompleteModal from './FirstFiveIncompleteModal';
-import { computeFirstFiveGate } from './startersFirstFiveGate';
+} from "./startersLineupBridge";
+import FirstFiveIncompleteModal from "./FirstFiveIncompleteModal";
+import { computeFirstFiveGate } from "./startersFirstFiveGate";
+import {
+  GATEWAY_DISPLAY_FONT_STACK,
+  GATEWAY_FONT_STACK,
+} from "../../authGatewayTheme";
 
 const ROWS = STARTER_ROW_COUNT;
-const STARTER_PLAYER_IMAGE = '/dplayer.png';
 const DEFAULT_PLAYING_ROWS = new Set([0, 1, 2, 3, 4, 5, 6, 7]);
 const DEFAULT_STARTER_ROWS = new Set([0, 1, 2, 3, 6]);
 const MOCK_PLAYERS = Array.from({ length: ROWS }, (_, index) => ({
@@ -26,132 +36,203 @@ const MOCK_PLAYERS = Array.from({ length: ROWS }, (_, index) => ({
   name: `Player ${index + 1}`,
 }));
 
-type TeamSide = 'home' | 'away';
+type TeamSide = "home" | "away";
 
 function contrastTextOnBg(hex: string): string {
   return getContrastTextColor(hex);
 }
 
 const TEAM_SWATCHES = [
-  '#FFFFFF',
-  '#EF4444',
-  '#DC2626',
-  '#2563EB',
-  '#1D4ED8',
-  '#0EA5E9',
-  '#16A34A',
-  '#EAB308',
-  '#F97316',
-  '#A855F7',
-  '#DB2777',
-  '#111827',
-  '#4B5563',
+  "#FFFFFF",
+  "#EF4444",
+  "#DC2626",
+  "#2563EB",
+  "#1D4ED8",
+  "#0EA5E9",
+  "#16A34A",
+  "#EAB308",
+  "#F97316",
+  "#A855F7",
+  "#DB2777",
+  "#111827",
+  "#4B5563",
 ] as const;
 
 function TeamColorBlock({
   side,
   color,
   onChange,
+  takenColor,
 }: {
   side: TeamSide;
   color: string;
   onChange: (hex: string) => void;
+  /** The other team's current color, normalized — unavailable here so the two teams can never match. */
+  takenColor?: string | null;
 }) {
-  const fg = useMemo(() => contrastTextOnBg(color), [color]);
   const normalized = normalizeHex(color) ?? color;
+  const fg = useMemo(() => contrastTextOnBg(normalized), [normalized]);
 
   return (
-    <div className="flex justify-center sm:justify-end">
-      <div className="flex min-w-[170px] flex-col items-center gap-2 rounded-lg border border-gray-300 bg-white p-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Team Color</span>
-        <div
-          className="relative flex w-full items-center justify-center rounded-md border border-gray-300 px-4 py-1.5"
+    <div className="flex w-full flex-col gap-3 rounded-xl border border-gray-200 bg-white p-3.5 shadow-[0_8px_20px_-14px_rgba(15,23,42,0.25)] sm:w-[192px]">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+          Jersey color
+        </span>
+        <span
+          className="rounded-md px-2 py-0.5 text-xs font-bold tracking-wider"
           style={{
             backgroundColor: normalized,
-            ...(isLightColor(normalized) ? { boxShadow: 'inset 0 0 0 1px rgba(17, 24, 39, 0.35)' } : {}),
+            color: fg,
+            boxShadow: isLightColor(normalized)
+              ? "inset 0 0 0 1px rgba(17,24,39,0.15)"
+              : undefined,
           }}
         >
-          <span className="pointer-events-none text-sm font-bold tracking-widest" style={{ color: fg }}>
-            00
-          </span>
-        </div>
-        <div className="grid w-full grid-cols-6 gap-1">
-          {TEAM_SWATCHES.map((swatch) => (
+          00
+        </span>
+      </div>
+      <div className="grid grid-cols-5 gap-2">
+        {TEAM_SWATCHES.map((swatch) => {
+          const isTaken = takenColor != null && swatch === takenColor;
+          return (
             <button
               key={`${side}-${swatch}`}
               type="button"
               onClick={() => onChange(swatch)}
-              className={`h-6 rounded border focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
-                normalizeHex(color) === swatch ? 'border-gray-900 ring-1 ring-gray-900' : 'border-gray-300'
+              disabled={isTaken}
+              className={`relative aspect-square rounded-md transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${
+                isTaken
+                  ? "cursor-not-allowed opacity-30"
+                  : "hover:scale-110"
+              } ${
+                normalizeHex(color) === swatch
+                  ? "ring-2 ring-offset-1 ring-gray-900"
+                  : ""
               }`}
               style={{
                 backgroundColor: swatch,
-                ...(isLightColor(swatch) ? { boxShadow: 'inset 0 0 0 1px rgba(17, 24, 39, 0.35)' } : {}),
+                boxShadow: isLightColor(swatch)
+                  ? "inset 0 0 0 1px rgba(17,24,39,0.15)"
+                  : undefined,
               }}
-              aria-label={`${side === 'home' ? 'Home' : 'Away'} team color ${swatch}`}
-            />
-          ))}
-        </div>
+              aria-label={
+                isTaken
+                  ? `${swatch} is already the other team's color`
+                  : `${side === "home" ? "Home" : "Away"} team color ${swatch}`
+              }
+              title={isTaken ? "Already used by the other team" : undefined}
+            >
+              {isTaken && (
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 rounded-md"
+                  style={{
+                    background:
+                      'linear-gradient(to top right, transparent calc(50% - 1px), rgba(17,24,39,0.7) calc(50% - 1px), rgba(17,24,39,0.7) calc(50% + 1px), transparent calc(50% + 1px))',
+                  }}
+                />
+              )}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function PlayerAvatar() {
-  const [failed, setFailed] = useState(false);
-  if (failed) {
-    return <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-gray-100" aria-hidden />;
-  }
+/** A jersey number patch, standing in for both the "#" column and a player avatar — more
+ * authentic to an actual roster sheet than a generic initials circle. */
+function JerseyBadge({
+  jersey,
+  accentColor,
+}: {
+  jersey: number;
+  accentColor: string;
+}) {
+  const normalized = normalizeHex(accentColor) ?? "#3B82F6";
+  const safe = isLightColor(normalized) ? "#334155" : normalized;
+  const fg = getContrastTextColor(safe);
   return (
-    <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-gray-100">
-      <img
-        src={STARTER_PLAYER_IMAGE}
-        alt="player"
-        className="h-full w-full object-cover"
-        onError={() => setFailed(true)}
-        loading="lazy"
-      />
+    <div
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-base leading-none"
+      style={{
+        backgroundColor: safe,
+        color: fg,
+        fontFamily: GATEWAY_DISPLAY_FONT_STACK,
+        boxShadow: `0 2px 6px -2px ${safe}99`,
+      }}
+      aria-hidden
+    >
+      {jersey}
     </div>
   );
 }
 
-function MainStyleStarterCheckbox({
+/**
+ * Scoresheet-style check tile — a statistician "checking off" a player, not a generic status
+ * pill. Empty outline = not marked; filled square + icon = marked. No text label needed since
+ * the column header ("Playing" / "First 5") already says what's being checked.
+ */
+function CheckTile({
   selected,
-  label,
   kind,
   onClick,
   disabled = false,
 }: {
   selected: boolean;
-  label: string;
-  kind: 'playing' | 'first5';
+  kind: "playing" | "first5";
   onClick: () => void;
   disabled?: boolean;
 }) {
-  const baseClasses = selected
-    ? 'border-emerald-600 bg-emerald-500 text-white'
-    : 'border-amber-400 bg-amber-200 text-amber-950 hover:bg-amber-300';
-
-  const displayLabel =
-    kind === 'playing'
+  const activeColor = kind === "playing" ? "#059669" : "#0284C7";
+  const label =
+    kind === "playing"
       ? selected
-        ? 'Playing'
-        : 'Absent'
+        ? "Playing — tap to mark absent"
+        : "Absent — tap to mark playing"
       : selected
-        ? 'Starter'
-        : 'Add';
+        ? "Starter — tap to remove from first five"
+        : "Tap to add to first five";
 
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      aria-label={`${label} ${selected ? 'selected' : 'not selected'}`}
-      className={`flex h-7 w-14 items-center justify-center rounded-md border text-[11px] font-semibold transition-colors ${
-        baseClasses
-      } ${disabled ? 'cursor-not-allowed opacity-40 hover:bg-white' : ''}`}
+      aria-label={label}
+      title={label}
+      className={`flex h-8 w-8 items-center justify-center rounded-md border-[1.5px] transition-all ${
+        disabled
+          ? "cursor-not-allowed border-gray-100 bg-gray-50"
+          : "hover:scale-105"
+      }`}
+      style={
+        selected
+          ? {
+              backgroundColor: activeColor,
+              borderColor: activeColor,
+              boxShadow: `0 3px 8px -3px ${activeColor}99`,
+            }
+          : disabled
+            ? undefined
+            : { borderColor: "#D1D5DB", backgroundColor: "#FFFFFF" }
+      }
     >
-      {displayLabel}
+      {kind === "playing" ? (
+        <FiCheck
+          size={16}
+          strokeWidth={3}
+          color={selected ? "#FFFFFF" : "#CBD5E1"}
+        />
+      ) : (
+        <FiStar
+          size={14}
+          strokeWidth={selected ? 0 : 2}
+          fill={selected ? "#FFFFFF" : "none"}
+          color={selected ? "#FFFFFF" : "#CBD5E1"}
+        />
+      )}
     </button>
   );
 }
@@ -166,6 +247,7 @@ function TeamColumn({
   onToggle,
   teamColor,
   onTeamColorChange,
+  otherTeamColor,
   listScrollClassName,
   teamName,
   players,
@@ -177,52 +259,99 @@ function TeamColumn({
   onToggle: (rowIndex: number) => void;
   teamColor: string;
   onTeamColorChange: (hex: string) => void;
+  otherTeamColor: string;
   listScrollClassName: string;
   teamName?: string;
   players?: PlayerEntry[];
 }) {
   const indexedPlayers = useMemo(
-    () => (players ?? MOCK_PLAYERS).map((p, i) => ({ id: i, jersey: p.jersey, name: p.name })),
+    () =>
+      (players ?? MOCK_PLAYERS).map((p, i) => ({
+        id: i,
+        jersey: p.jersey,
+        name: p.name,
+      })),
     [players],
   );
   const playingPlayers = indexedPlayers.filter((p) => playingSet.has(p.id));
-  const selectedFirstFive = playingPlayers.filter((p) => starterSet.has(p.id)).slice(0, 5);
-  const headerBg = normalizeHex(teamColor) ?? teamColor;
-  const headerFg = contrastTextOnBg(headerBg);
-  const displayTeamName = teamName ?? (side === 'home' ? 'Home' : 'Away');
+  const selectedFirstFive = playingPlayers
+    .filter((p) => starterSet.has(p.id))
+    .slice(0, 5);
+  const displayTeamName = teamName ?? (side === "home" ? "Home" : "Away");
+  const normalizedColor = normalizeHex(teamColor) ?? teamColor;
+  const ready = selectedFirstFive.length === 5;
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <h2 className="mb-2 text-center text-sm font-bold uppercase tracking-widest text-gray-800 sm:mb-3">
-        {displayTeamName}
-      </h2>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span
+            className="h-2.5 w-2.5 shrink-0 rounded-full"
+            style={{
+              backgroundColor: normalizedColor,
+              boxShadow: isLightColor(normalizedColor)
+                ? "inset 0 0 0 1px rgba(17,24,39,0.25)"
+                : undefined,
+            }}
+            aria-hidden
+          />
+          <h2 className="truncate text-base font-bold text-gray-900 sm:text-lg">
+            {displayTeamName}
+          </h2>
+        </div>
+        <div
+          className="flex shrink-0 items-center gap-1.5 rounded-md py-1 pl-2 pr-2.5 transition-colors"
+          style={{ backgroundColor: ready ? "#059669" : "#1F2937" }}
+        >
+          {ready ? (
+            <FiCheck size={12} strokeWidth={3} color="#FFFFFF" />
+          ) : (
+            <span
+              className="text-xs font-bold tabular-nums text-white"
+              style={{ fontFamily: GATEWAY_DISPLAY_FONT_STACK }}
+            >
+              {selectedFirstFive.length}/5
+            </span>
+          )}
+          <span className="text-[9px] font-bold uppercase tracking-wider text-white">
+            {ready ? "First five ready" : "First five"}
+          </span>
+        </div>
+      </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
-        {side === 'home' ? (
-          <TeamColorBlock side={side} color={teamColor} onChange={onTeamColorChange} />
+        {side === "home" ? (
+          <TeamColorBlock
+            side={side}
+            color={teamColor}
+            onChange={onTeamColorChange}
+            takenColor={normalizeHex(otherTeamColor) ?? otherTeamColor}
+          />
         ) : null}
 
         <div className="min-h-0 min-w-0 flex-1 flex-col">
           <div
-            className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm ${listScrollClassName}`}
+            className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-b-2xl border border-gray-200 bg-white ${listScrollClassName}`}
+            style={{
+              boxShadow: `0 16px 32px -16px ${normalizedColor}4D, 0 2px 8px rgba(15,23,42,0.06)`,
+            }}
           >
             <div
-              className="grid shrink-0 items-center px-4 py-2.5"
-              style={{
-                gridTemplateColumns: '40px 1fr 72px 72px',
-                backgroundColor: headerBg,
-              }}
+              className="h-1 w-full shrink-0"
+              style={{ backgroundColor: normalizedColor }}
+              aria-hidden
+            />
+            <div
+              className="grid shrink-0 items-center border-b border-gray-100 bg-gray-50/70 px-4 py-2.5"
+              style={{ gridTemplateColumns: "1fr 44px 44px" }}
             >
-              <span className="text-xs font-bold uppercase" style={{ color: headerFg }}>
-                #
-              </span>
-              <span className="text-xs font-bold uppercase" style={{ color: headerFg }}>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                 Player
               </span>
-              <span className="pr-1 text-right text-[10px] font-bold uppercase" style={{ color: headerFg }}>
-                Playing
+              <span className="text-center text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                Play
               </span>
-              <span className="pr-1 text-right text-[10px] font-bold uppercase" style={{ color: headerFg }}>
+              <span className="text-center text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                 First 5
               </span>
             </div>
@@ -231,29 +360,37 @@ function TeamColumn({
               {indexedPlayers.map((player, index) => (
                 <div
                   key={`${side}-row-${player.id}`}
-                  className={`grid items-center px-4 py-2.5 ${index < indexedPlayers.length - 1 ? 'border-b border-gray-100' : ''}`}
-                  style={{ gridTemplateColumns: '40px 1fr 72px 72px' }}
+                  className={`grid items-center gap-2 px-4 py-2 transition-colors hover:bg-gray-50/70 ${
+                    index < indexedPlayers.length - 1
+                      ? "border-b border-gray-50"
+                      : ""
+                  }`}
+                  style={{ gridTemplateColumns: "1fr 44px 44px" }}
                 >
-                  <span className="text-sm font-medium text-gray-700">{player.jersey}</span>
-
-                  <div className="flex items-center gap-2.5">
-                    <PlayerAvatar />
-                    <span className="text-sm font-medium text-gray-800">{player.name}</span>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <JerseyBadge
+                      jersey={player.jersey}
+                      accentColor={teamColor}
+                    />
+                    <span
+                      className="truncate text-sm font-medium text-gray-800"
+                      title={player.name}
+                    >
+                      {player.name}
+                    </span>
                   </div>
 
-                  <div className="flex justify-end pr-1">
-                    <MainStyleStarterCheckbox
+                  <div className="flex justify-center">
+                    <CheckTile
                       selected={playingSet.has(player.id)}
-                      label="Playing"
                       kind="playing"
                       onClick={() => onTogglePlaying(player.id)}
                     />
                   </div>
 
-                  <div className="flex justify-end pr-1">
-                    <MainStyleStarterCheckbox
+                  <div className="flex justify-center">
+                    <CheckTile
                       selected={starterSet.has(player.id)}
-                      label="Selected"
                       kind="first5"
                       onClick={() => onToggle(player.id)}
                       disabled={!playingSet.has(player.id)}
@@ -263,20 +400,15 @@ function TeamColumn({
               ))}
             </div>
           </div>
-
-          <div className="mt-2 shrink-0 rounded-md border border-gray-200 bg-white p-2">
-            <p className="text-[10px] font-semibold uppercase text-gray-600">
-              {displayTeamName} — Playing ({playingPlayers.length}) {'->'} First 5 ({selectedFirstFive.length})
-            </p>
-            <p className="mt-1 text-xs text-gray-700">
-              Playing: {playingPlayers.map((p) => `#${p.jersey}`).join(', ') || 'None'} | First 5:{' '}
-              {selectedFirstFive.map((p) => `#${p.jersey}`).join(', ') || 'None'}
-            </p>
-          </div>
         </div>
 
-        {side === 'away' ? (
-          <TeamColorBlock side={side} color={teamColor} onChange={onTeamColorChange} />
+        {side === "away" ? (
+          <TeamColorBlock
+            side={side}
+            color={teamColor}
+            onChange={onTeamColorChange}
+            takenColor={normalizeHex(otherTeamColor) ?? otherTeamColor}
+          />
         ) : null}
       </div>
     </div>
@@ -284,7 +416,7 @@ function TeamColumn({
 }
 
 export interface StartersFlowProps {
-  variant?: 'page' | 'embedded';
+  variant?: "page" | "embedded";
   initialHomeLineup?: TeamLineup;
   initialAwayLineup?: TeamLineup;
   baselineHomeLineup?: TeamLineup;
@@ -304,273 +436,359 @@ export type StartersFlowHandle = {
   getLineups: () => { home: TeamLineup; away: TeamLineup } | null;
 };
 
-const StartersFlow = forwardRef<StartersFlowHandle, StartersFlowProps>(function StartersFlow(
-  {
-    variant = 'page',
-    initialHomeLineup,
-    initialAwayLineup,
-    baselineHomeLineup,
-    baselineAwayLineup,
-    onApplyLineups,
-    onCancel,
-    homeName,
-    awayName,
-    homePlayers,
-    awayPlayers,
-  },
-  ref
-) {
-  const { homeTeamColor, awayTeamColor, setHomeTeamColor, setAwayTeamColor } =
-    useStatisticianTeamColors();
-
-  const initHome = useMemo(
-    () =>
-      initialHomeLineup
-        ? teamLineupToStartersSets(initialHomeLineup)
-        : { playing: DEFAULT_PLAYING_ROWS, starters: DEFAULT_STARTER_ROWS },
-    [initialHomeLineup]
-  );
-  const initAway = useMemo(
-    () =>
-      initialAwayLineup
-        ? teamLineupToStartersSets(initialAwayLineup)
-        : { playing: DEFAULT_PLAYING_ROWS, starters: DEFAULT_STARTER_ROWS },
-    [initialAwayLineup]
-  );
-
-  const [homePlaying, setHomePlaying] = useState<Set<number>>(() => new Set(initHome.playing));
-  const [awayPlaying, setAwayPlaying] = useState<Set<number>>(() => new Set(initAway.playing));
-  const [homeStarters, setHomeStarters] = useState<Set<number>>(() => new Set(initHome.starters));
-  const [awayStarters, setAwayStarters] = useState<Set<number>>(() => new Set(initAway.starters));
-  const [firstFiveLimitModalOpen, setFirstFiveLimitModalOpen] = useState(false);
-  const [firstFiveLimitSide, setFirstFiveLimitSide] = useState<TeamSide | null>(null);
-  const [incompleteFirstFiveModalOpen, setIncompleteFirstFiveModalOpen] = useState(false);
-
-  // Lift indexedPlayers to component level so getLineups() can use real jersey numbers.
-  const homeIndexedPlayers = useMemo(
-    () => (homePlayers ?? MOCK_PLAYERS).map((p, i) => ({ id: i, jersey: p.jersey })),
-    [homePlayers],
-  );
-  const awayIndexedPlayers = useMemo(
-    () => (awayPlayers ?? MOCK_PLAYERS).map((p, i) => ({ id: i, jersey: p.jersey })),
-    [awayPlayers],
-  );
-
-  const listScrollClassName =
-    variant === 'embedded' ? 'max-h-[min(380px,44dvh)]' : 'h-[max(70dvh,360px)]';
-
-  const firstFiveGate = useMemo(
-    () => computeFirstFiveGate(homePlaying, homeStarters, awayPlaying, awayStarters),
-    [awayPlaying, awayStarters, homePlaying, homeStarters]
-  );
-
-  useImperativeHandle(
+const StartersFlow = forwardRef<StartersFlowHandle, StartersFlowProps>(
+  function StartersFlow(
+    {
+      variant = "page",
+      initialHomeLineup,
+      initialAwayLineup,
+      baselineHomeLineup,
+      baselineAwayLineup,
+      onApplyLineups,
+      onCancel,
+      homeName,
+      awayName,
+      homePlayers,
+      awayPlayers,
+    },
     ref,
-    () => ({
-      attemptContinue: () => {
-        const gate = computeFirstFiveGate(homePlaying, homeStarters, awayPlaying, awayStarters);
-        if (gate.ready) return true;
+  ) {
+    const { homeTeamColor, awayTeamColor, setHomeTeamColor, setAwayTeamColor } =
+      useStatisticianTeamColors();
+
+    const initHome = useMemo(
+      () =>
+        initialHomeLineup
+          ? teamLineupToStartersSets(initialHomeLineup)
+          : { playing: DEFAULT_PLAYING_ROWS, starters: DEFAULT_STARTER_ROWS },
+      [initialHomeLineup],
+    );
+    const initAway = useMemo(
+      () =>
+        initialAwayLineup
+          ? teamLineupToStartersSets(initialAwayLineup)
+          : { playing: DEFAULT_PLAYING_ROWS, starters: DEFAULT_STARTER_ROWS },
+      [initialAwayLineup],
+    );
+
+    const [homePlaying, setHomePlaying] = useState<Set<number>>(
+      () => new Set(initHome.playing),
+    );
+    const [awayPlaying, setAwayPlaying] = useState<Set<number>>(
+      () => new Set(initAway.playing),
+    );
+    const [homeStarters, setHomeStarters] = useState<Set<number>>(
+      () => new Set(initHome.starters),
+    );
+    const [awayStarters, setAwayStarters] = useState<Set<number>>(
+      () => new Set(initAway.starters),
+    );
+    const [firstFiveLimitModalOpen, setFirstFiveLimitModalOpen] =
+      useState(false);
+    const [firstFiveLimitSide, setFirstFiveLimitSide] =
+      useState<TeamSide | null>(null);
+    const [incompleteFirstFiveModalOpen, setIncompleteFirstFiveModalOpen] =
+      useState(false);
+
+    // Lift indexedPlayers to component level so getLineups() can use real jersey numbers.
+    const homeIndexedPlayers = useMemo(
+      () =>
+        (homePlayers ?? MOCK_PLAYERS).map((p, i) => ({
+          id: i,
+          jersey: p.jersey,
+        })),
+      [homePlayers],
+    );
+    const awayIndexedPlayers = useMemo(
+      () =>
+        (awayPlayers ?? MOCK_PLAYERS).map((p, i) => ({
+          id: i,
+          jersey: p.jersey,
+        })),
+      [awayPlayers],
+    );
+
+    const listScrollClassName =
+      variant === "embedded"
+        ? "max-h-[min(380px,44dvh)]"
+        : "h-[max(70dvh,360px)]";
+
+    const firstFiveGate = useMemo(
+      () =>
+        computeFirstFiveGate(
+          homePlaying,
+          homeStarters,
+          awayPlaying,
+          awayStarters,
+        ),
+      [awayPlaying, awayStarters, homePlaying, homeStarters],
+    );
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        attemptContinue: () => {
+          const gate = computeFirstFiveGate(
+            homePlaying,
+            homeStarters,
+            awayPlaying,
+            awayStarters,
+          );
+          if (gate.ready) return true;
+          setIncompleteFirstFiveModalOpen(true);
+          return false;
+        },
+        getLineups: () => {
+          const gate = computeFirstFiveGate(
+            homePlaying,
+            homeStarters,
+            awayPlaying,
+            awayStarters,
+          );
+          if (!gate.ready) return null;
+          const homeUi = startersSetsToTeamLineupWithPlayers(
+            homeIndexedPlayers,
+            homePlaying,
+            homeStarters,
+          );
+          const awayUi = startersSetsToTeamLineupWithPlayers(
+            awayIndexedPlayers,
+            awayPlaying,
+            awayStarters,
+          );
+          const baseH = baselineHomeLineup ?? homeUi;
+          const baseA = baselineAwayLineup ?? awayUi;
+          return {
+            home: mergeLineupPreserveExtraJerseys(baseH, homeUi),
+            away: mergeLineupPreserveExtraJerseys(baseA, awayUi),
+          };
+        },
+      }),
+      [
+        awayIndexedPlayers,
+        awayPlaying,
+        awayStarters,
+        baselineAwayLineup,
+        baselineHomeLineup,
+        homeIndexedPlayers,
+        homePlaying,
+        homeStarters,
+      ],
+    );
+
+    const toggleHome = useCallback(
+      (i: number) => {
+        setHomeStarters((prev) => {
+          if (!homePlaying.has(i)) return prev;
+          if (prev.has(i)) {
+            const next = new Set(prev);
+            next.delete(i);
+            return next;
+          }
+          if (prev.size >= 5) {
+            setFirstFiveLimitSide("home");
+            setFirstFiveLimitModalOpen(true);
+            return prev;
+          }
+          const next = new Set(prev);
+          next.add(i);
+          return next;
+        });
+      },
+      [homePlaying],
+    );
+
+    const toggleAway = useCallback(
+      (i: number) => {
+        setAwayStarters((prev) => {
+          if (!awayPlaying.has(i)) return prev;
+          if (prev.has(i)) {
+            const next = new Set(prev);
+            next.delete(i);
+            return next;
+          }
+          if (prev.size >= 5) {
+            setFirstFiveLimitSide("away");
+            setFirstFiveLimitModalOpen(true);
+            return prev;
+          }
+          const next = new Set(prev);
+          next.add(i);
+          return next;
+        });
+      },
+      [awayPlaying],
+    );
+
+    const toggleHomePlaying = useCallback((i: number) => {
+      setHomePlaying((prev) => {
+        const next = new Set(prev);
+        if (next.has(i)) next.delete(i);
+        else next.add(i);
+        setHomeStarters(
+          (starters) =>
+            new Set(
+              Array.from(starters)
+                .filter((id) => next.has(id))
+                .slice(0, 5),
+            ),
+        );
+        return next;
+      });
+    }, []);
+
+    const toggleAwayPlaying = useCallback((i: number) => {
+      setAwayPlaying((prev) => {
+        const next = new Set(prev);
+        if (next.has(i)) next.delete(i);
+        else next.add(i);
+        setAwayStarters(
+          (starters) =>
+            new Set(
+              Array.from(starters)
+                .filter((id) => next.has(id))
+                .slice(0, 5),
+            ),
+        );
+        return next;
+      });
+    }, []);
+
+    const handleApply = useCallback(() => {
+      if (!onApplyLineups) return;
+      if (!firstFiveGate.ready) {
         setIncompleteFirstFiveModalOpen(true);
-        return false;
-      },
-      getLineups: () => {
-        const gate = computeFirstFiveGate(homePlaying, homeStarters, awayPlaying, awayStarters);
-        if (!gate.ready) return null;
-        const homeUi = startersSetsToTeamLineupWithPlayers(homeIndexedPlayers, homePlaying, homeStarters);
-        const awayUi = startersSetsToTeamLineupWithPlayers(awayIndexedPlayers, awayPlaying, awayStarters);
-        const baseH = baselineHomeLineup ?? homeUi;
-        const baseA = baselineAwayLineup ?? awayUi;
-        return {
-          home: mergeLineupPreserveExtraJerseys(baseH, homeUi),
-          away: mergeLineupPreserveExtraJerseys(baseA, awayUi),
-        };
-      },
-    }),
-    [awayIndexedPlayers, awayPlaying, awayStarters, baselineAwayLineup, baselineHomeLineup, homeIndexedPlayers, homePlaying, homeStarters]
-  );
-
-  const toggleHome = useCallback(
-    (i: number) => {
-      setHomeStarters((prev) => {
-        if (!homePlaying.has(i)) return prev;
-        if (prev.has(i)) {
-          const next = new Set(prev);
-          next.delete(i);
-          return next;
-        }
-        if (prev.size >= 5) {
-          setFirstFiveLimitSide('home');
-          setFirstFiveLimitModalOpen(true);
-          return prev;
-        }
-        const next = new Set(prev);
-        next.add(i);
-        return next;
+        return;
+      }
+      const homeUi = startersSetsToTeamLineupWithPlayers(
+        homeIndexedPlayers,
+        homePlaying,
+        homeStarters,
+      );
+      const awayUi = startersSetsToTeamLineupWithPlayers(
+        awayIndexedPlayers,
+        awayPlaying,
+        awayStarters,
+      );
+      const baseH = baselineHomeLineup ?? homeUi;
+      const baseA = baselineAwayLineup ?? awayUi;
+      onApplyLineups({
+        home: mergeLineupPreserveExtraJerseys(baseH, homeUi),
+        away: mergeLineupPreserveExtraJerseys(baseA, awayUi),
       });
-    },
-    [homePlaying]
-  );
+    }, [
+      awayIndexedPlayers,
+      awayPlaying,
+      awayStarters,
+      baselineAwayLineup,
+      baselineHomeLineup,
+      firstFiveGate.ready,
+      homeIndexedPlayers,
+      homePlaying,
+      homeStarters,
+      onApplyLineups,
+    ]);
 
-  const toggleAway = useCallback(
-    (i: number) => {
-      setAwayStarters((prev) => {
-        if (!awayPlaying.has(i)) return prev;
-        if (prev.has(i)) {
-          const next = new Set(prev);
-          next.delete(i);
-          return next;
-        }
-        if (prev.size >= 5) {
-          setFirstFiveLimitSide('away');
-          setFirstFiveLimitModalOpen(true);
-          return prev;
-        }
-        const next = new Set(prev);
-        next.add(i);
-        return next;
-      });
-    },
-    [awayPlaying]
-  );
-
-  const toggleHomePlaying = useCallback((i: number) => {
-    setHomePlaying((prev) => {
-      const next = new Set(prev);
-      if (next.has(i)) next.delete(i);
-      else next.add(i);
-      setHomeStarters((starters) => new Set(Array.from(starters).filter((id) => next.has(id)).slice(0, 5)));
-      return next;
-    });
-  }, []);
-
-  const toggleAwayPlaying = useCallback((i: number) => {
-    setAwayPlaying((prev) => {
-      const next = new Set(prev);
-      if (next.has(i)) next.delete(i);
-      else next.add(i);
-      setAwayStarters((starters) => new Set(Array.from(starters).filter((id) => next.has(id)).slice(0, 5)));
-      return next;
-    });
-  }, []);
-
-  const handleApply = useCallback(() => {
-    if (!onApplyLineups) return;
-    if (!firstFiveGate.ready) {
-      setIncompleteFirstFiveModalOpen(true);
-      return;
-    }
-    const homeUi = startersSetsToTeamLineupWithPlayers(homeIndexedPlayers, homePlaying, homeStarters);
-    const awayUi = startersSetsToTeamLineupWithPlayers(awayIndexedPlayers, awayPlaying, awayStarters);
-    const baseH = baselineHomeLineup ?? homeUi;
-    const baseA = baselineAwayLineup ?? awayUi;
-    onApplyLineups({
-      home: mergeLineupPreserveExtraJerseys(baseH, homeUi),
-      away: mergeLineupPreserveExtraJerseys(baseA, awayUi),
-    });
-  }, [
-    awayIndexedPlayers,
-    awayPlaying,
-    awayStarters,
-    baselineAwayLineup,
-    baselineHomeLineup,
-    firstFiveGate.ready,
-    homeIndexedPlayers,
-    homePlaying,
-    homeStarters,
-    onApplyLineups,
-  ]);
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col font-sans">
+    return (
       <div
-        className={`mx-auto grid min-h-0 w-full max-w-6xl gap-4 sm:gap-6 ${
-          variant === 'embedded' ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-2'
-        }`}
+        className="flex min-h-0 flex-1 flex-col"
+        style={{ fontFamily: GATEWAY_FONT_STACK }}
       >
-        <TeamColumn
-          side="home"
-          playingSet={homePlaying}
-          starterSet={homeStarters}
-          onTogglePlaying={toggleHomePlaying}
-          onToggle={toggleHome}
-          teamColor={homeTeamColor}
-          onTeamColorChange={setHomeTeamColor}
-          listScrollClassName={listScrollClassName}
-          teamName={homeName}
-          players={homePlayers}
-        />
-        <TeamColumn
-          side="away"
-          playingSet={awayPlaying}
-          starterSet={awayStarters}
-          onTogglePlaying={toggleAwayPlaying}
-          onToggle={toggleAway}
-          teamColor={awayTeamColor}
-          onTeamColorChange={setAwayTeamColor}
-          listScrollClassName={listScrollClassName}
-          teamName={awayName}
-          players={awayPlayers}
-        />
-      </div>
-
-      {onApplyLineups && onCancel && (
-        <div className="mt-4 flex shrink-0 flex-col gap-2 border-t border-gray-200 pt-4 sm:flex-row sm:items-center sm:justify-end">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-100"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleApply}
-            className="rounded bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700"
-          >
-            Apply
-          </button>
-        </div>
-      )}
-
-      <FirstFiveIncompleteModal
-        open={incompleteFirstFiveModalOpen}
-        onClose={() => setIncompleteFirstFiveModalOpen(false)}
-        issues={firstFiveGate.issues}
-      />
-
-      {firstFiveLimitModalOpen && (
         <div
-          className="fixed inset-0 z-[220] flex items-center justify-center bg-black/40 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="first-five-limit-title"
+          className={`mx-auto grid min-h-0 w-full max-w-6xl grid-cols-1 gap-4 sm:gap-6 ${
+            variant === "embedded" ? "lg:grid-cols-2" : "md:grid-cols-2"
+          }`}
         >
-          <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-4 shadow-xl">
-            <h2 id="first-five-limit-title" className="text-base font-bold text-gray-900">
-              First 5 is complete
-            </h2>
-            <p className="mt-2 text-sm text-gray-600">
-              {firstFiveLimitSide === 'home'
-                ? 'Home already has 5 starters. Remove one to add another.'
-                : 'Away already has 5 starters. Remove one to add another.'}
-            </p>
-            <div className="mt-4 flex items-center justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  setFirstFiveLimitModalOpen(false);
-                  setFirstFiveLimitSide(null);
-                }}
-                className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+          <TeamColumn
+            side="home"
+            playingSet={homePlaying}
+            starterSet={homeStarters}
+            onTogglePlaying={toggleHomePlaying}
+            onToggle={toggleHome}
+            teamColor={homeTeamColor}
+            onTeamColorChange={setHomeTeamColor}
+            otherTeamColor={awayTeamColor}
+            listScrollClassName={listScrollClassName}
+            teamName={homeName}
+            players={homePlayers}
+          />
+          <TeamColumn
+            side="away"
+            playingSet={awayPlaying}
+            starterSet={awayStarters}
+            onTogglePlaying={toggleAwayPlaying}
+            onToggle={toggleAway}
+            teamColor={awayTeamColor}
+            onTeamColorChange={setAwayTeamColor}
+            otherTeamColor={homeTeamColor}
+            listScrollClassName={listScrollClassName}
+            teamName={awayName}
+            players={awayPlayers}
+          />
+        </div>
+
+        {onApplyLineups && onCancel && (
+          <div className="mt-4 flex shrink-0 flex-col gap-2 border-t border-gray-200 pt-4 sm:flex-row sm:items-center sm:justify-end">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-lg border border-gray-300 px-3.5 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-100"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleApply}
+              className="rounded-lg bg-sky-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-sky-700 active:scale-[0.98]"
+            >
+              Apply
+            </button>
+          </div>
+        )}
+
+        <FirstFiveIncompleteModal
+          open={incompleteFirstFiveModalOpen}
+          onClose={() => setIncompleteFirstFiveModalOpen(false)}
+          issues={firstFiveGate.issues}
+        />
+
+        {firstFiveLimitModalOpen && (
+          <div
+            className="fixed inset-0 z-[220] flex items-center justify-center bg-black/40 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="first-five-limit-title"
+          >
+            <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-4 shadow-xl">
+              <h2
+                id="first-five-limit-title"
+                className="text-base font-bold text-gray-900"
               >
-                OK
-              </button>
+                First 5 is complete
+              </h2>
+              <p className="mt-2 text-sm text-gray-600">
+                {firstFiveLimitSide === "home"
+                  ? "Home already has 5 starters. Remove one to add another."
+                  : "Away already has 5 starters. Remove one to add another."}
+              </p>
+              <div className="mt-4 flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFirstFiveLimitModalOpen(false);
+                    setFirstFiveLimitSide(null);
+                  }}
+                  className="rounded-lg bg-sky-600 px-3.5 py-2 text-sm font-semibold text-white hover:bg-sky-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                >
+                  OK
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
-  );
-});
+        )}
+      </div>
+    );
+  },
+);
 
 export default StartersFlow;

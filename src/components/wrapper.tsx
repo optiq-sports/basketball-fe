@@ -7,6 +7,7 @@ import { SidebarProvider, useSidebar } from '../contexts/SidebarContext'
 import AdminTopbar from './admin/AdminTopbar'
 import AdminSidebar from './admin/AdminSidebar'
 import Backdrop from './admin/Backdrop'
+import { performLogout } from '../auth/authSession'
 
 const MatchPage = lazy(() => import('../pages/tournaments/Match'))
 const PlayerDetails = lazy(() => import('../pages/tournaments/PlayerDetails'))
@@ -31,8 +32,6 @@ const PlayersManagement = lazy(() => import('../pages/Players/Players'))
 const PlayerProfile = lazy(() => import('../pages/Players/PlayerProfile'))
 const Users = lazy(() => import('../pages/Users/Users'))
 const QueueDashboard = lazy(() => import('../pages/Ops/QueueDashboard'))
-
-const TOKEN_KEY = 'access_token';
 
 const UsersRouteGuard: React.FC<{ rawRole?: string }> = ({ rawRole }) => {
   if (rawRole === undefined) {
@@ -69,8 +68,7 @@ const WrapperContent: React.FC = () => {
   // Single source of truth for logout — previously duplicated (and out of sync
   // with the real auth keys) in the old standalone Sidebar component.
   const handleLogout = () => {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem('user_name');
+    performLogout();
     queryClient.removeQueries({ queryKey: queryKeys.auth.profile });
     navigate('/login');
   };

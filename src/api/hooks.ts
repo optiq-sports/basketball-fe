@@ -28,6 +28,7 @@ import type {
 } from '../types/api';
 
 const TOKEN_KEY = 'access_token';
+const REFRESH_TOKEN_KEY = 'refresh_token';
 
 // Query keys
 export const queryKeys = {
@@ -87,6 +88,9 @@ export function useLogin() {
       const token = res.data?.access_token;
       if (token) {
         localStorage.setItem(TOKEN_KEY, token);
+        if (res.data?.refresh_token) {
+          localStorage.setItem(REFRESH_TOKEN_KEY, res.data.refresh_token);
+        }
         queryClient.setQueryData(queryKeys.auth.profile, res.data?.user ?? null);
         const user = res.data?.user as { name?: string } | undefined;
         if (user?.name != null && String(user.name).trim()) {
@@ -109,6 +113,9 @@ export function useRegister() {
       const token = res.data?.access_token;
       if (token) {
         localStorage.setItem(TOKEN_KEY, token);
+        if (res.data?.refresh_token) {
+          localStorage.setItem(REFRESH_TOKEN_KEY, res.data.refresh_token);
+        }
         queryClient.setQueryData(queryKeys.auth.profile, res.data?.user ?? null);
         const user = res.data?.user as { name?: string } | undefined;
         if (user?.name != null && String(user.name).trim()) {

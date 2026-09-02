@@ -1,7 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { VscChromeClose, VscChromeMaximize, VscChromeMinimize } from 'react-icons/vsc';
+import { FiLogOut } from 'react-icons/fi';
 import { cl } from '../utils/cl';
+import { GATEWAY_DISPLAY_FONT_STACK } from '../../../authGatewayTheme';
+import StatusStrip from './StatusStrip';
+
+const StatusDot: React.FC<{ colorClass: string; blink?: boolean }> = ({ colorClass, blink }) => (
+  <span
+    className={`inline-block size-1.5 shrink-0 rounded-full ${colorClass} ${blink ? 'motion-safe:animate-status-dot-blink' : ''}`}
+    aria-hidden
+  />
+);
 
 type MenuGroupId = 'FILE' | 'GAME' | 'REPORTS' | 'SETTINGS' | 'HELP';
 
@@ -9,6 +18,7 @@ type MenuItemDef = {
   label: string;
   /** Called when the item is chosen; omit for no-op placeholders */
   onSelect?: () => void;
+  disabled?: boolean;
 };
 
 const MENU_GROUPS: { id: MenuGroupId; items: MenuItemDef[] }[] = [
@@ -16,6 +26,7 @@ const MENU_GROUPS: { id: MenuGroupId; items: MenuItemDef[] }[] = [
     id: 'FILE',
     items: [
       { label: 'Close Game' },
+      { label: 'Cancel Game' },
       { label: 'Exit' },
     ],
   },
@@ -26,6 +37,7 @@ const MENU_GROUPS: { id: MenuGroupId; items: MenuItemDef[] }[] = [
       { label: 'Starters' },
       { label: 'Clear game log' },
       { label: 'Setup Quarters' },
+      { label: 'Pause Game' },
       { label: 'Finish Match' },
       { label: 'Export Game' },
     ],
@@ -61,13 +73,46 @@ export interface MenuBarProps {
   onSwitchTeamSide?: () => void;
   onStarters?: () => void;
   onClearGameLog?: () => void;
+  /** Current backend GameSession status — drives the Pause/Resume label and disables terminal-state actions. */
+  sessionStatus?: string;
+  onPauseResume?: () => void;
+  pauseInFlight?: boolean;
+  onFinishMatch?: () => void;
+  onCancelGame?: () => void;
+  /** Realtime (SSE) connection status */
+  realtimeConnected?: boolean;
+  realtimeReconnecting?: boolean;
+  /** Event queue sync status */
+  isOnline?: boolean;
+  failedCount?: number;
+  pendingCount?: number;
+  onRetryFailed?: () => void;
+  isBootstrapping?: boolean;
 }
 
-const MenuBar: React.FC<MenuBarProps> = ({ onSwitchTeamSide, onStarters, onClearGameLog }) => {
+const MenuBar: React.FC<MenuBarProps> = ({
+  onSwitchTeamSide,
+  onStarters,
+  onClearGameLog,
+  sessionStatus,
+  onPauseResume,
+  pauseInFlight,
+  onFinishMatch,
+  onCancelGame,
+  realtimeConnected = false,
+  realtimeReconnecting = false,
+  isOnline = true,
+  failedCount = 0,
+  pendingCount = 0,
+  onRetryFailed,
+  isBootstrapping = false,
+}) => {
   const navigate = useNavigate();
   const [openId, setOpenId] = useState<MenuGroupId | null>(null);
   const [exitConfirmOpen, setExitConfirmOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const isPaused = sessionStatus === 'PAUSED';
+  const isTerminal = sessionStatus === 'COMPLETED' || sessionStatus === 'CANCELLED';
 
   const close = useCallback(() => setOpenId(null), []);
 
@@ -102,6 +147,33 @@ const MenuBar: React.FC<MenuBarProps> = ({ onSwitchTeamSide, onStarters, onClear
               },
             };
           }
+          if (item.label === 'Pause Game') {
+            return {
+              ...item,
+              label: pauseInFlight
+                ? isPaused
+                  ? 'Resuming…'
+                  : 'Pausing…'
+                : isPaused
+                  ? 'Resume Game'
+                  : 'Pause Game',
+              disabled: isTerminal || pauseInFlight,
+              onSelect: () => {
+                close();
+                onPauseResume?.();
+              },
+            };
+          }
+          if (item.label === 'Finish Match') {
+            return {
+              ...item,
+              disabled: isTerminal,
+              onSelect: () => {
+                close();
+                onFinishMatch?.();
+              },
+            };
+          }
           return item;
         });
       }
@@ -116,10 +188,31 @@ const MenuBar: React.FC<MenuBarProps> = ({ onSwitchTeamSide, onStarters, onClear
             },
           };
         }
+        if (item.label === 'Cancel Game') {
+          return {
+            ...item,
+            disabled: isTerminal,
+            onSelect: () => {
+              close();
+              onCancelGame?.();
+            },
+          };
+        }
         return item;
       });
     },
-    [close, onSwitchTeamSide, onStarters, onClearGameLog]
+    [
+      close,
+      onSwitchTeamSide,
+      onStarters,
+      onClearGameLog,
+      isPaused,
+      isTerminal,
+      pauseInFlight,
+      onPauseResume,
+      onFinishMatch,
+      onCancelGame,
+    ]
   );
 
   useEffect(() => {
@@ -151,10 +244,24 @@ const MenuBar: React.FC<MenuBarProps> = ({ onSwitchTeamSide, onStarters, onClear
     <>
       <header
         ref={rootRef}
-        className="relative z-50 flex shrink-0 select-none items-center justify-between border-t border-[#2d2d2d] bg-black px-4 text-white sm:px-5"
-        style={{ height: 36, minHeight: 36 }}
+        className="relative z-50 flex shrink-0 select-none items-center justify-between border-b border-black/40 bg-[#111827] px-4 text-white sm:px-5"
+        style={{ height: 44, minHeight: 44 }}
       >
-        <div className="flex min-w-0 items-center gap-[clamp(10px,1.8vw,24px)]">
+        <div className="flex min-w-0 items-center gap-[clamp(14px,2.2vw,28px)]">
+          <div className="hidden shrink-0 items-center gap-2 sm:flex">
+            <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
+              <circle cx="9" cy="9" r="8.5" fill="#1F2937" stroke="#374151" />
+              <path d="M9 0.5 A8.5 8.5 0 0 1 9 17.5 Z" fill="#EA580C" />
+            </svg>
+            <span
+              className="select-none leading-none text-white"
+              style={{ fontFamily: GATEWAY_DISPLAY_FONT_STACK, fontSize: 16, letterSpacing: 1 }}
+              aria-hidden
+            >
+              OPTIQ
+            </span>
+          </div>
+          <span className="hidden h-4 w-px shrink-0 bg-white/15 sm:block" aria-hidden />
           <nav className="flex items-start gap-[clamp(10px,1.8vw,24px)]" aria-label="Main menu">
             {MENU_GROUPS.map((group) => {
               const isOpen = openId === group.id;
@@ -184,8 +291,15 @@ const MenuBar: React.FC<MenuBarProps> = ({ onSwitchTeamSide, onStarters, onClear
                           key={item.label}
                           type="button"
                           role="menuitem"
-                          className="block w-full whitespace-nowrap px-3 py-2 text-left text-sm font-bold text-white hover:bg-white/10 focus:bg-white/10 focus:outline-none"
+                          disabled={item.disabled}
+                          aria-disabled={item.disabled}
+                          className={`block w-full whitespace-nowrap px-3 py-2 text-left text-sm font-bold focus:outline-none ${
+                            item.disabled
+                              ? 'cursor-not-allowed text-gray-600'
+                              : 'text-white hover:bg-white/10 focus:bg-white/10'
+                          }`}
                           onClick={() => {
+                            if (item.disabled) return;
                             item.onSelect?.();
                             close();
                           }}
@@ -201,32 +315,70 @@ const MenuBar: React.FC<MenuBarProps> = ({ onSwitchTeamSide, onStarters, onClear
           </nav>
         </div>
 
-        <div className="flex shrink-0 items-center gap-4 sm:gap-5">
-          <button type="button" className="flex text-white hover:opacity-80" aria-label="Minimize">
-            <VscChromeMinimize size={14} strokeWidth={0.5} />
-          </button>
-          <button type="button" className="flex text-white hover:opacity-80" aria-label="Maximize">
-            <VscChromeMaximize size={14} strokeWidth={0.5} />
-          </button>
+        <div className="flex min-w-0 shrink-0 items-center gap-3 sm:gap-4">
+          <div className="hidden items-center gap-3 border-r border-white/10 pr-3 sm:flex sm:gap-4 sm:pr-4">
+            <span
+              className="flex items-center gap-1.5 text-xs font-medium text-gray-400"
+              title={isBootstrapping ? 'Syncing game session…' : undefined}
+            >
+              <StatusDot
+                colorClass={realtimeReconnecting ? 'bg-amber-500' : realtimeConnected ? 'bg-emerald-500' : 'bg-gray-500'}
+                blink={realtimeReconnecting}
+              />
+              {realtimeReconnecting ? 'Reconnecting…' : realtimeConnected ? 'Live' : 'Offline'}
+            </span>
+            <span className="flex items-center gap-1.5 text-xs font-medium text-gray-400">
+              <StatusDot
+                colorClass={
+                  !isOnline
+                    ? 'bg-orange-500'
+                    : failedCount > 0
+                      ? 'bg-red-500'
+                      : pendingCount > 0
+                        ? 'bg-amber-500'
+                        : 'bg-emerald-500'
+                }
+                blink={!isOnline || failedCount > 0 || pendingCount > 0}
+              />
+              {!isOnline ? (
+                'Offline'
+              ) : failedCount > 0 ? (
+                <>
+                  {failedCount} failed
+                  {onRetryFailed && (
+                    <button type="button" className="ml-1 underline hover:text-white" onClick={onRetryFailed}>
+                      Retry
+                    </button>
+                  )}
+                </>
+              ) : pendingCount > 0 ? (
+                `${pendingCount} queued`
+              ) : (
+                'Synced'
+              )}
+            </span>
+            <StatusStrip />
+          </div>
           <button
             type="button"
-            className="flex text-white hover:opacity-80"
-            aria-label="Close"
+            className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400 transition-colors hover:text-white"
+            aria-label="Exit game screen"
             onClick={() => setExitConfirmOpen(true)}
           >
-            <VscChromeClose size={14} strokeWidth={0.5} />
+            <FiLogOut size={14} />
+            <span className="hidden sm:inline">Exit</span>
           </button>
         </div>
       </header>
 
       {exitConfirmOpen && (
         <div
-          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4"
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
           aria-labelledby="exit-confirm-title"
         >
-          <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-4 shadow-xl">
+          <div className="w-full max-w-sm border-2 border-gray-800 bg-white p-5 shadow-[0_30px_60px_-20px_rgba(15,23,42,0.5)]">
             <h2 id="exit-confirm-title" className="text-base font-bold text-gray-900">
               Exit game?
             </h2>
@@ -237,14 +389,14 @@ const MenuBar: React.FC<MenuBarProps> = ({ onSwitchTeamSide, onStarters, onClear
               <button
                 type="button"
                 onClick={cancelExit}
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-300"
+                className="border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-300"
               >
                 Stay
               </button>
               <button
                 type="button"
                 onClick={confirmExit}
-                className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                className="bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
               >
                 Exit
               </button>

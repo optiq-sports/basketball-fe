@@ -3,6 +3,8 @@ import { IoChevronDown, IoChevronUp } from 'react-icons/io5';
 import { getContrastTextColor, jerseyAccentSurfaceStyle } from '../../../contexts/StatisticianTeamColorsContext';
 import { cl } from '../utils/cl';
 import { STAT_DASH } from '../statDashTheme';
+import { REGULATION_QUARTERS } from '../periodLabel';
+import { GATEWAY_DISPLAY_FONT_STACK } from '../../../authGatewayTheme';
 
 export interface GameTimerProps {
   quarter: number;
@@ -20,6 +22,10 @@ export interface GameTimerProps {
 const chevronSize = 13;
 
 export function quarterLabel(q: number): string {
+  if (q > REGULATION_QUARTERS) {
+    const ot = q - REGULATION_QUARTERS;
+    return ot === 1 ? 'OVERTIME' : `OVERTIME ${ot}`;
+  }
   const suffix = q === 1 ? 'st' : q === 2 ? 'nd' : q === 3 ? 'rd' : 'th';
   return `${q}${suffix} QUARTER`;
 }
@@ -50,16 +56,15 @@ const GameTimer: React.FC<GameTimerProps> = ({
     return () => window.clearInterval(id);
   }, [isRunning, onTick]);
 
-  const btnPadY = cl('7px', '1vh', '13px');
-  const btnPadX = cl('10px', '1.3vw', '22px');
+  const btnPadY = cl('6px', '0.8vh', '11px');
+  const btnPadX = cl('10px', '1.3vw', '20px');
   const lowClock = timerSeconds <= 10;
 
   return (
     <div
-      className="flex min-w-0 w-full shrink-0 flex-col overflow-hidden rounded-lg bg-white font-sans"
+      className="flex min-w-0 w-full shrink-0 flex-col overflow-hidden bg-white font-sans"
       style={{
         minWidth: cl('200px', '26vw', '360px'),
-        border: `1px solid ${STAT_DASH.cardBorder}`,
       }}
     >
       <div
@@ -67,7 +72,7 @@ const GameTimer: React.FC<GameTimerProps> = ({
         style={{
           ...jerseyAccentSurfaceStyle(STAT_DASH.accentBlue),
           fontSize: cl('9px', '0.82vw', '12px'),
-          letterSpacing: 2,
+          letterSpacing: 2.5,
           paddingTop: '6px',
           paddingBottom: '6px',
         }}
@@ -77,7 +82,7 @@ const GameTimer: React.FC<GameTimerProps> = ({
       <div
         className="flex w-full flex-1 items-center gap-[clamp(4px,0.5vw,8px)] bg-white"
         style={{
-          padding: `${cl('6px', '1vh', '14px')} ${cl('6px', '0.8vw', '12px')}`,
+          padding: `${cl('5px', '0.7vh', '10px')} ${cl('6px', '0.8vw', '12px')}`,
         }}
       >
         <div className="flex shrink-0 flex-col gap-1">
@@ -100,10 +105,11 @@ const GameTimer: React.FC<GameTimerProps> = ({
         </div>
 
         <span
-          className={`min-w-0 flex-1 text-center font-bold tabular-nums leading-none ${lowClock ? 'text-red-600' : 'text-gray-900'}`}
+          className={`min-w-0 flex-1 text-center tabular-nums leading-none ${lowClock ? 'text-red-600' : 'text-gray-900'}`}
           style={{
-            fontSize: cl('26px', '3.5vw', '52px'),
-            letterSpacing: 3,
+            fontFamily: GATEWAY_DISPLAY_FONT_STACK,
+            fontSize: cl('24px', '3vw', '42px'),
+            letterSpacing: 2,
           }}
           aria-live="polite"
         >
@@ -133,7 +139,7 @@ const GameTimer: React.FC<GameTimerProps> = ({
           <button
             type="button"
             onClick={onQuarterFinish}
-            className="shrink-0 cursor-pointer whitespace-nowrap rounded-md border-none font-bold uppercase hover:opacity-95"
+            className="shrink-0 cursor-pointer whitespace-nowrap border-none font-bold uppercase hover:opacity-95"
             style={{
               background: FINISH_YELLOW,
               color: getContrastTextColor(FINISH_YELLOW),
@@ -148,7 +154,7 @@ const GameTimer: React.FC<GameTimerProps> = ({
           <button
             type="button"
             onClick={onStartStop}
-            className="shrink-0 cursor-pointer whitespace-nowrap rounded-md border-none font-bold uppercase hover:opacity-95"
+            className="shrink-0 cursor-pointer whitespace-nowrap border-none font-bold uppercase hover:opacity-95"
             style={{
               background: isRunning ? STAT_DASH.startGreen : STAT_DASH.stopRed,
               color: getContrastTextColor(isRunning ? STAT_DASH.startGreen : STAT_DASH.stopRed),

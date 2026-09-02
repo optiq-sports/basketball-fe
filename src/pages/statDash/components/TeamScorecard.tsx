@@ -1,6 +1,7 @@
 import React from 'react';
 import { cl } from '../utils/cl';
-import { STAT_DASH } from '../statDashTheme';
+import { GATEWAY_DISPLAY_FONT_STACK } from '../../../authGatewayTheme';
+import { isLightColor, normalizeHex } from '../../../contexts/StatisticianTeamColorsContext';
 
 export interface TeamScorecardProps {
   teamName: string;
@@ -15,7 +16,11 @@ const TeamScorecard: React.FC<TeamScorecardProps> = ({
   accentColor,
   accentSide,
 }) => {
-  const accentPx = cl('4px', '0.45vw', '6px');
+  const accentPx = cl('5px', '0.5vw', '7px');
+  const normalizedAccent = normalizeHex(accentColor) ?? accentColor;
+  // Very light jersey colors (e.g. pale yellow) read poorly as text on a white card —
+  // fall back to a dark neutral so the score stays legible while the border still shows the real color.
+  const scoreColor = isLightColor(normalizedAccent) ? '#111827' : normalizedAccent;
   const accentBorder =
     accentSide === 'left'
       ? { borderLeft: `${accentPx} solid ${accentColor}` as const }
@@ -23,26 +28,36 @@ const TeamScorecard: React.FC<TeamScorecardProps> = ({
 
   return (
     <div
-      className="flex flex-1 flex-col items-center justify-center rounded-lg bg-white font-sans shadow-sm"
+      className="relative flex flex-1 flex-col items-center justify-center overflow-hidden bg-white font-sans"
       style={{
-        border: `1px solid ${STAT_DASH.cardBorder}`,
         ...accentBorder,
-        padding: `${cl('10px', '1.8vh', '22px')} ${cl('8px', '1vw', '16px')}`,
+        padding: `${cl('8px', '1.1vh', '14px')} ${cl('8px', '1vw', '16px')}`,
       }}
     >
       <div
-        className="font-semibold uppercase text-gray-900"
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0"
         style={{
-          fontSize: cl('13px', '1.4vw', '22px'),
+          height: '55%',
+          background: `linear-gradient(to bottom, ${accentColor}14, transparent)`,
+        }}
+      />
+      <div
+        className="relative font-semibold uppercase text-gray-500"
+        style={{
+          fontSize: cl('11px', '1.05vw', '15px'),
           letterSpacing: 2,
         }}
       >
         {teamName}
       </div>
       <div
-        className="font-bold leading-tight tabular-nums text-gray-900"
+        className="relative leading-none tabular-nums"
         style={{
-          fontSize: cl('32px', '4.2vw', '60px'),
+          fontFamily: GATEWAY_DISPLAY_FONT_STACK,
+          fontSize: cl('28px', '3.4vw', '46px'),
+          marginTop: cl('2px', '0.3vh', '4px'),
+          color: scoreColor,
         }}
         aria-live="polite"
       >

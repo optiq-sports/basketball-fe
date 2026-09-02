@@ -10,8 +10,9 @@ import {
   writeStoredExpectedVersion,
   writeStoredSessionContext,
 } from '../../features/statdash/sessionContextStorage';
-
-const TOKEN_KEY = 'access_token';
+import { performLogout } from '../../auth/authSession';
+import GrainOverlay from '../../components/decor/GrainOverlay';
+import { GATEWAY_DISPLAY_FONT_STACK as DISPLAY_FONT_STACK, GATEWAY_FONT_STACK as FONT_STACK } from '../../authGatewayTheme';
 
 const RECENT_LIMIT = 8;
 
@@ -56,8 +57,7 @@ const MatchKey: React.FC = () => {
   const [isResolving, setIsResolving] = useState(false);
 
   const handleLogout = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem('user_name');
+    performLogout();
     queryClient.removeQueries({ queryKey: queryKeys.auth.profile });
     navigate('/login');
   }, [navigate, queryClient]);
@@ -129,39 +129,59 @@ const MatchKey: React.FC = () => {
 
   return (
     <StatisticianLayout>
-      <div className="flex-1 flex flex-col items-center justify-center px-[5vw] sm:px-6 pb-10 sm:pb-12 pt-2 sm:pt-4">
-        <div className="w-full max-w-md lg:max-w-lg mx-auto flex flex-col items-center">
-          <div className="self-start mb-4">
+      <div
+        className="relative flex flex-1 flex-col items-center overflow-x-hidden overflow-y-auto bg-[#0a0e15] px-[5vw] pb-10 pt-6 sm:px-6 sm:pb-14 sm:pt-8"
+        style={{ fontFamily: FONT_STACK }}
+      >
+        <img
+          src="/match-key-hero.jpg"
+          alt=""
+          aria-hidden
+          className="absolute inset-0 h-full w-full object-cover object-[68%_30%] opacity-70"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0a0e15]/40 via-[#0a0e15]/85 to-[#0a0e15]" />
+        <GrainOverlay />
+
+        <div className="relative z-10 mx-auto flex w-full max-w-md flex-col items-center lg:max-w-lg">
+          <div className="mb-6 flex w-full items-center justify-between">
             <button
               type="button"
               onClick={handleLogout}
-              className="rounded text-sm text-gray-500 underline-offset-2 transition-colors hover:text-gray-800 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+              className="rounded text-sm text-white/40 underline-offset-4 transition-colors hover:text-white/80 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/40"
             >
               ← Log out
             </button>
+            <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-white/25">
+              Statistician
+            </span>
           </div>
+
           {/* Logo */}
-          <div className="mb-6 sm:mb-8 rounded-xl overflow-hidden shadow-sm ring-1 ring-black/5 bg-[#3B5998]">
+          <div className="mb-7 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/[0.06] ring-1 ring-white/10 backdrop-blur-sm sm:mb-8 sm:h-[4.5rem] sm:w-[4.5rem]">
             <img
               src="/logo.png"
-              alt="App logo"
-              className="w-[4.5rem] h-[4.5rem] sm:w-20 sm:h-20 object-contain p-2 brightness-0 invert"
+              alt="Optiq Sports logo"
+              className="h-8 w-8 object-contain brightness-0 invert sm:h-9 sm:w-9"
             />
           </div>
 
-          <div className="text-center mb-8 sm:mb-10 w-full">
+          <div className="mb-8 w-full text-center sm:mb-10">
             <h1
-              className="text-gray-800 font-semibold tracking-tight mb-2"
-              style={{ fontSize: 'clamp(1.25rem, 4vw, 1.75rem)' }}
+              className="text-white"
+              style={{
+                fontFamily: DISPLAY_FONT_STACK,
+                fontSize: 'clamp(2.25rem, 6vw, 2.75rem)',
+                lineHeight: 1,
+              }}
             >
-              Welcome back <span className="font-bold text-gray-900">Statistician</span>
+              Enter match key
             </h1>
-            <p className="text-gray-500 text-sm sm:text-[0.9375rem] leading-relaxed px-1">
-              Enter <span className="font-semibold text-gray-700">Match Key</span> to proceed to continue
+            <p className="mx-auto mt-3 max-w-xs px-1 text-sm leading-relaxed text-white/50 sm:text-[0.9375rem]">
+              Get the key from your tournament admin to start scoring.
             </p>
           </div>
 
-          <form onSubmit={handleContinue} className="w-full space-y-3 sm:space-y-3.5 mb-10 sm:mb-12">
+          <form onSubmit={handleContinue} className="mb-10 w-full space-y-3 sm:mb-12 sm:space-y-3.5">
             <label htmlFor="match-key" className="sr-only">
               Match Key
             </label>
@@ -169,38 +189,42 @@ const MatchKey: React.FC = () => {
               id="match-key"
               type="text"
               autoComplete="off"
-              placeholder="Match Key"
+              placeholder="MATCH KEY"
               value={matchKey}
               onChange={(e) => {
                 setMatchKey(e.target.value);
                 if (keyError) setKeyError(null);
               }}
-              className="w-full px-4 sm:px-5 py-3 sm:py-3.5 bg-white border border-gray-200 rounded-lg sm:rounded-xl text-gray-900 placeholder:text-gray-400 text-base focus:outline-none focus:ring-2 focus:ring-[#3B5998]/40 focus:border-[#3B5998] transition-shadow"
+              aria-invalid={!!keyError}
+              className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-center text-lg font-medium tracking-[0.2em] text-white placeholder-white/25 outline-none transition-colors focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20 sm:px-5"
             />
-            {keyError && <p className="text-sm text-red-600 px-0.5">{keyError}</p>}
+            {keyError && <p className="px-0.5 text-center text-sm text-red-300">{keyError}</p>}
             <button
               type="submit"
               disabled={isResolving}
-              className="w-full py-3 sm:py-3.5 bg-[#3B5998] text-white font-medium rounded-lg sm:rounded-xl text-base transition-opacity hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#3B5998]"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#22d3ee] to-[#2563eb] py-3.5 text-base font-semibold text-white shadow-[0_8px_24px_-8px_rgba(37,99,235,0.55)] transition-all hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
             >
+              {isResolving && (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+              )}
               {isResolving ? 'Resolving…' : 'Continue'}
             </button>
           </form>
 
           {/* Recent Games */}
-          <section className="w-full max-w-full rounded-xl border border-gray-200 bg-white shadow-sm overflow-hidden flex flex-col min-h-0">
-            <h2 className="text-xs sm:text-sm font-bold text-gray-700 px-4 pt-3 pb-2 sm:px-5 sm:pt-4">
-              Recent Games
+          <section className="flex w-full max-w-full min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-sm">
+            <h2 className="px-4 pb-2 pt-3.5 text-xs font-semibold uppercase tracking-[0.14em] text-white/40 sm:px-5 sm:pt-4">
+              Recent games
             </h2>
-            <div className="max-h-[min(40vh,280px)] overflow-y-auto overscroll-contain px-3 sm:px-4 pb-3 sm:pb-4">
+            <div className="max-h-[min(40vh,280px)] overflow-y-auto overscroll-contain px-3 pb-3 sm:px-4 sm:pb-4">
               {listLoading && (
-                <p className="text-sm text-gray-500 py-6 text-center">Loading games…</p>
+                <p className="py-6 text-center text-sm text-white/40">Loading games…</p>
               )}
               {!listLoading && listError && (
-                <p className="text-sm text-red-600 py-4 text-center px-2">{listError}</p>
+                <p className="px-2 py-4 text-center text-sm text-red-300">{listError}</p>
               )}
               {!listLoading && !listError && recentGames.length === 0 && (
-                <p className="text-sm text-gray-500 py-6 text-center">No completed games yet</p>
+                <p className="py-6 text-center text-sm text-white/40">No completed games yet</p>
               )}
               {!listLoading &&
                 !listError &&
@@ -209,38 +233,38 @@ const MatchKey: React.FC = () => {
                   const awayName = teamLabel(teamMap, m.awayTeamId, 'Away');
                   const homeScore = m.totalHome ?? 0;
                   const awayScore = m.totalAway ?? 0;
-                  const homeSwatch = teamColor(teamMap, m.homeTeamId, '#ea580c');
-                  const awaySwatch = teamColor(teamMap, m.awayTeamId, '#2563eb');
+                  const homeSwatch = teamColor(teamMap, m.homeTeamId, '#f97316');
+                  const awaySwatch = teamColor(teamMap, m.awayTeamId, '#38bdf8');
                   const venue = m.venue?.trim() || 'Match Venue';
                   return (
                     <div
                       key={m.id}
-                      className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4 py-3 border-b border-gray-100 last:border-0"
+                      className="flex flex-col gap-2 border-b border-white/[0.06] py-3 last:border-0 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
                     >
                       <div className="min-w-0 flex-1 space-y-1.5">
-                        <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex min-w-0 items-center gap-2">
                           <span
-                            className="shrink-0 w-2.5 h-2.5 rounded-sm"
+                            className="h-2.5 w-2.5 shrink-0 rounded-sm"
                             style={{ backgroundColor: homeSwatch }}
                             aria-hidden
                           />
-                          <span className="text-sm text-gray-800 font-medium truncate">
+                          <span className="truncate text-sm font-medium text-white/85">
                             {homeName} – {homeScore}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex min-w-0 items-center gap-2">
                           <span
-                            className="shrink-0 w-2.5 h-2.5 rounded-sm"
+                            className="h-2.5 w-2.5 shrink-0 rounded-sm"
                             style={{ backgroundColor: awaySwatch }}
                             aria-hidden
                           />
-                          <span className="text-sm text-gray-800 font-medium truncate">
+                          <span className="truncate text-sm font-medium text-white/85">
                             {awayName} – {awayScore}
                           </span>
                         </div>
                       </div>
-                      <div className="shrink-0 text-left sm:text-right text-xs sm:text-sm text-gray-500 sm:max-w-[11rem]">
-                        <p className="font-medium text-gray-600">{venue}</p>
+                      <div className="shrink-0 text-left text-xs text-white/40 sm:max-w-[11rem] sm:text-right sm:text-sm">
+                        <p className="font-medium text-white/55">{venue}</p>
                         <p className="mt-0.5">{formatGameWhen(m.scheduledDate)}</p>
                       </div>
                     </div>

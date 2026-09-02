@@ -22,6 +22,11 @@ export interface UseEventQueueReturn {
   failedCount: number;
   isOnline: boolean;
   retryFailed: () => void;
+  /** Removes one event from the queue by localId, without contacting the backend.
+   * Only safe for an event the backend never applied — e.g. status 'failed' (a
+   * rejected command that will never get a backendEventId and so can never be
+   * corrected or reversed server-side). Never use this on 'pending'/'inflight'/'sent'. */
+  discardEvent: (localId: string) => void;
 }
 
 export function useEventQueue(options: UseEventQueueOptions = {}): UseEventQueueReturn {
@@ -114,6 +119,13 @@ export function useEventQueue(options: UseEventQueueOptions = {}): UseEventQueue
     applyQueueUpdate(() => []);
   }, [applyQueueUpdate]);
 
+  const discardEvent = useCallback(
+    (localId: string) => {
+      applyQueueUpdate((prev) => prev.filter((event) => event.localId !== localId));
+    },
+    [applyQueueUpdate],
+  );
+
   useEffect(() => {
     const onOnline = () => setIsOnline(true);
     const onOffline = () => setIsOnline(false);
@@ -145,5 +157,14 @@ export function useEventQueue(options: UseEventQueueOptions = {}): UseEventQueue
     [queue],
   );
 
-  return { enqueue, clearQueue, queue, pendingCount, failedCount, isOnline, retryFailed };
+  return {
+    enqueue,
+    clearQueue,
+    queue,
+    pendingCount,
+    failedCount,
+    isOnline,
+    retryFailed,
+    discardEvent,
+  };
 }

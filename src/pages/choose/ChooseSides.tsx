@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiArrowLeft, FiArrowRight } from 'react-icons/fi';
+import { FiArrowLeft, FiArrowRight, FiRepeat } from 'react-icons/fi';
 import StatisticianLayout from '../../components/StatisticianLayout';
 import { useStatisticianTeamColors } from '../../contexts/StatisticianTeamColorsContext';
 import { writeGameSetupOrientation } from '../gameSetupOrientation';
 import { readStoredSessionContext } from '../../features/statdash/sessionContextStorage';
-
-const FOOTER_BG = '#F3F4F6';
+import { GATEWAY_DISPLAY_FONT_STACK, GATEWAY_FONT_STACK } from '../../authGatewayTheme';
 
 const CW = 620;
 const CH = 340;
@@ -31,7 +30,7 @@ const HEAD_HALF = 68;
 const BODY_START = CX;
 const HEAD_BASE_L = KEY_W;
 const HEAD_BASE_R = CW - KEY_W;
-const ARROW_OPACITY = 0.55;
+const ARROW_OPACITY = 0.6;
 
 interface ArrowProps {
   direction: 'left' | 'right';
@@ -64,13 +63,18 @@ const Arrow: React.FC<ArrowProps> = ({ direction, color }) => {
 };
 
 const BasketballCourt: React.FC = () => {
-  const stroke = '#1a1a2e';
+  const stroke = '#2A2440';
   const sw = 1.8;
-  const fill = '#ffffff';
 
   return (
     <g>
-      <rect x={0} y={0} width={CW} height={CH} fill={fill} stroke={stroke} strokeWidth={sw} />
+      <defs>
+        <linearGradient id="courtWood" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#FCF5E9" />
+          <stop offset="100%" stopColor="#F2E1C4" />
+        </linearGradient>
+      </defs>
+      <rect x={0} y={0} width={CW} height={CH} fill="url(#courtWood)" stroke={stroke} strokeWidth={sw} />
       <line x1={CX} y1={0} x2={CX} y2={CH} stroke={stroke} strokeWidth={sw} />
       <circle cx={CX} cy={CY} r={50} fill="none" stroke={stroke} strokeWidth={sw} />
 
@@ -141,6 +145,17 @@ const BasketballCourt: React.FC = () => {
   );
 };
 
+function TeamTag({ label, color }: { label: string; color: string }) {
+  return (
+    <span
+      className="shrink-0 rounded-lg px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-white shadow-sm"
+      style={{ backgroundColor: color }}
+    >
+      {label}
+    </span>
+  );
+}
+
 const ChooseSides: React.FC = () => {
   const navigate = useNavigate();
   const { homeTeamColor, awayTeamColor } = useStatisticianTeamColors();
@@ -182,56 +197,81 @@ const ChooseSides: React.FC = () => {
 
   return (
     <StatisticianLayout>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white font-sans">
-        <div className="flex shrink-0 items-center justify-between px-6 py-3">
+      <div
+        className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-[#F7F8FA]"
+        style={{ fontFamily: GATEWAY_FONT_STACK }}
+      >
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-cover bg-center bg-no-repeat"
+          style={{
+            backgroundImage: "url('/starters-bg.jpg')",
+            opacity: 0.28,
+            filter: 'blur(24px)',
+            transform: 'scale(1.08)',
+          }}
+        />
+
+        <header className="relative z-10 flex shrink-0 items-center justify-between border-b border-white/60 bg-white/70 px-6 py-3 shadow-[0_1px_0_rgba(15,23,42,0.04)] backdrop-blur-md sm:px-8">
           <button
             type="button"
             onClick={() => navigate('/starters')}
-            className="flex items-center gap-1.5 text-sm font-medium text-gray-700 transition-colors hover:text-gray-900"
+            className="flex items-center gap-1.5 rounded text-sm font-medium text-gray-500 transition-colors hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
           >
-            <FiArrowLeft size={16} />
-            <span>Back</span>
+            <FiArrowLeft size={15} />
+            Back
           </button>
           <button
             type="button"
             disabled={isSaving}
             onClick={handleContinue}
-            className="flex items-center gap-1.5 text-sm font-medium text-gray-700 transition-colors hover:text-gray-900"
+            className="flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-sky-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
           >
-            <span>{isSaving ? 'Saving…' : 'Continue'}</span>
+            {isSaving ? 'Saving…' : 'Continue'}
             <FiArrowRight size={16} />
           </button>
-        </div>
+        </header>
 
-        <div className="flex min-h-0 flex-1 flex-col bg-white">
-          <h1 className="shrink-0 pb-4 pt-6 text-center text-xl font-bold text-gray-900">
-            Choose Shooting Sides
-          </h1>
+        <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-6 py-8 sm:px-8">
+          <div className="mb-6 text-center sm:mb-8">
+            <h1
+              className="text-[2.1rem] leading-none text-gray-900 sm:text-[2.4rem]"
+              style={{ fontFamily: GATEWAY_DISPLAY_FONT_STACK }}
+            >
+              Choose shooting sides
+            </h1>
+            <p className="mt-2 text-sm text-gray-600">
+              Set which side each team starts on, and which basket they&rsquo;re attacking.
+            </p>
+          </div>
 
-          <div className="flex min-h-0 flex-1 items-center justify-center gap-8 overflow-hidden px-6">
-            <div className="flex shrink-0 flex-col gap-4">
+          <div className="flex w-full max-w-4xl flex-col items-center gap-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-[0_20px_45px_-24px_rgba(15,23,42,0.3)] sm:flex-row sm:items-center sm:gap-6 sm:p-8">
+            <div className="flex shrink-0 gap-2 sm:flex-col">
               {([1, 2] as const).map((t) => (
-                <label
+                <button
                   key={t}
-                  className="flex cursor-pointer select-none items-center gap-3 text-sm text-black"
+                  type="button"
+                  onClick={() => setCourtType(t)}
+                  className={`flex items-center gap-2 rounded-lg border-[1.5px] px-3.5 py-2.5 text-sm font-semibold transition-colors ${
+                    courtType === t
+                      ? 'border-sky-500 bg-sky-50 text-sky-700'
+                      : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                  }`}
                 >
-                  <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-gray-300 bg-white">
-                    {courtType === t && <span className="block h-2.5 w-2.5 rounded-full bg-gray-800" />}
+                  <span
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
+                      courtType === t ? 'border-sky-500' : 'border-gray-300'
+                    }`}
+                  >
+                    {courtType === t && <span className="h-2 w-2 rounded-full bg-sky-500" />}
                   </span>
-                  <span>Type {t}</span>
-                  <input
-                    type="radio"
-                    name="courtType"
-                    checked={courtType === t}
-                    onChange={() => setCourtType(t)}
-                    className="sr-only"
-                  />
-                </label>
+                  Type {t}
+                </button>
               ))}
             </div>
 
-            <div className="flex min-w-0 max-w-4xl flex-1 flex-col items-center gap-3">
-              <div className="w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+            <div className="flex min-w-0 flex-1 flex-col items-center gap-4">
+              <div className="w-full max-w-2xl shadow-inner">
                 <svg
                   viewBox={`0 0 ${CW} ${CH}`}
                   width="100%"
@@ -241,8 +281,13 @@ const ChooseSides: React.FC = () => {
                   <BasketballCourt />
                   <Arrow direction={leftDir} color={leftColor} />
                   <Arrow direction={rightDir} color={rightColor} />
-                  <g onClick={() => setSwapped((s) => !s)} style={{ cursor: 'pointer' }}>
-                    <circle cx={CX} cy={CY} r={26} fill="#000" />
+                  <g
+                    onClick={() => setSwapped((s) => !s)}
+                    style={{ cursor: 'pointer' }}
+                    aria-label="Swap sides"
+                  >
+                    <circle cx={CX} cy={CY} r={27} fill="#111827" />
+                    <circle cx={CX} cy={CY} r={27} fill="none" stroke="#ffffff" strokeOpacity={0.15} strokeWidth={1.5} />
                     <g transform={`translate(${CX}, ${CY})`}>
                       <path
                         d="M -6 -4 L -10 0 L -6 4"
@@ -265,27 +310,17 @@ const ChooseSides: React.FC = () => {
                 </svg>
               </div>
 
-              <div className="flex w-full justify-between gap-4 px-0">
-                <span
-                  className="shrink-0 rounded-lg px-5 py-2 text-sm font-bold text-white"
-                  style={{ backgroundColor: leftColor }}
-                >
-                  {leftLabel}
-                </span>
-                <span
-                  className="shrink-0 rounded-lg px-5 py-2 text-sm font-bold text-white"
-                  style={{ backgroundColor: rightColor }}
-                >
-                  {rightLabel}
-                </span>
+              <div className="flex w-full max-w-2xl justify-between gap-4 px-0">
+                <TeamTag label={leftLabel} color={leftColor} />
+                <TeamTag label={rightLabel} color={rightColor} />
               </div>
+
+              <p className="flex items-center gap-1.5 text-xs text-gray-400">
+                <FiRepeat size={12} />
+                Tap the center of the court to swap sides
+              </p>
             </div>
           </div>
-        </div>
-
-        <div className="flex shrink-0 items-center justify-between px-6 py-4" style={{ backgroundColor: FOOTER_BG }}>
-          <div />
-          <div />
         </div>
       </div>
     </StatisticianLayout>

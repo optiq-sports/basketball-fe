@@ -1,10 +1,10 @@
 import React from 'react';
 import { FiArrowLeft, FiX } from 'react-icons/fi';
 import type { TeamSide } from '../types';
-import { jerseyAccentSurfaceStyle } from '../../../contexts/StatisticianTeamColorsContext';
+import { getContrastTextColor, normalizeHex } from '../../../contexts/StatisticianTeamColorsContext';
+import { GATEWAY_DISPLAY_FONT_STACK } from '../../../authGatewayTheme';
 import type { ActiveShotFlow, ReboundOutcomeId, ShotTypeId } from '../shotRecordingUtils';
 import { SHOT_TYPE_OPTIONS } from '../shotRecordingUtils';
-import { STAT_DASH } from '../statDashTheme';
 
 export interface ShotRecordingCourtPanelProps {
   flow: ActiveShotFlow;
@@ -35,34 +35,27 @@ function PanelFooter({
   onCancel: () => void;
 }) {
   return (
-    <div className="flex shrink-0 items-stretch border-t border-gray-200 bg-sky-100/80 px-2 py-2.5 sm:px-3">
-      <div className="flex flex-1 justify-start">
-        {showBack ? (
-          <button
-            type="button"
-            onClick={onBack}
-            className="flex flex-col items-center gap-0.5 rounded px-2 py-0.5 text-gray-900 hover:bg-sky-200/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-          >
-            <FiArrowLeft size={16} strokeWidth={2.2} aria-hidden />
-            <span className="text-[11px] font-medium">Back</span>
-          </button>
-        ) : (
-          <span className="w-11" aria-hidden />
-        )}
-      </div>
-      <div className="flex flex-1 justify-center">
+    <div className="flex h-14 shrink-0 items-center justify-between border-t border-gray-200 bg-gray-50 px-4 sm:px-6">
+      {showBack ? (
         <button
           type="button"
-          onClick={onCancel}
-          className="flex flex-col items-center gap-0.5 rounded px-2 py-0.5 text-gray-900 hover:bg-sky-200/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+          onClick={onBack}
+          className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 transition-colors hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
         >
-          <FiX size={16} strokeWidth={2.2} aria-hidden />
-          <span className="text-[11px] font-medium">Cancel</span>
+          <FiArrowLeft size={16} strokeWidth={2.2} aria-hidden />
+          Back
         </button>
-      </div>
-      <div className="flex flex-1 justify-end">
-        <span className="w-11" aria-hidden />
-      </div>
+      ) : (
+        <span aria-hidden />
+      )}
+      <button
+        type="button"
+        onClick={onCancel}
+        className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 transition-colors hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
+      >
+        <FiX size={16} strokeWidth={2.2} aria-hidden />
+        Cancel
+      </button>
     </div>
   );
 }
@@ -76,12 +69,14 @@ function JerseyButton({
   accentColor: string;
   onClick: () => void;
 }) {
+  const normalized = normalizeHex(accentColor) ?? accentColor;
+  const text = getContrastTextColor(normalized);
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex aspect-square w-9 shrink-0 cursor-pointer select-none items-center justify-center rounded-md border-none text-xs font-bold hover:brightness-[1.03] focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:w-10 sm:text-sm"
-      style={jerseyAccentSurfaceStyle(accentColor)}
+      className="flex aspect-square w-9 shrink-0 cursor-pointer select-none items-center justify-center border-none font-bold leading-none shadow-sm transition-all hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:w-10"
+      style={{ background: normalized, color: text, fontFamily: GATEWAY_DISPLAY_FONT_STACK, fontSize: 15 }}
     >
       {jersey}
     </button>
@@ -134,20 +129,19 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
     canBackFromPostBlockDefRebound;
 
   const titleClass =
-    'mb-2 text-center text-[11px] font-bold uppercase leading-tight tracking-wide sm:mb-3 sm:text-xs';
-  const titleStyle = { color: STAT_DASH.accentBlue };
+    'mb-2 border-b border-gray-200 pb-2 text-center text-xs font-bold uppercase leading-tight tracking-wide text-gray-900 sm:mb-3 sm:pb-3 sm:text-sm';
 
   return (
     <div
-      className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border-[3px] border-gray-500 bg-white shadow-sm"
+      className="flex h-full min-h-0 w-full flex-col overflow-hidden border-2 border-gray-800 bg-white shadow-[0_30px_60px_-20px_rgba(15,23,42,0.5)]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="shot-flow-title"
     >
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-1 pt-2 sm:px-3 sm:pb-2 sm:pt-3">
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto overflow-x-hidden px-2 pb-1 pt-2 sm:px-3 sm:pb-2 sm:pt-3">
         {step === 'pickShooter' && (
           <>
-            <h2 id="shot-flow-title" className={titleClass} style={titleStyle}>
+            <h2 id="shot-flow-title" className={titleClass}>
               {draft.result === 'made' ? 'Select shooter (made)' : 'Select shooter (miss)'}
             </h2>
             <div className="mx-auto mb-2 max-w-[360px] space-y-1.5 text-center text-[11px] leading-snug text-gray-600 sm:text-xs">
@@ -180,7 +174,7 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
 
         {step === 'pickRebounder' && (
           <>
-            <h2 id="shot-flow-title" className={titleClass} style={titleStyle}>
+            <h2 id="shot-flow-title" className={titleClass}>
               Select rebounder
             </h2>
             {draft.blockerSide !== null ? (
@@ -191,60 +185,60 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
                   Tap a jersey to record a defensive rebound, or select what happened:
                 </p>
 
-                <div className="rounded-lg bg-gray-200 px-3 py-2.5">
+                <div className="border border-gray-300 bg-gray-50 px-3 py-2.5">
                   <div className="text-center text-[11px] font-bold uppercase text-gray-700">Offensive rebound (miss)</div>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => onSelectReboundOutcome('tipin_layup_miss')}
-                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                      className="border border-gray-300 bg-white px-2 py-2 text-center text-[12px] font-semibold text-gray-800 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
                     >
                       Layup Miss
                     </button>
                     <button
                       type="button"
                       onClick={() => onSelectReboundOutcome('tipin_dunk_miss')}
-                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                      className="border border-gray-300 bg-white px-2 py-2 text-center text-[12px] font-semibold text-gray-800 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
                     >
                       Dunk Miss
                     </button>
                   </div>
                 </div>
 
-                <div className="rounded-lg bg-gray-200 px-3 py-2.5">
+                <div className="border border-gray-300 bg-gray-50 px-3 py-2.5">
                   <div className="text-center text-[11px] font-bold uppercase text-gray-700">Offensive rebound (made)</div>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => onSelectReboundOutcome('tipin_layup_made')}
-                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                      className="border border-gray-300 bg-white px-2 py-2 text-center text-[12px] font-semibold text-gray-800 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
                     >
                       Layup Made
                     </button>
                     <button
                       type="button"
                       onClick={() => onSelectReboundOutcome('tipin_dunk_made')}
-                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                      className="border border-gray-300 bg-white px-2 py-2 text-center text-[12px] font-semibold text-gray-800 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
                     >
                       Dunk Made
                     </button>
                   </div>
                 </div>
 
-                <div className="rounded-lg bg-gray-200 px-3 py-2.5">
+                <div className="border border-gray-300 bg-gray-50 px-3 py-2.5">
                   <div className="text-center text-[11px] font-bold uppercase text-gray-700">Dead ball</div>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => onSelectReboundOutcome('dead_out_of_bounds')}
-                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                      className="border border-gray-300 bg-white px-2 py-2 text-center text-[12px] font-semibold text-gray-800 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
                     >
                       Out of bounds
                     </button>
                     <button
                       type="button"
                       onClick={() => onSelectReboundOutcome('dead_shot_clock_violation')}
-                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                      className="border border-gray-300 bg-white px-2 py-2 text-center text-[12px] font-semibold text-gray-800 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
                     >
                       24 sec violation
                     </button>
@@ -253,40 +247,40 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
               </div>
             ) : (
               <div className="mx-auto grid max-w-[360px] grid-cols-1 gap-2">
-                <div className="rounded-lg bg-gray-200 px-3 py-2.5">
+                <div className="border border-gray-300 bg-gray-50 px-3 py-2.5">
                   <div className="text-center text-[11px] font-bold uppercase text-gray-700">Offensive rebound (miss)</div>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => onSelectReboundOutcome('tipin_layup_miss')}
-                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                      className="border border-gray-300 bg-white px-2 py-2 text-center text-[12px] font-semibold text-gray-800 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
                     >
                       Layup Miss
                     </button>
                     <button
                       type="button"
                       onClick={() => onSelectReboundOutcome('tipin_dunk_miss')}
-                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                      className="border border-gray-300 bg-white px-2 py-2 text-center text-[12px] font-semibold text-gray-800 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
                     >
                       Dunk Miss
                     </button>
                   </div>
                 </div>
 
-                <div className="rounded-lg bg-gray-200 px-3 py-2.5">
+                <div className="border border-gray-300 bg-gray-50 px-3 py-2.5">
                   <div className="text-center text-[11px] font-bold uppercase text-gray-700">Offensive rebound (made)</div>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => onSelectReboundOutcome('tipin_layup_made')}
-                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                      className="border border-gray-300 bg-white px-2 py-2 text-center text-[12px] font-semibold text-gray-800 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
                     >
                       Layup Made
                     </button>
                     <button
                       type="button"
                       onClick={() => onSelectReboundOutcome('tipin_dunk_made')}
-                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                      className="border border-gray-300 bg-white px-2 py-2 text-center text-[12px] font-semibold text-gray-800 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
                     >
                       Dunk Made
                     </button>
@@ -296,25 +290,25 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
                 <button
                   type="button"
                   onClick={() => onSelectReboundOutcome('block_involved')}
-                  className="rounded-lg bg-gray-200 px-3 py-3 text-center text-[12px] font-medium text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:text-[13px]"
+                  className="border border-gray-300 bg-gray-50 px-3 py-3 text-center text-[12px] font-medium text-gray-800 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:text-[13px]"
                 >
                   Defensive action (block involved)
                 </button>
 
-                <div className="rounded-lg bg-gray-200 px-3 py-2.5">
+                <div className="border border-gray-300 bg-gray-50 px-3 py-2.5">
                   <div className="text-center text-[11px] font-bold uppercase text-gray-700">Dead ball</div>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => onSelectReboundOutcome('dead_out_of_bounds')}
-                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                      className="border border-gray-300 bg-white px-2 py-2 text-center text-[12px] font-semibold text-gray-800 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
                     >
                       Out of bounds
                     </button>
                     <button
                       type="button"
                       onClick={() => onSelectReboundOutcome('dead_shot_clock_violation')}
-                      className="rounded-lg bg-gray-100 px-2 py-2 text-center text-[12px] font-semibold text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
+                      className="border border-gray-300 bg-white px-2 py-2 text-center text-[12px] font-semibold text-gray-800 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500"
                     >
                       24 sec violation
                     </button>
@@ -327,7 +321,7 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
 
         {step === 'pickBlocker' && (
           <>
-            <h2 id="shot-flow-title" className={titleClass} style={titleStyle}>
+            <h2 id="shot-flow-title" className={titleClass}>
               Select player (block)
             </h2>
             <p className="mx-auto max-w-[360px] text-center text-[11px] leading-snug text-gray-600 sm:text-xs">
@@ -338,7 +332,7 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
 
         {step === 'shotType' && (
           <>
-            <h2 id="shot-flow-title" className={titleClass} style={titleStyle}>
+            <h2 id="shot-flow-title" className={titleClass}>
               Shot type
             </h2>
             <div className="mx-auto grid max-w-[320px] grid-cols-2 gap-2.5 sm:gap-3">
@@ -347,13 +341,13 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
                   key={id}
                   type="button"
                   onClick={() => onSelectShotType(id)}
-                  className="rounded-lg bg-gray-200 px-3 py-3 text-center text-[12px] font-medium text-black hover:bg-gray-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:py-3 sm:text-[13px]"
+                  className="border border-gray-300 bg-gray-50 px-3 py-3 text-center text-[12px] font-medium text-gray-800 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:py-3 sm:text-[13px]"
                 >
                   {label}
                 </button>
               ))}
             </div>
-            <div className="mx-auto mt-4 flex max-w-[320px] items-center justify-between gap-3 rounded-lg bg-gray-200 px-4 py-3 sm:mt-5">
+            <div className="mx-auto mt-4 flex max-w-[320px] items-center justify-between gap-3 border border-gray-300 bg-gray-50 px-4 py-3 sm:mt-5">
               <span className="text-[12px] font-medium text-black sm:text-[13px]">Fast break</span>
               {draft.fastBreak ? (
                 <button
@@ -384,14 +378,14 @@ const ShotRecordingCourtPanel: React.FC<ShotRecordingCourtPanelProps> = ({
 
         {step === 'assist' && draft.side !== null && draft.shooterJersey !== null && (
           <>
-            <h2 id="shot-flow-title" className={titleClass} style={titleStyle}>
+            <h2 id="shot-flow-title" className={titleClass}>
               Select player for assist
             </h2>
             <div className="mx-auto flex max-w-[240px] flex-col items-stretch gap-2 sm:gap-3">
               <button
                 type="button"
                 onClick={() => onSelectAssist('none')}
-                className="rounded-lg bg-slate-200 px-3 py-2 text-center text-[11px] font-medium text-black hover:bg-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:text-xs"
+                className="border border-gray-300 bg-gray-50 px-3 py-2 text-center text-[11px] font-medium text-gray-800 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 sm:text-xs"
               >
                 No Assist
               </button>

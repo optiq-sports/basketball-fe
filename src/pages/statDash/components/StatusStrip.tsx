@@ -1,11 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BsBatteryCharging } from 'react-icons/bs';
 import { IoWifi } from 'react-icons/io5';
-import { cl } from '../utils/cl';
 import { STAT_DASH } from '../statDashTheme';
 
 /**
- * Vertical status column: sits to the left of Team 1 scorecard (reference screenshot).
+ * Compact inline battery + wifi indicator for the dark toolbar (MenuBar).
  */
 const StatusStrip: React.FC = () => {
   const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
@@ -42,18 +41,6 @@ const StatusStrip: React.FC = () => {
 
     return () => {
       cancelled = true;
-      if (batteryObj) {
-        // Best-effort cleanup; older browsers may not support removeEventListener on BatteryManager.
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const anyObj = batteryObj as any;
-          if (typeof anyObj.removeEventListener === 'function') {
-            // handlers are bound inside loadBattery; without stable refs we can't remove reliably.
-          }
-        } catch {
-          // ignore
-        }
-      }
     };
   }, []);
 
@@ -87,63 +74,25 @@ const StatusStrip: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const percentText = useMemo(() => {
-    if (batteryLevel === null) return '—';
-    return `${Math.round(batteryLevel * 100)}%`;
-  }, [batteryLevel]);
-
-  const batteryLabel = useMemo(() => {
-    if (batteryCharging === null) return `BATTERY ${percentText}`;
-    return batteryCharging ? `CHARGING ${percentText}` : `BATTERY ${percentText}`;
-  }, [batteryCharging, percentText]);
-
-  const wifiLabel = useMemo(() => {
-    if (wifiConnected === null) return 'CONNECTED';
-    if (!wifiConnected) return 'OFFLINE';
-    return 'CONNECTED';
-  }, [wifiConnected]);
-
-  const batteryIconColor = batteryCharging ? STAT_DASH.startGreen : '#6B7280';
-  const wifiIconColor = wifiConnected ? STAT_DASH.startGreen : '#DC2626';
-
   const batteryPercentText = useMemo(() => {
     if (batteryLevel === null) return '—';
     return `${Math.round(batteryLevel * 100)}%`;
   }, [batteryLevel]);
 
-  const batteryStateText = useMemo(() => {
-    if (batteryCharging === null) return 'BATTERY';
-    return batteryCharging ? 'CHARGING' : 'BATTERY';
-  }, [batteryCharging]);
-
-  const labelStyle: React.CSSProperties = {
-    fontWeight: 600,
-    fontSize: cl('9px', '0.8vw', '12px'),
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    color: '#000000',
-    marginRight: 2.5,
-  };
+  const batteryIconColor = batteryCharging ? STAT_DASH.startGreen : '#9CA3AF';
+  const wifiIconColor = wifiConnected ? STAT_DASH.startGreen : '#F87171';
+  const wifiLabel = wifiConnected === false ? 'Offline' : 'Online';
 
   return (
-    <div
-      className="flex shrink-0 flex-col gap-2.5 self-start pt-1 font-sans"
-      style={{
-        width: cl('80px', '7.5vw', '105px'),
-        padding: '2px 6px 0 2px',
-      }}
-    >
-      <div className="flex items-center gap-1.5">
-        <BsBatteryCharging size={16} className="shrink-0" style={{ color: batteryIconColor }} aria-hidden />
-        <div className="flex w-full items-center justify-between leading-none">
-          <span style={labelStyle}>{batteryStateText}</span>
-          <span style={labelStyle}>{batteryPercentText}</span>
-        </div>
-      </div>
-      <div className="flex items-center gap-1.5">
-        <IoWifi size={16} className="shrink-0" style={{ color: wifiIconColor }} aria-hidden />
-        <span style={labelStyle}>{wifiLabel}</span>
-      </div>
+    <div className="flex shrink-0 items-center gap-3 font-sans text-xs font-medium text-gray-400">
+      <span className="flex items-center gap-1" title={batteryCharging ? 'Charging' : 'Battery'}>
+        <BsBatteryCharging size={14} className="shrink-0" style={{ color: batteryIconColor }} aria-hidden />
+        {batteryPercentText}
+      </span>
+      <span className="flex items-center gap-1" title={wifiLabel}>
+        <IoWifi size={14} className="shrink-0" style={{ color: wifiIconColor }} aria-hidden />
+        <span className="hidden sm:inline">{wifiLabel}</span>
+      </span>
     </div>
   );
 };

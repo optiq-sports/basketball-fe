@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useEffect, useLayoutEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { AUTH_SESSION_EXPIRED_EVENT } from './auth/authSession';
+import { AUTH_SESSION_EXPIRED_EVENT, clearAuthTokens, getAccessToken } from './auth/authSession';
 import { useQueryClient } from '@tanstack/react-query';
 import Login from './pages/login/login';
 import ForgotPassword from './pages/login/ForgotPassword';
@@ -9,8 +9,6 @@ import { useProfile, queryKeys } from './api/hooks';
 import { ROLE_STATISTICIAN } from './constants/roles';
 import { StatisticianTeamColorsProvider } from './contexts/StatisticianTeamColorsContext';
 import { enterFullscreenBestEffort } from './utils/enterFullscreen';
-
-const TOKEN_KEY = 'access_token';
 
 const MatchKey = lazy(() => import('./pages/matchKey/MatchKey'));
 const Starters = lazy(() => import('./pages/starters/Starters'));
@@ -26,7 +24,7 @@ const LoadingScreen: React.FC = () => (
 
 /** Resolves auth token and forks STATISTICIAN users into isolated routes vs main app shell. */
 const AppGate: React.FC = () => {
-  const hasToken = typeof window !== 'undefined' && !!localStorage.getItem(TOKEN_KEY);
+  const hasToken = typeof window !== 'undefined' && !!getAccessToken();
   const profile = useProfile(hasToken);
   const queryClient = useQueryClient();
 
@@ -39,8 +37,11 @@ const AppGate: React.FC = () => {
   }
 
   if (profile.isError) {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem('user_name');
+    // ApiClient's request() already tried a silent refresh-and-retry before this error
+    // surfaced (see refreshAccessToken in src/auth/authSession.ts) — reaching here means
+    // that failed too, or there was no refresh token to try. Clear everything, not just
+    // the access token, so a stale refresh token doesn't linger.
+    clearAuthTokens();
     queryClient.removeQueries({ queryKey: queryKeys.auth.profile });
     return <Navigate to="/login" replace />;
   }

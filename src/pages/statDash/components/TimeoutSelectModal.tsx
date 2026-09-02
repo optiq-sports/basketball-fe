@@ -1,7 +1,7 @@
 import React from 'react';
 import { FiX } from 'react-icons/fi';
-import { jerseyAccentSurfaceStyle } from '../../../contexts/StatisticianTeamColorsContext';
-import { STAT_DASH } from '../statDashTheme';
+import { getContrastTextColor, normalizeHex } from '../../../contexts/StatisticianTeamColorsContext';
+import { GATEWAY_DISPLAY_FONT_STACK } from '../../../authGatewayTheme';
 
 export type TimeoutChoice = 'home' | 'away' | 'officials';
 
@@ -13,6 +13,21 @@ export interface TimeoutSelectModalProps {
   awayColor: string;
   onSelect: (choice: TimeoutChoice) => void;
   onCancel: () => void;
+}
+
+function TeamButton({ label, color, onClick }: { label: string; color: string; onClick: () => void }) {
+  const normalized = normalizeHex(color) ?? color;
+  const text = getContrastTextColor(normalized);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex h-14 w-32 items-center justify-center border-none text-sm font-bold uppercase tracking-wide shadow-sm transition-all hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+      style={{ background: normalized, color: text }}
+    >
+      {label}
+    </button>
+  );
 }
 
 /**
@@ -29,67 +44,49 @@ const TimeoutSelectModal: React.FC<TimeoutSelectModalProps> = ({
 }) => {
   if (!open) return null;
 
-  const titleStyle = { color: STAT_DASH.accentBlue };
-
   return (
-    <div
-      className="flex h-full min-h-0 w-full flex-col overflow-hidden rounded-lg border-[3px] border-gray-500 bg-white shadow-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="timeout-modal-title"
-    >
-      <div className="flex-none px-4 pt-3 sm:px-6">
-        <h2
-          id="timeout-modal-title"
-          className="text-center text-[11px] font-bold uppercase leading-tight tracking-wide sm:text-[12px]"
-          style={titleStyle}
-        >
-          TIMEOUT
-        </h2>
-        <p className="mt-[14px] text-center text-[11px] font-medium text-gray-900 sm:text-[12px]">
-          Who Took Time Out?
-        </p>
-      </div>
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+      <div
+        className="flex w-full max-w-[560px] flex-col overflow-hidden border-2 border-gray-800 bg-white shadow-[0_30px_60px_-20px_rgba(15,23,42,0.5)]"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="timeout-modal-title"
+      >
+        <div className="shrink-0 border-b border-gray-200 bg-gray-900 px-4 py-3 sm:px-6">
+          <h2
+            id="timeout-modal-title"
+            className="text-white"
+            style={{ fontFamily: GATEWAY_DISPLAY_FONT_STACK, fontSize: 20, letterSpacing: 1 }}
+          >
+            Timeout
+          </h2>
+        </div>
 
-      <div className="flex-1 flex items-center justify-center">
-        <div className="w-full max-w-[520px] px-8 flex items-center justify-between gap-4">
+        <div className="flex flex-col items-center justify-center gap-6 py-8">
+          <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Who took time out?</p>
+          <div className="flex w-full max-w-[520px] items-center justify-center gap-4 px-8">
+            <TeamButton label={homeName} color={homeColor} onClick={() => onSelect('home')} />
+            <button
+              type="button"
+              onClick={() => onSelect('officials')}
+              className="flex h-14 w-32 items-center justify-center border-2 border-gray-800 bg-white text-sm font-bold uppercase tracking-wide text-gray-900 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2"
+            >
+              Officials
+            </button>
+            <TeamButton label={awayName} color={awayColor} onClick={() => onSelect('away')} />
+          </div>
+        </div>
+
+        <div className="flex h-14 shrink-0 items-center justify-center border-t border-gray-200 bg-gray-50">
           <button
             type="button"
-            onClick={() => onSelect('home')}
-            className="h-[48px] w-[116px] rounded-[4px] text-[14px] font-bold uppercase tracking-wide focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-            style={jerseyAccentSurfaceStyle(homeColor)}
+            onClick={onCancel}
+            className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 transition-colors hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
           >
-            {homeName}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onSelect('officials')}
-            className="h-[48px] w-[116px] rounded-[4px] border-2 border-gray-900 bg-white text-[14px] font-bold uppercase tracking-wide text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2"
-          >
-            OFFICIALS
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onSelect('away')}
-            className="h-[48px] w-[116px] rounded-[4px] text-[14px] font-bold uppercase tracking-wide focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-            style={jerseyAccentSurfaceStyle(awayColor)}
-          >
-            {awayName}
+            <FiX size={16} strokeWidth={2.2} aria-hidden />
+            Cancel
           </button>
         </div>
-      </div>
-
-      <div className="flex-none border-t border-gray-200 bg-sky-100/80 h-[64px] flex items-center justify-center">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="flex flex-col items-center gap-[2px] px-0 py-[6px] text-gray-900 hover:bg-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-        >
-          <FiX size={18} strokeWidth={2.2} aria-hidden />
-          <span className="text-[12px] font-medium">Cancel</span>
-        </button>
       </div>
     </div>
   );

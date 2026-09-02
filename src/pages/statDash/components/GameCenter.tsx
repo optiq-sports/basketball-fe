@@ -80,6 +80,13 @@ export interface GameCenterProps {
   onJumpBallSelect: (choice: JumpBallChoice) => void;
   onJumpBallCancel: () => void;
   reverseSides?: boolean;
+
+  /** Roster/stats drawer trigger, shown as a button next to each team's players */
+  onToggleRoster?: (side: TeamSide) => void;
+  activeRosterSide?: TeamSide | null;
+
+  /** Rendered directly above the court, sharing its width (e.g. <GameHeader />) */
+  headerSlot?: React.ReactNode;
 }
 
 const GameCenter: React.FC<GameCenterProps> = ({
@@ -136,6 +143,9 @@ const GameCenter: React.FC<GameCenterProps> = ({
   onJumpBallSelect,
   onJumpBallCancel,
   reverseSides = false,
+  onToggleRoster,
+  activeRosterSide = null,
+  headerSlot,
 }) => {
   const shotActive = shotFlow !== 'idle';
   const foulActive = foulFlow !== 'idle';
@@ -183,26 +193,55 @@ const GameCenter: React.FC<GameCenterProps> = ({
     (tipPickShooterOffensiveSide !== null && tipPickShooterOffensiveSide !== 'away') ||
     (pickBlockerDefenseSide !== null && pickBlockerDefenseSide !== 'away');
 
-  return (
-    <div className={`${STAT_DASH_MAIN_OUTER} min-h-0 flex-1 items-start font-sans`}>
-      <div
-        className={`${STAT_DASH_MAIN_INNER} items-start ${reverseSides ? 'flex-row-reverse' : ''}`}
-        style={{ gap: cl('12px', '1.4vw', '24px') }}
-      >
-        <PlayerPanel
-          side="home"
-          accentColor={homeColor}
-          playerNumbers={homeActivePlayers}
-          rosterByJersey={homeRosterByJersey}
-          interactionsLocked={homePanelLocked}
-          onPlayerFoulClick={onPlayerFoulClick}
-          onPlayerShotContextMenu={onPlayerShotContextMenu}
-          onFoul={onFoul}
-          onTurnover={onTurnover}
-        />
+  const homePanel = (
+    <PlayerPanel
+      side="home"
+      accentColor={homeColor}
+      playerNumbers={homeActivePlayers}
+      rosterByJersey={homeRosterByJersey}
+      interactionsLocked={homePanelLocked}
+      onPlayerFoulClick={onPlayerFoulClick}
+      onPlayerShotContextMenu={onPlayerShotContextMenu}
+      onFoul={onFoul}
+      onTurnover={onTurnover}
+      onToggleRoster={onToggleRoster ? () => onToggleRoster('home') : undefined}
+      rosterOpen={activeRosterSide === 'home'}
+    />
+  );
+  const awayPanel = (
+    <PlayerPanel
+      side="away"
+      accentColor={awayColor}
+      playerNumbers={awayActivePlayers}
+      rosterByJersey={awayRosterByJersey}
+      interactionsLocked={awayPanelLocked}
+      onPlayerFoulClick={onPlayerFoulClick}
+      onPlayerShotContextMenu={onPlayerShotContextMenu}
+      onFoul={onFoul}
+      onTurnover={onTurnover}
+      onToggleRoster={onToggleRoster ? () => onToggleRoster('away') : undefined}
+      rosterOpen={activeRosterSide === 'away'}
+    />
+  );
 
-        <div className="flex min-h-0 min-w-0 flex-[1.35] justify-center px-0 sm:px-0.5">
-          <div className="relative aspect-[620/380] w-full max-w-full shrink-0">
+  return (
+    <div className={`${STAT_DASH_MAIN_OUTER} min-h-0 flex-1 font-sans`}>
+      <div
+        className={STAT_DASH_MAIN_INNER}
+        style={{
+          gridTemplateColumns: 'auto minmax(0,1fr) auto',
+          gridTemplateRows: 'auto 1fr',
+          gap: cl('10px', '1vw', '18px'),
+        }}
+      >
+        <div aria-hidden />
+        <div className="mx-auto flex w-full max-w-[800px] flex-col">{headerSlot}</div>
+        <div aria-hidden />
+
+        {reverseSides ? awayPanel : homePanel}
+
+        <div className="flex min-h-0 min-w-0 items-center justify-center px-0 sm:px-0.5">
+          <div className="relative aspect-[620/380] w-full max-w-[800px] shrink-0">
             <div
               className={`absolute inset-0 transition-opacity duration-300 ease-out ${
                 courtOverlayActive ? 'pointer-events-none opacity-0' : 'opacity-100'
@@ -215,7 +254,7 @@ const GameCenter: React.FC<GameCenterProps> = ({
                   e.preventDefault();
                   onCourtShotContextMenu(e);
                 }}
-                className="h-full w-full cursor-pointer overflow-hidden rounded-lg border-[3px] border-gray-500 bg-[#d8dce1] p-0 text-left shadow-sm hover:brightness-[1.02] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3B82F6] focus-visible:ring-offset-2"
+                className="h-full w-full cursor-pointer overflow-hidden border-[3px] border-[#0F172A]/70 bg-[#F8FAFC] p-0 text-left hover:brightness-[1.02] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3B82F6] focus-visible:ring-offset-2"
                 aria-label="Court. Left-click: missed shot. Shift+left-click: foul at spot. Right-click: made shot."
               >
                 <BasketballCourt shotMarkers={courtShotMarkers} foulMarkers={courtFoulMarkers} />
@@ -352,17 +391,7 @@ const GameCenter: React.FC<GameCenterProps> = ({
           </div>
         </div>
 
-        <PlayerPanel
-          side="away"
-          accentColor={awayColor}
-          playerNumbers={awayActivePlayers}
-          rosterByJersey={awayRosterByJersey}
-          interactionsLocked={awayPanelLocked}
-          onPlayerFoulClick={onPlayerFoulClick}
-          onPlayerShotContextMenu={onPlayerShotContextMenu}
-          onFoul={onFoul}
-          onTurnover={onTurnover}
-        />
+        {reverseSides ? homePanel : awayPanel}
       </div>
     </div>
   );
