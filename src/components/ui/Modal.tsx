@@ -33,6 +33,11 @@ const Modal: React.FC<ModalProps> = ({
   const panelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<Element | null>(null);
 
+  // Steals initial focus onto the panel and locks page scroll exactly once per
+  // open/close transition. Deliberately depends on `open` alone — callers almost
+  // always pass an inline `onClose`/`closeOnEscape`, so including those here would
+  // re-run this on every parent re-render (e.g. every keystroke in a field inside
+  // the modal), yanking focus off whatever the user just focused.
   useEffect(() => {
     if (!open) return;
     triggerRef.current = document.activeElement;
@@ -41,18 +46,21 @@ const Modal: React.FC<ModalProps> = ({
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (closeOnEscape && e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', onKeyDown);
-
     return () => {
       document.body.style.overflow = previousOverflow;
-      document.removeEventListener('keydown', onKeyDown);
       if (triggerRef.current instanceof HTMLElement) {
         triggerRef.current.focus();
       }
     };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (closeOnEscape && e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
   }, [open, closeOnEscape, onClose]);
 
   if (!open) return null;

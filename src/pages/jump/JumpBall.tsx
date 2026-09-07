@@ -11,10 +11,8 @@ import {
 } from '../../contexts/StatisticianTeamColorsContext';
 import { readGameSetupOrientation } from '../gameSetupOrientation';
 import { writeJumpBallWinnerTeamId } from '../jumpBallWinner';
-import { readStoredSessionContext } from '../../features/statdash/sessionContextStorage';
+import { readStoredLineups, readStoredSessionContext } from '../../features/statdash/sessionContextStorage';
 import { GATEWAY_DISPLAY_FONT_STACK, GATEWAY_FONT_STACK } from '../../authGatewayTheme';
-
-const PLAYERS = [1, 2, 3, 4, 5] as const;
 
 const JerseyTile: React.FC<{
   num: number;
@@ -48,9 +46,10 @@ const JerseyTile: React.FC<{
 const TeamPanel: React.FC<{
   label: string;
   color: string;
+  players: number[];
   picks: number | null;
   onPick: (n: number) => void;
-}> = ({ label, color, picks, onPick }) => (
+}> = ({ label, color, players, picks, onPick }) => (
   <div className="flex min-w-0 flex-col items-center gap-4 rounded-xl border border-gray-100 bg-gray-50/60 px-3 py-5 sm:px-5">
     <span
       className="rounded-md px-4 py-1.5 text-xs font-bold uppercase tracking-wide"
@@ -58,10 +57,14 @@ const TeamPanel: React.FC<{
     >
       {label}
     </span>
-    <div className="flex gap-1.5 sm:gap-2">
-      {PLAYERS.map((n) => (
-        <JerseyTile key={n} num={n} color={color} selected={picks === n} onClick={() => onPick(n)} />
-      ))}
+    <div className="flex flex-wrap justify-center gap-1.5 sm:gap-2">
+      {players.length === 0 ? (
+        <p className="max-w-[10rem] text-center text-xs text-gray-400">No starters found — go back and set them</p>
+      ) : (
+        players.map((n) => (
+          <JerseyTile key={n} num={n} color={color} selected={picks === n} onClick={() => onPick(n)} />
+        ))
+      )}
     </div>
   </div>
 );
@@ -112,6 +115,12 @@ const JumpBall: React.FC = () => {
   const rightBadgeLabel = homeOnLeft ? 'TEAM 2' : 'TEAM 1';
   const leftBadgeColor = homeOnLeft ? team1Color : team2Color;
   const rightBadgeColor = homeOnLeft ? team2Color : team1Color;
+
+  // team1 = home, team2 = away — jump ball only offers the statistician's actual
+  // starters (set on the Starters screen), never a hardcoded placeholder roster.
+  const [lineups] = useState(() => readStoredLineups());
+  const team1Players = (lineups?.home.onCourt ?? []).filter((n): n is number => n !== null);
+  const team2Players = (lineups?.away.onCourt ?? []).filter((n): n is number => n !== null);
 
   useEffect(() => {
     if (!readStoredSessionContext()) {
@@ -191,11 +200,11 @@ const JumpBall: React.FC = () => {
 
           <div className="flex w-full max-w-4xl flex-col items-center gap-8 rounded-2xl border border-gray-200 bg-white p-5 shadow-[0_20px_45px_-24px_rgba(15,23,42,0.3)] sm:p-8">
             <div className="grid w-full grid-cols-1 items-center gap-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
-              <TeamPanel label={leftBadgeLabel} color={leftBadgeColor} picks={team1Pick} onPick={handleTeam1Pick} />
+              <TeamPanel label={leftBadgeLabel} color={leftBadgeColor} players={team1Players} picks={team1Pick} onPick={handleTeam1Pick} />
               <div className="flex items-center justify-center">
                 <BasketballGlyph />
               </div>
-              <TeamPanel label={rightBadgeLabel} color={rightBadgeColor} picks={team2Pick} onPick={handleTeam2Pick} />
+              <TeamPanel label={rightBadgeLabel} color={rightBadgeColor} players={team2Players} picks={team2Pick} onPick={handleTeam2Pick} />
             </div>
 
             <div className="flex w-full flex-col items-center gap-4 border-t border-gray-100 pt-6">

@@ -353,18 +353,35 @@ const StatDash: React.FC = () => {
   const markersRestoredRef = useRef(false);
   const gameLogRestoredRef = useRef(false);
   const lineupRestoredRef = useRef(false);
+  const lineupForceStartersCheckedRef = useRef(false);
   const recentEventsRef = useRef<SessionStateSnapshot["recentEvents"]>([]);
   const activeLineupsRef =
     useRef<SessionStateSnapshot["activeLineups"]>(undefined);
 
-  const applyAuthoritativeState = useCallback((state: SessionStateSnapshot) => {
-    setHomeScore(state.score.home);
-    setAwayScore(state.score.away);
-    setQuarter(state.quarter);
-    setTimerSeconds(state.clockSecondsRemaining);
-    setIsRunning(state.status === "IN_PROGRESS");
-    setSessionStatus(state.status);
-  }, []);
+  const applyAuthoritativeState = useCallback(
+    (state: SessionStateSnapshot, opts?: { trustScore?: boolean }) => {
+      const trustScore = opts?.trustScore ?? true;
+      if (trustScore) {
+        setHomeScore(state.score.home);
+        setAwayScore(state.score.away);
+      } else {
+        // The backend's score projection can lag a beat behind the version bump
+        // (observed directly: a made free throw's response didn't reflect the +1
+        // until the *next* unrelated request). A background realtime resync that
+        // lands in that window would otherwise blindly overwrite a correct,
+        // already-displayed score with a stale lower one — visible as "the score
+        // reset". Never regress it here; a real correction/reversal always calls
+        // this with the default trustScore (true) and must be allowed to lower it.
+        setHomeScore((prev) => Math.max(prev, state.score.home));
+        setAwayScore((prev) => Math.max(prev, state.score.away));
+      }
+      setQuarter(state.quarter);
+      setTimerSeconds(state.clockSecondsRemaining);
+      setIsRunning(state.status === "IN_PROGRESS");
+      setSessionStatus(state.status);
+    },
+    [],
+  );
 
   const getTeamIdForSide = useCallback((side: TeamSide): string => {
     const context = readStoredSessionContext();
@@ -626,7 +643,8 @@ const StatDash: React.FC = () => {
   // End-of-period flow: show CTA, then arm the next period without auto-start. Regulation
   // quarters always prompt for the next quarter. Once regulation is over (or a previous
   // overtime just ended), a tied score prompts for another overtime — however many it takes
-  // — and an untied score just stops the clock (game over).
+  // — and an untied score prompts to finish the game instead (there must always be a next
+  // step here, otherwise the game can never be closed out).
   useEffect(() => {
     if (!isRunning) return;
     if (timerSeconds !== 0) return;
@@ -642,7 +660,8 @@ const StatDash: React.FC = () => {
       setQuarterEndAwaitingFinish(false);
       return;
     }
-    setTimerSeconds(0);
+    setFinishConfirmOpen(true);
+    setQuarterEndAwaitingFinish(false);
   }, [isRunning, timerSeconds, quarter, homeScore, awayScore]);
 
   // Jump-ball page -> StatDash: prompt before starting the game clock.
@@ -825,6 +844,35 @@ const StatDash: React.FC = () => {
     resolvePlayerRef,
   ]);
 
+  // Bug #45: with no real lineup available from either source above, `homeLineup`/
+  // `awayLineup` are still sitting at their initial-state fallback — the hardcoded,
+  // fake `DEFAULT_TEAM_LINEUP` (jerseys 1-5, no real player IDs behind them). Playing
+  // on through that silently fabricates bogus player IDs the backend correctly
+  // rejects the moment anything (e.g. a substitution) tries to use one. Force the
+  // statistician through Starters instead of letting that happen.
+  //
+  // Only for a session that hasn't started yet (PENDING) — Starters' "Confirm" always
+  // continues on to ChooseSides -> JumpBall (see Bug #11), so redirecting an
+  // already-IN_PROGRESS/PAUSED game here would re-run the whole pre-game wizard on
+  // top of a live game (re-flip sides, re-record a jump ball, etc.), which is worse
+  // than the bug it'd fix. A resumed game with no lineup is the separate, existing
+  // Bug #14 (lineup not persisted across resume) — left alone here.
+  //
+  // Runs once, after both potential real-lineup sources (sessionStorage and, once
+  // Gap #10 ships, the backend) have had their chance to populate real data.
+  useEffect(() => {
+    if (isBootstrapping) return;
+    if (lineupForceStartersCheckedRef.current) return;
+    lineupForceStartersCheckedRef.current = true;
+    if (sessionStatus !== "PENDING") return;
+    const hasLocalLineup = readStoredLineups() !== null;
+    const active = activeLineupsRef.current;
+    const hasServerLineup = Boolean(active?.homeLineup && active?.awayLineup);
+    if (!hasLocalLineup && !hasServerLineup) {
+      navigate("/starters", { replace: true });
+    }
+  }, [isBootstrapping, navigate, sessionStatus]);
+
   useEffect(() => {
     const context = readStoredSessionContext();
     if (!context) return;
@@ -847,7 +895,7 @@ const StatDash: React.FC = () => {
 
       try {
         const latest = await sessionsApi.getSessionState(context.sessionId);
-        applyAuthoritativeState(latest);
+        applyAuthoritativeState(latest, { trustScore: false });
         latestVersionRef.current = latest.version;
         writeStoredExpectedVersion(latest.version);
         setSyncNotice(null);
@@ -864,7 +912,7 @@ const StatDash: React.FC = () => {
           try {
             const latest = await sessionsApi.getSessionState(context.sessionId);
             if (latest.version > latestVersionRef.current) {
-              applyAuthoritativeState(latest);
+              applyAuthoritativeState(latest, { trustScore: false });
               latestVersionRef.current = latest.version;
               writeStoredExpectedVersion(latest.version);
             }
@@ -3248,11 +3296,18 @@ const StatDash: React.FC = () => {
 
   const handleQuarterFinishReopen = useCallback(() => {
     if (quarter >= REGULATION_QUARTERS) {
-      setOvertimeModalOpen(true);
+      // Re-check live, not just whatever was true when the period first ended — a
+      // correction made while "reviewing" can retie (or untie) the score, and the
+      // next prompt must reflect that, not whatever was decided on the first pass.
+      if (homeScore === awayScore) {
+        setOvertimeModalOpen(true);
+      } else {
+        setFinishConfirmOpen(true);
+      }
     } else {
       setQuarterBreakModalOpen(true);
     }
-  }, [quarter]);
+  }, [quarter, homeScore, awayScore]);
 
   const handleOvertimeConfirm = useCallback(() => {
     const nextQuarter = Math.min(MAX_PERIOD, quarter + 1);
@@ -3739,7 +3794,11 @@ const StatDash: React.FC = () => {
                   onJumpBall={openJumpBallModal}
                   onSub={openSubstitutionModal}
                   reverseSides={!homeOnLeft}
-                  showQuarterFinish={quarterEndAwaitingFinish}
+                  // Finish only makes sense once the clock has actually run out — if the
+                  // statistician adds time back after a period nominally ended (forgot to
+                  // stop it, needs to log a late play), normal Start/Stop must take back
+                  // over instead of staying stuck on Finish with no way to run the clock.
+                  showQuarterFinish={quarterEndAwaitingFinish && timerSeconds === 0}
                   onQuarterFinish={handleQuarterFinishReopen}
                 />
               }
@@ -3971,10 +4030,16 @@ const StatDash: React.FC = () => {
             <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setFinishConfirmOpen(false)}
+                onClick={() => {
+                  setFinishConfirmOpen(false);
+                  // "Not yet" — keep the yellow Finish button reachable so the
+                  // statistician can add a late correction/event, then re-decide
+                  // (re-tied score routes back to Overtime instead, live).
+                  setQuarterEndAwaitingFinish(true);
+                }}
                 className="border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
               >
-                Cancel
+                Not yet
               </button>
               <button
                 type="button"
