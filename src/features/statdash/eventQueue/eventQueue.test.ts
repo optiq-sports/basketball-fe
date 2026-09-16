@@ -86,6 +86,7 @@ describe('event queue', () => {
       getQueue: live.getQueue,
       applyQueueUpdate: live.applyQueueUpdate,
       getIsOnline: () => true,
+      getLatestVersion: () => 1,
       sendCommand: async (event) => {
         sent.push(event.localId);
         return { sessionId: event.sessionId, version: event.expectedVersion + 1, score: { home: 0, away: 0 }, emittedEvents: [] };
@@ -103,6 +104,7 @@ describe('event queue', () => {
       getQueue: live.getQueue,
       applyQueueUpdate: live.applyQueueUpdate,
       getIsOnline: () => false,
+      getLatestVersion: () => 1,
       sendCommand: send,
       onCommandAccepted: () => undefined,
       onCommandFailed: () => undefined,
@@ -119,6 +121,7 @@ describe('event queue', () => {
       getQueue: live.getQueue,
       applyQueueUpdate: live.applyQueueUpdate,
       getIsOnline: () => true,
+      getLatestVersion: () => 1,
       sendCommand: async (event) => {
         sent.push(event.localId);
         if (event.localId === first.localId) {
@@ -155,6 +158,7 @@ describe('event queue', () => {
       getQueue: live.getQueue,
       applyQueueUpdate: live.applyQueueUpdate,
       getIsOnline: () => true,
+      getLatestVersion: () => 1,
       sendCommand: async (event) => {
         versions.push(event.expectedVersion);
         if (first) {
@@ -194,6 +198,7 @@ describe('event queue', () => {
       getQueue: live.getQueue,
       applyQueueUpdate: live.applyQueueUpdate,
       getIsOnline: () => true,
+      getLatestVersion: () => 2,
       sendCommand: async (event) => {
         sentVersions.push(event.expectedVersion);
         if (first) {
@@ -220,6 +225,7 @@ describe('event queue', () => {
       getQueue: live.getQueue,
       applyQueueUpdate: live.applyQueueUpdate,
       getIsOnline: () => true,
+      getLatestVersion: () => 1,
       sendCommand: async () => {
         throw new StatDashApiError('offline', 0);
       },
@@ -239,6 +245,7 @@ describe('event queue', () => {
       getQueue: live.getQueue,
       applyQueueUpdate: live.applyQueueUpdate,
       getIsOnline: () => true,
+      getLatestVersion: () => 1,
       sendCommand: async (event) => {
         if (event.localId === q1.localId) throw new StatDashApiError('bad', 400);
         sent.push(event.localId);

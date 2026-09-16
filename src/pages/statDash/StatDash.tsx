@@ -148,6 +148,8 @@ const StatDash: React.FC = () => {
   const [timerSeconds, setTimerSeconds] = useState(QUARTER_DURATION_SEC);
   const [isRunning, setIsRunning] = useState(false);
   const [gameLog, setGameLog] = useState<GameLogEntry[]>([]);
+  const gameLogRef = useRef<GameLogEntry[]>([]);
+  gameLogRef.current = gameLog;
   const [shotFlow, setShotFlow] = useState<ShotFlowState>("idle");
   const shotFlowRef = useRef<ShotFlowState>("idle");
   shotFlowRef.current = shotFlow;
@@ -159,6 +161,10 @@ const StatDash: React.FC = () => {
   const technicalFoulTallyRef = useRef<Map<string, number>>(new Map());
   /** First FT command's localId for the current sequence — the FT assist log row shares it. */
   const ftFirstLocalIdRef = useRef<string | null>(null);
+  /** localId of the foul that's currently awarding free throws — used to look up its
+   * backendEventId in gameLog so each FT command can carry it as parentEventId, letting
+   * a later reversal of the foul cascade to reverse its free throws too (Backend Gap #15). */
+  const currentFoulLocalIdRef = useRef<string | null>(null);
   /** Player who just picked up their 2nd technical; triggers notice + sub modal once the foul flow ends. */
   const [pendingEjection, setPendingEjection] = useState<{
     side: TeamSide;
@@ -354,6 +360,7 @@ const StatDash: React.FC = () => {
   const gameLogRestoredRef = useRef(false);
   const lineupRestoredRef = useRef(false);
   const lineupForceStartersCheckedRef = useRef(false);
+  const lineupPushedRef = useRef(false);
   const recentEventsRef = useRef<SessionStateSnapshot["recentEvents"]>([]);
   const activeLineupsRef =
     useRef<SessionStateSnapshot["activeLineups"]>(undefined);
@@ -455,11 +462,20 @@ const StatDash: React.FC = () => {
     retryFailed,
     discardEvent,
   } = useEventQueue({
+      getLatestVersion: () => latestVersionRef.current,
       onCommandAccepted: (event, response) => {
         writeStoredExpectedVersion(response.version);
         latestVersionRef.current = response.version;
-        setHomeScore(response.score.home);
-        setAwayScore(response.score.away);
+        // Never regress the displayed score here: commands in this queue are processed
+        // strictly in order, but the user can tap several actions (e.g. Made FT, Miss FT,
+        // Made FT) before any of their network responses land. Each response only reflects
+        // the backend's state as of *that* command, which can be briefly behind an already-
+        // applied optimistic update from a later tap. A real correction/reversal never goes
+        // through this callback (see applyAuthoritativeState's trustScore:true default) —
+        // it always calls setHomeScore/setAwayScore directly, so a legitimate decrease is
+        // never blocked by this guard.
+        setHomeScore((prev) => Math.max(prev, response.score.home));
+        setAwayScore((prev) => Math.max(prev, response.score.away));
         if (pendingCountRef.current === 0) {
           setSyncNotice(null);
         }
@@ -579,7 +595,7 @@ const StatDash: React.FC = () => {
     async (
       commandType: string,
       payload: Record<string, unknown>,
-      options?: { stampClock?: boolean },
+      options?: { stampClock?: boolean; parentEventId?: string },
     ): Promise<(CommandAcceptedResponse & { localId: string }) | null> => {
       const context = readStoredSessionContext();
       if (!context) {
@@ -587,10 +603,13 @@ const StatDash: React.FC = () => {
         return null;
       }
       const idempotencyKey = generateIdempotencyKey();
-      const expectedVersion = readStoredExpectedVersion();
-
-      writeStoredExpectedVersion(expectedVersion + 1);
-      latestVersionRef.current = expectedVersion + 1;
+      // expectedVersion is NOT pre-computed here: the backend bumps the session version by
+      // however many events a command emits (e.g. a made free throw with an assist emits
+      // 2, not 1), so a value guessed at enqueue time — before earlier queued commands have
+      // even been sent — inevitably drifts. The queue's drain resolves the real value from
+      // the last *confirmed* version at the moment each command is actually sent instead
+      // (see drain.ts's resolveExpectedVersion and useEventQueue's getLatestVersion). This
+      // field is carried on the queued event only as an initial/informational value.
 
       // Every event carries when in the game it happened — otherwise the backend has no
       // way to reconstruct "what quarter/clock was this at" after the fact (see Backend
@@ -614,13 +633,14 @@ const StatDash: React.FC = () => {
         sessionId: context.sessionId,
         commandType,
         payload: payloadWithClock,
-        expectedVersion,
+        expectedVersion: latestVersionRef.current,
         localId: idempotencyKey,
+        parentEventId: options?.parentEventId,
       });
 
       return {
         sessionId: context.sessionId,
-        version: expectedVersion + 1,
+        version: latestVersionRef.current,
         score: { home: homeScore, away: awayScore },
         emittedEvents: [],
         localId: idempotencyKey,
@@ -872,6 +892,47 @@ const StatDash: React.FC = () => {
       navigate("/starters", { replace: true });
     }
   }, [isBootstrapping, navigate, sessionStatus]);
+
+  // Backend Gap #19: push both teams' starting five to the backend as soon as we land
+  // on a PENDING session with a real local lineup but nothing on the backend yet.
+  // Without this, the backend's first-ever LineupState row for a session only gets
+  // created by whichever team happens to substitute first (substitution commands always
+  // carry the full resulting lineup — see handleSubstitutionFinish below). Backend Gap
+  // #21's substitution validation then rejects every *other* team's next substitution as
+  // "player not on court", because the snapshot it validates against never had that
+  // team's real starters in it. Sending both teams' starters up front — before either
+  // team's first substitution — means that snapshot is complete from the start.
+  useEffect(() => {
+    if (isBootstrapping) return;
+    if (lineupPushedRef.current) return;
+    if (sessionStatus !== "PENDING") return;
+    const active = activeLineupsRef.current;
+    const hasServerLineup = Boolean(active?.homeLineup && active?.awayLineup);
+    if (hasServerLineup) {
+      lineupPushedRef.current = true;
+      return;
+    }
+    if (readStoredLineups() === null) return; // nothing real to push yet — wait for Starters
+    if (!lineupIsComplete(homeLineup) || !lineupIsComplete(awayLineup)) return;
+    lineupPushedRef.current = true;
+    void commitEventCommand("substitution", {
+      teamId: getTeamIdForSide("home"),
+      homeLineup: compactOnCourt(homeLineup).map((jersey) =>
+        getPlayerId("home", jersey),
+      ),
+      awayLineup: compactOnCourt(awayLineup).map((jersey) =>
+        getPlayerId("away", jersey),
+      ),
+    });
+  }, [
+    isBootstrapping,
+    sessionStatus,
+    homeLineup,
+    awayLineup,
+    getPlayerId,
+    getTeamIdForSide,
+    commitEventCommand,
+  ]);
 
   useEffect(() => {
     const context = readStoredSessionContext();
@@ -1138,6 +1199,7 @@ const StatDash: React.FC = () => {
         foulType: foulTypeToApiType(draft.foulType),
       });
       if (!committed) return;
+      currentFoulLocalIdRef.current = committed.localId;
       appendLog({
         period: periodLabel,
         clock: clockLabel,
@@ -1529,21 +1591,34 @@ const StatDash: React.FC = () => {
         typeof draft.ftAssistJersey === "number" ? draft.ftAssistJersey : null;
 
       // Each free throw is its own backend command, sent the moment it's tapped.
+      // Backend Gap #15: carry the fouling event's real backend ID as parentEventId so
+      // reversing the foul later cascades to reverse its free throws too. It may not have
+      // synced yet (network still in flight) — in that case this FT just isn't linked,
+      // same as before this fix; every later FT in the sequence gets another chance.
+      const foulLocalId = currentFoulLocalIdRef.current;
+      const parentEventId = foulLocalId
+        ? gameLogRef.current.find((entry) => entry.localId === foulLocalId)
+            ?.backendEventId
+        : undefined;
       void (async () => {
-        const cmd = await commitEventCommand("free_throw", {
-          teamId: getTeamIdForSide(shooterSide),
-          shooterPlayerId: getPlayerId(shooterSide, shooterJersey),
-          attempt,
-          totalAttempts: n,
-          result: isMade ? "made" : "missed",
-          // Assist candidate rides on the first FT only; the backend decides the
-          // official award per the FIBA manual (at most 1 assist per sequence).
-          ...(attempt === 1 && assistJersey !== null
-            ? {
-                assistCandidatePlayerId: getPlayerId(shooterSide, assistJersey),
-              }
-            : {}),
-        });
+        const cmd = await commitEventCommand(
+          "free_throw",
+          {
+            teamId: getTeamIdForSide(shooterSide),
+            shooterPlayerId: getPlayerId(shooterSide, shooterJersey),
+            attempt,
+            totalAttempts: n,
+            result: isMade ? "made" : "missed",
+            // Assist candidate rides on the first FT only; the backend decides the
+            // official award per the FIBA manual (at most 1 assist per sequence).
+            ...(attempt === 1 && assistJersey !== null
+              ? {
+                  assistCandidatePlayerId: getPlayerId(shooterSide, assistJersey),
+                }
+              : {}),
+          },
+          { parentEventId },
+        );
         if (attempt === 1) ftFirstLocalIdRef.current = cmd?.localId ?? null;
         appendLog({
           period: periodLabel,

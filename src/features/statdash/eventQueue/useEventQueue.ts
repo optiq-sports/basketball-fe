@@ -9,6 +9,8 @@ type EnqueueInput = Omit<QueuedEvent, 'localId' | 'enqueuedAt' | 'status' | 'att
 };
 
 interface UseEventQueueOptions {
+  /** Live-tracked "next expectedVersion to send" — see drain.ts's resolveExpectedVersion. */
+  getLatestVersion: () => number;
   onCommandAccepted?: (event: QueuedEvent, response: CommandAcceptedResponse) => void;
   onCommandFailed?: (event: QueuedEvent, error: unknown) => void;
 }
@@ -29,7 +31,11 @@ export interface UseEventQueueReturn {
   discardEvent: (localId: string) => void;
 }
 
-export function useEventQueue(options: UseEventQueueOptions = {}): UseEventQueueReturn {
+const DEFAULT_OPTIONS: UseEventQueueOptions = { getLatestVersion: () => 0 };
+
+export function useEventQueue(
+  options: UseEventQueueOptions = DEFAULT_OPTIONS,
+): UseEventQueueReturn {
   const [queue, setQueue] = useState<QueuedEvent[]>(() => loadQueue());
   const [isOnline, setIsOnline] = useState<boolean>(() =>
     typeof navigator === 'undefined' ? true : navigator.onLine,
@@ -62,6 +68,7 @@ export function useEventQueue(options: UseEventQueueOptions = {}): UseEventQueue
         getQueue: () => queueRef.current,
         applyQueueUpdate,
         getIsOnline: () => isOnlineRef.current,
+        getLatestVersion: options.getLatestVersion,
         sendCommand: async (event) =>
           commandsApi.sendCommand({
             sessionId: event.sessionId,
@@ -69,6 +76,7 @@ export function useEventQueue(options: UseEventQueueOptions = {}): UseEventQueue
             payload: event.payload,
             expectedVersion: event.expectedVersion,
             idempotencyKey: event.localId,
+            parentEventId: event.parentEventId,
           }),
         onCommandAccepted: (event, response) => {
           options.onCommandAccepted?.(event, response);

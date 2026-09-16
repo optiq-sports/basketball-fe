@@ -15,9 +15,15 @@ function scheduleRetry(callback: () => void): void {
   retryTimer = setTimeout(callback, 3000);
 }
 
+// A command's true expectedVersion can only be known at the moment it's actually sent,
+// not when it was enqueued: the backend bumps the session version by however many events
+// a command emits (e.g. a made free throw with an assist emits 2 events, not 1), so a
+// version pre-computed at enqueue time assuming "+1 per command" goes stale the moment an
+// earlier queued command consumes more than one version slot. Always trust the caller's
+// live-tracked latest confirmed version instead of the value frozen on the event itself.
 export function resolveExpectedVersion(event: QueuedEvent, latestKnownVersion: number): number {
-  void latestKnownVersion;
-  return event.expectedVersion;
+  void event;
+  return latestKnownVersion;
 }
 
 function rebasePendingEvents(queue: QueuedEvent[], baseVersion: number): QueuedEvent[] {
@@ -52,6 +58,9 @@ export interface DrainQueueOptions {
    */
   applyQueueUpdate: (updater: (prev: QueuedEvent[]) => QueuedEvent[]) => QueuedEvent[];
   getIsOnline: () => boolean;
+  /** Live-tracked "next expectedVersion to send" — updated by the caller after every
+   * confirmed response (including ones outside this drain, e.g. corrections/reversals). */
+  getLatestVersion: () => number;
   sendCommand: (event: QueuedEvent) => Promise<CommandAcceptedResponse>;
   onCommandAccepted: (event: QueuedEvent, response: CommandAcceptedResponse) => void;
   onCommandFailed: (event: QueuedEvent, error: unknown) => void;
@@ -63,8 +72,15 @@ function patchEvent(targetId: string, patch: Partial<QueuedEvent>) {
 }
 
 export async function drainQueue(options: DrainQueueOptions): Promise<void> {
-  const { getIsOnline, getQueue, applyQueueUpdate, onCommandAccepted, onCommandFailed, sendCommand } = options;
+  const { getIsOnline, getQueue, applyQueueUpdate, getLatestVersion, onCommandAccepted, onCommandFailed, sendCommand } = options;
   if (!getIsOnline()) return;
+
+  // Tracked locally for this drain run, seeded from the caller's persisted value, and
+  // kept in sync on every confirmed response or version-conflict rebase. A command can
+  // consume more than one version slot (see resolveExpectedVersion above), so the very
+  // next send in this same loop needs the up-to-date number immediately — it can't wait
+  // for the caller's own state/storage to catch up via onCommandAccepted.
+  let knownVersion = getLatestVersion();
 
   while (getIsOnline()) {
     // Re-read the live queue every iteration so events enqueued while the previous
@@ -79,7 +95,8 @@ export async function drainQueue(options: DrainQueueOptions): Promise<void> {
       ...nextPending,
       status: 'inflight' as const,
       attempts: nextPending.attempts + 1,
-      expectedVersion: resolveExpectedVersion(nextPending, nextPending.expectedVersion),
+      // Resolved at send time, not enqueue time — see resolveExpectedVersion above.
+      expectedVersion: resolveExpectedVersion(nextPending, knownVersion),
       lastError: undefined,
     };
     applyQueueUpdate(patchEvent(nextPending.localId, inflight));
@@ -94,6 +111,7 @@ export async function drainQueue(options: DrainQueueOptions): Promise<void> {
       console.groupEnd();
       const response = await sendCommand(inflight);
       applyQueueUpdate(patchEvent(inflight.localId, { status: 'sent', lastError: undefined }));
+      knownVersion = response.version;
       onCommandAccepted(inflight, response);
       continue;
     } catch (error) {
@@ -109,6 +127,7 @@ export async function drainQueue(options: DrainQueueOptions): Promise<void> {
 
         try {
           const latest = await sessionsApi.getSessionState(inflight.sessionId);
+          knownVersion = latest.version;
           applyQueueUpdate((prev) => rebasePendingEvents(prev, latest.version));
           continue;
         } catch (innerError) {

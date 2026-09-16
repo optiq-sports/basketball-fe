@@ -3,6 +3,18 @@ import { BsBatteryCharging } from 'react-icons/bs';
 import { IoWifi } from 'react-icons/io5';
 import { STAT_DASH } from '../statDashTheme';
 
+// Battery Status API and Network Information API are both non-standard/deprecated and
+// not part of TypeScript's bundled DOM lib — defined locally, scoped to this file only.
+interface BatteryManager extends EventTarget {
+  level: number;
+  charging: boolean;
+}
+
+interface NavigatorWithExtras extends Navigator {
+  getBattery?: () => Promise<BatteryManager>;
+  connection?: unknown;
+}
+
 /**
  * Compact inline battery + wifi indicator for the dark toolbar (MenuBar).
  */
@@ -18,7 +30,8 @@ const StatusStrip: React.FC = () => {
 
     async function loadBattery() {
       try {
-        const nav = typeof navigator !== 'undefined' ? navigator : null;
+        const nav: NavigatorWithExtras | null =
+          typeof navigator !== 'undefined' ? navigator : null;
         if (!nav || typeof nav.getBattery !== 'function') return;
         batteryObj = await nav.getBattery();
         if (cancelled) return;
@@ -45,7 +58,10 @@ const StatusStrip: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const navConn = typeof navigator !== 'undefined' ? navigator.connection : undefined;
+    const navConn =
+      typeof navigator !== 'undefined'
+        ? (navigator as NavigatorWithExtras).connection
+        : undefined;
 
     const syncWifi = () => {
       const connected = typeof navigator !== 'undefined' ? navigator.onLine : false;

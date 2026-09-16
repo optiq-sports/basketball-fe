@@ -76,6 +76,9 @@ export interface CommandEnvelope<TPayload = unknown> {
   payload: TPayload;
   expectedVersion: number;
   idempotencyKey: string;
+  /** Links a generated command (e.g. a free throw) to the event that caused it (e.g. its
+   * foul), so reversing the parent cascades to reverse this one too. See Backend Gap #15. */
+  parentEventId?: string;
 }
 
 export interface CommandAcceptedResponse {

@@ -10,4 +10,6 @@ export interface QueuedEvent {
   status: QueuedEventStatus;
   attempts: number;
   lastError?: string;
+  /** See CommandEnvelope.parentEventId (services/statdash/types.ts). */
+  parentEventId?: string;
 }

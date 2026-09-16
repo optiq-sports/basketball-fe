@@ -71,7 +71,7 @@ export function useRebuildProjection() {
 export function useSendStatDashCommand() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async <TPayload,>(envelope: CommandEnvelope<TPayload>) => {
+    mutationFn: async (envelope: CommandEnvelope<unknown>) => {
       return commandsApi.sendCommand(envelope);
     },
     onSuccess: (response: CommandAcceptedResponse) => {

@@ -119,8 +119,8 @@ const JumpBall: React.FC = () => {
   // team1 = home, team2 = away — jump ball only offers the statistician's actual
   // starters (set on the Starters screen), never a hardcoded placeholder roster.
   const [lineups] = useState(() => readStoredLineups());
-  const team1Players = (lineups?.home.onCourt ?? []).filter((n): n is number => n !== null);
-  const team2Players = (lineups?.away.onCourt ?? []).filter((n): n is number => n !== null);
+  const team1Players = (lineups?.home.onCourt ?? []).flatMap((n) => (n === null ? [] : [n]));
+  const team2Players = (lineups?.away.onCourt ?? []).flatMap((n) => (n === null ? [] : [n]));
 
   useEffect(() => {
     if (!readStoredSessionContext()) {
