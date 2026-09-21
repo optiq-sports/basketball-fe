@@ -386,6 +386,8 @@ export interface TournamentUpdate {
 
 export interface TournamentAddTeamsBody {
   teamIds: string[];
+  /** Group ("A"-"D") to put these teams in. Re-adding a team already in the tournament moves it. */
+  group?: string;
 }
 
 export interface MatchStatRecord {
@@ -421,6 +423,8 @@ export interface Match {
   status: MatchStatus;
   venue?: string;
   matchCode?: string;
+  /** Assigned statistician's user id; null/absent = unassigned. */
+  statisticianId?: string | null;
   homeScore?: number;
   awayScore?: number;
   quarter1Home?: number;
@@ -448,11 +452,14 @@ export interface MatchCreate {
   scheduledDate: string;
   status: MatchStatus;
   venue?: string;
+  statisticianId?: string;
 }
 
 export interface MatchUpdate {
   status?: MatchStatus;
   venue?: string;
+  /** Empty string or null unassigns (backend normalizes "" to null). */
+  statisticianId?: string | null;
   scheduledDate?: string;
   quarter1Home?: number;
   quarter1Away?: number;

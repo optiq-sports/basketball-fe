@@ -2,6 +2,8 @@ import {
   useQuery,
   useMutation,
   useQueryClient,
+  type QueryClient,
+  type QueryKey,
 } from '@tanstack/react-query';
 import { apiClient } from './ApiClient';
 import type {
@@ -58,6 +60,67 @@ export const queryKeys = {
     lag: ['ops', 'lag'] as const,
   },
 };
+
+// ---------------------------------------------------------------------------------------------
+// Optimistic UI helpers
+//
+// Every admin action used to look like nothing was happening until the request AND the refetch that
+// follows it had both come back — a deleted game just sat there for seconds and then vanished. These
+// apply the change to the cached lists/records right away, remember what was there so it can be put
+// back if the server refuses, and let each hook reconcile with the server once it settles.
+// ---------------------------------------------------------------------------------------------
+
+type CacheEdit = { key: QueryKey; update: (data: unknown) => unknown };
+type CacheSnapshot = { previous: Array<[QueryKey, unknown]> };
+
+/** Applies each edit to every cached query under its key; returns what to restore on failure. */
+async function applyOptimisticEdits(queryClient: QueryClient, edits: CacheEdit[]): Promise<CacheSnapshot> {
+  await Promise.all(edits.map((edit) => queryClient.cancelQueries({ queryKey: edit.key })));
+  const previous: CacheSnapshot['previous'] = [];
+  for (const { key, update } of edits) {
+    for (const [queryKey, data] of queryClient.getQueriesData({ queryKey: key })) {
+      if (data === undefined) continue;
+      previous.push([queryKey, data]);
+      queryClient.setQueryData(queryKey, update(data));
+    }
+  }
+  return { previous };
+}
+
+function rollbackOptimisticEdits(queryClient: QueryClient, context: CacheSnapshot | undefined): void {
+  if (!context) return;
+  // Restore newest-first so a query edited twice ends up at its original value.
+  for (let i = context.previous.length - 1; i >= 0; i -= 1) {
+    const [key, data] = context.previous[i];
+    queryClient.setQueryData(key, data);
+  }
+}
+
+const idOf = (item: unknown): unknown => (item as { id?: unknown } | null)?.id;
+
+/** Drops the item with this id from a cached list (leaves anything that isn't a list alone). */
+export const removeById = (id: string) => (data: unknown): unknown =>
+  Array.isArray(data) ? data.filter((item) => idOf(item) !== id) : data;
+
+const definedOnly = (patch: object): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
+
+/** Merges a patch into the item with this id in a cached list. Undefined fields are skipped: they
+ * mean "leave as is" when sent, so they must not blank the optimistic copy either. */
+export const patchById = (id: string, patch: object) => (data: unknown): unknown =>
+  Array.isArray(data)
+    ? data.map((item) => (idOf(item) === id ? { ...(item as object), ...definedOnly(patch) } : item))
+    : data;
+
+/** Merges a patch into a single cached record. */
+export const patchRecord = (patch: object) => (data: unknown): unknown =>
+  data && typeof data === 'object' && !Array.isArray(data) ? { ...data, ...definedOnly(patch) } : data;
+
+/** Refetches after a change. Returned from a mutation's onSuccess, the mutation stays "pending"
+ * until the fresh data is in, so a form's Save button keeps saying "Saving…" until the new row is
+ * actually on screen instead of closing the form first and having the row appear seconds later. */
+const refreshAll = (queryClient: QueryClient, keys: QueryKey[]): Promise<unknown> =>
+  Promise.all(keys.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
 
 // Auth hooks
 export function useProfile(enabled = true) {
@@ -174,9 +237,10 @@ export function useCreatePlayerStandalone() {
       if (!res.ok) throw new Error(res.message ?? 'Failed to create player');
       return res.data!;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['players'] });
-    },
+    onSuccess: () =>
+      refreshAll(queryClient, [
+        ['players'],
+      ]),
   });
 }
 
@@ -188,11 +252,12 @@ export function useCreatePlayerForTeam() {
       if (!res.ok) throw new Error(res.message ?? 'Failed to create player');
       return res.data!;
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.players() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.players(variables.teamId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.team(variables.teamId) });
-    },
+    onSuccess: (_, variables) =>
+      refreshAll(queryClient, [
+        queryKeys.players(),
+        queryKeys.players(variables.teamId),
+        queryKeys.team(variables.teamId),
+      ]),
   });
 }
 
@@ -204,11 +269,12 @@ export function useBulkCreatePlayersForTeam() {
       if (!res.ok) throw new Error(res.message ?? 'Bulk create failed');
       return res.data!;
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.players() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.players(variables.teamId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.team(variables.teamId) });
-    },
+    onSuccess: (_, variables) =>
+      refreshAll(queryClient, [
+        queryKeys.players(),
+        queryKeys.players(variables.teamId),
+        queryKeys.team(variables.teamId),
+      ]),
   });
 }
 
@@ -223,14 +289,14 @@ export function useUpdatePlayer() {
       if (!res.ok) throw new Error(res.message ?? 'Failed to update player');
       return res.data!;
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['players'] });
-      queryClient.invalidateQueries({ queryKey: queryKeys.player(data.id) });
-      if (data.teamId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.players(data.teamId as string) });
-        queryClient.invalidateQueries({ queryKey: queryKeys.team(data.teamId as string) });
-      }
-    },
+    onSuccess: (data) =>
+      refreshAll(queryClient, [
+        ['players'],
+        queryKeys.player(data.id),
+        ...(data.teamId
+          ? [queryKeys.players(data.teamId as string), queryKeys.team(data.teamId as string)]
+          : []),
+      ]),
   });
 }
 
@@ -250,12 +316,13 @@ export function useAssignPlayerToTeam() {
       if (!res.ok) throw new Error(res.message ?? 'Failed to assign player');
       return res.data!;
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['players'] });
-      queryClient.invalidateQueries({ queryKey: queryKeys.players(variables.teamId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.player(variables.playerId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.team(variables.teamId) });
-    },
+    onSuccess: (_, variables) =>
+      refreshAll(queryClient, [
+        ['players'],
+        queryKeys.players(variables.teamId),
+        queryKeys.player(variables.playerId),
+        queryKeys.team(variables.teamId),
+      ]),
   });
 }
 
@@ -268,12 +335,31 @@ export function useRemovePlayerFromTeam() {
     }: { playerId: string; teamId: string }) => {
       await apiClient.players.removeFromTeam(playerId, teamId);
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['players'] });
-      queryClient.invalidateQueries({ queryKey: queryKeys.players(variables.teamId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.player(variables.playerId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.team(variables.teamId) });
-    },
+    // The player leaves the roster on screen right away.
+    onMutate: ({ playerId, teamId }) =>
+      applyOptimisticEdits(queryClient, [
+        { key: queryKeys.players(teamId), update: removeById(playerId) },
+        {
+          key: queryKeys.team(teamId),
+          update: (data) => {
+            const team = data as { playerTeams?: Array<{ playerId?: string; player?: { id?: string } }> };
+            return Array.isArray(team?.playerTeams)
+              ? {
+                  ...team,
+                  playerTeams: team.playerTeams.filter((pt) => (pt.playerId ?? pt.player?.id) !== playerId),
+                }
+              : data;
+          },
+        },
+      ]),
+    onError: (_err, _vars, context) => rollbackOptimisticEdits(queryClient, context),
+    onSettled: (_data, _err, variables) =>
+      refreshAll(queryClient, [
+        ['players'],
+        queryKeys.players(variables.teamId),
+        queryKeys.player(variables.playerId),
+        queryKeys.team(variables.teamId),
+      ]),
   });
 }
 
@@ -317,11 +403,12 @@ export function useUploadPlayersExcel() {
       if (!res.ok) throw new Error(res.message ?? 'Upload failed');
       return res.data!;
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['players'] });
-      queryClient.invalidateQueries({ queryKey: queryKeys.players(variables.teamId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.team(variables.teamId) });
-    },
+    onSuccess: (_, variables) =>
+      refreshAll(queryClient, [
+        ['players'],
+        queryKeys.players(variables.teamId),
+        queryKeys.team(variables.teamId),
+      ]),
   });
 }
 
@@ -333,12 +420,13 @@ export function useMergePlayers() {
       if (!res.ok) throw new Error(res.message ?? 'Merge failed');
       return res.data!;
     },
-    onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['players'] });
-      queryClient.invalidateQueries({ queryKey: queryKeys.player(data.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.player(variables.duplicatePlayerId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.player(variables.targetPlayerId) });
-    },
+    onSuccess: (data, variables) =>
+      refreshAll(queryClient, [
+        ['players'],
+        queryKeys.player(data.id),
+        queryKeys.player(variables.duplicatePlayerId),
+        queryKeys.player(variables.targetPlayerId),
+      ]),
   });
 }
 
@@ -376,10 +464,11 @@ export function useCreateTeam() {
       if (!res.ok) throw new Error(res.message ?? 'Failed to create team');
       return res.data!;
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.teams() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.team(data.id) });
-    },
+    onSuccess: (data) =>
+      refreshAll(queryClient, [
+        queryKeys.teams(),
+        queryKeys.team(data.id),
+      ]),
   });
 }
 
@@ -391,10 +480,13 @@ export function useUpdateTeam() {
       if (!res.ok) throw new Error(res.message ?? 'Failed to update team');
       return res.data!;
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.teams() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.team(data.id) });
-    },
+    onMutate: ({ id, data }) =>
+      applyOptimisticEdits(queryClient, [
+        { key: ['teams'], update: patchById(id, data) },
+        { key: queryKeys.team(id), update: patchRecord(data) },
+      ]),
+    onError: (_err, _vars, context) => rollbackOptimisticEdits(queryClient, context),
+    onSettled: (_data, _err, { id }) => refreshAll(queryClient, [queryKeys.teams(), queryKeys.team(id)]),
   });
 }
 
@@ -404,10 +496,9 @@ export function useDeleteTeam() {
     mutationFn: async (id: string) => {
       await apiClient.teams.delete(id);
     },
-    onSuccess: (_, id) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.teams() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.team(id) });
-    },
+    onMutate: (id: string) => applyOptimisticEdits(queryClient, [{ key: ['teams'], update: removeById(id) }]),
+    onError: (_err, _id, context) => rollbackOptimisticEdits(queryClient, context),
+    onSettled: () => refreshAll(queryClient, [queryKeys.teams()]),
   });
 }
 
@@ -423,11 +514,27 @@ export function useSetTeamCaptain() {
       if (!res.ok) throw new Error(res.message ?? 'Failed to set team captain');
       return res.data!;
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.team(variables.teamId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.teams() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.players(variables.teamId) });
-    },
+    // The captain dropdown and roster badges change immediately: exactly one captain per team.
+    onMutate: ({ teamId, playerId, body }) =>
+      applyOptimisticEdits(queryClient, [
+        {
+          key: queryKeys.players(teamId),
+          update: (data) =>
+            Array.isArray(data)
+              ? data.map((p) => ({
+                  ...(p as object),
+                  isCaptain: idOf(p) === playerId ? body.isCaptain : body.isCaptain ? false : (p as { isCaptain?: boolean }).isCaptain,
+                }))
+              : data,
+        },
+      ]),
+    onError: (_err, _vars, context) => rollbackOptimisticEdits(queryClient, context),
+    onSettled: (_data, _err, variables) =>
+      refreshAll(queryClient, [
+        queryKeys.team(variables.teamId),
+        queryKeys.teams(),
+        queryKeys.players(variables.teamId),
+      ]),
   });
 }
 
@@ -475,10 +582,11 @@ export function useCreateTournament() {
       if (!res.ok) throw new Error(res.message ?? 'Failed to create tournament');
       return res.data!;
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.tournaments() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.tournament(data.id) });
-    },
+    onSuccess: (data) =>
+      refreshAll(queryClient, [
+        queryKeys.tournaments(),
+        queryKeys.tournament(data.id),
+      ]),
   });
 }
 
@@ -493,10 +601,14 @@ export function useUpdateTournament() {
       if (!res.ok) throw new Error(res.message ?? 'Failed to update tournament');
       return res.data!;
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.tournaments() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.tournament(data.id) });
-    },
+    onMutate: ({ id, data }) =>
+      applyOptimisticEdits(queryClient, [
+        { key: queryKeys.tournaments(), update: patchById(id, data) },
+        { key: queryKeys.tournament(id), update: patchRecord(data) },
+      ]),
+    onError: (_err, _vars, context) => rollbackOptimisticEdits(queryClient, context),
+    onSettled: (_data, _err, { id }) =>
+      refreshAll(queryClient, [queryKeys.tournaments(), queryKeys.tournament(id)]),
   });
 }
 
@@ -508,10 +620,11 @@ export function useUploadTournamentFlyer() {
       if (!res.ok) throw new Error(res.message ?? 'Failed to upload tournament flyer');
       return res.data!;
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.tournaments() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.tournament(data.id) });
-    },
+    onSuccess: (data) =>
+      refreshAll(queryClient, [
+        queryKeys.tournaments(),
+        queryKeys.tournament(data.id),
+      ]),
   });
 }
 
@@ -524,10 +637,11 @@ export function useTournamentAddTeams() {
     }: { tournamentId: string; body: TournamentAddTeamsBody }) => {
       await apiClient.tournaments.addTeams(tournamentId, body);
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.tournaments() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.tournament(variables.tournamentId) });
-    },
+    onSuccess: (_, variables) =>
+      refreshAll(queryClient, [
+        queryKeys.tournaments(),
+        queryKeys.tournament(variables.tournamentId),
+      ]),
   });
 }
 
@@ -540,10 +654,19 @@ export function useTournamentRemoveTeam() {
     }: { tournamentId: string; teamId: string }) => {
       await apiClient.tournaments.removeTeam(tournamentId, teamId);
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.tournaments() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.tournament(variables.tournamentId) });
-    },
+    onMutate: ({ tournamentId, teamId }) =>
+      applyOptimisticEdits(queryClient, [
+        {
+          key: queryKeys.tournament(tournamentId),
+          update: (data) => {
+            const t = data as { teams?: Array<{ teamId?: string }> };
+            return Array.isArray(t?.teams) ? { ...t, teams: t.teams.filter((x) => x.teamId !== teamId) } : data;
+          },
+        },
+      ]),
+    onError: (_err, _vars, context) => rollbackOptimisticEdits(queryClient, context),
+    onSettled: (_data, _err, variables) =>
+      refreshAll(queryClient, [queryKeys.tournaments(), queryKeys.tournament(variables.tournamentId)]),
   });
 }
 
@@ -553,11 +676,10 @@ export function useDeleteTournament() {
     mutationFn: async (id: string) => {
       await apiClient.tournaments.delete(id);
     },
-    onSuccess: (_, id) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.tournaments() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.tournament(id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.matches(id) });
-    },
+    onMutate: (id: string) =>
+      applyOptimisticEdits(queryClient, [{ key: queryKeys.tournaments(), update: removeById(id) }]),
+    onError: (_err, _id, context) => rollbackOptimisticEdits(queryClient, context),
+    onSettled: () => refreshAll(queryClient, [queryKeys.tournaments()]),
   });
 }
 
@@ -595,11 +717,12 @@ export function useCreateMatch() {
       if (!res.ok) throw new Error(res.message ?? 'Failed to create match');
       return res.data!;
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['matches'] });
-      queryClient.invalidateQueries({ queryKey: queryKeys.matches(data.tournamentId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.match(data.id) });
-    },
+    onSuccess: (data) =>
+      refreshAll(queryClient, [
+        ['matches'],
+        queryKeys.matches(data.tournamentId),
+        queryKeys.match(data.id),
+      ]),
   });
 }
 
@@ -611,11 +734,14 @@ export function useUpdateMatch() {
       if (!res.ok) throw new Error(res.message ?? 'Failed to update match');
       return res.data!;
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['matches'] });
-      queryClient.invalidateQueries({ queryKey: queryKeys.matches(data.tournamentId as string) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.match(data.id) });
-    },
+    // Status, date, venue, scores and the assigned statistician change on screen immediately.
+    onMutate: ({ id, data }) =>
+      applyOptimisticEdits(queryClient, [
+        { key: ['matches'], update: patchById(id, data) },
+        { key: queryKeys.match(id), update: patchRecord(data) },
+      ]),
+    onError: (_err, _vars, context) => rollbackOptimisticEdits(queryClient, context),
+    onSettled: (_data, _err, { id }) => refreshAll(queryClient, [['matches'], queryKeys.match(id)]),
   });
 }
 
@@ -625,10 +751,13 @@ export function useDeleteMatch() {
     mutationFn: async (id: string) => {
       await apiClient.matches.delete(id);
     },
-    onSuccess: (_, id) => {
-      queryClient.invalidateQueries({ queryKey: ['matches'] });
-      queryClient.invalidateQueries({ queryKey: queryKeys.match(id) });
-    },
+    // The game leaves every fixtures list the moment it's deleted; it comes back with an error if
+    // the server refuses.
+    onMutate: (id: string) => applyOptimisticEdits(queryClient, [{ key: ['matches'], update: removeById(id) }]),
+    onError: (_err, _id, context) => rollbackOptimisticEdits(queryClient, context),
+    // Refresh the lists only. Refetching the deleted match's own record would 404 and flash an
+    // error on its detail page just before it navigates away.
+    onSettled: () => refreshAll(queryClient, [['matches'], queryKeys.tournaments()]),
   });
 }
 
@@ -664,9 +793,10 @@ export function useCreateAdmin() {
       if (!res.ok) throw new Error(res.message ?? 'Failed to create admin');
       return res.data!;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.admins() });
-    },
+    onSuccess: () =>
+      refreshAll(queryClient, [
+        queryKeys.admins(),
+      ]),
   });
 }
 
@@ -681,10 +811,11 @@ export function useUpdateAdmin() {
       if (!res.ok) throw new Error(res.message ?? 'Failed to update admin');
       return res.data!;
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.admins() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.admin(data.id) });
-    },
+    onSuccess: (data) =>
+      refreshAll(queryClient, [
+        queryKeys.admins(),
+        queryKeys.admin(data.id),
+      ]),
   });
 }
 
@@ -745,9 +876,10 @@ export function useCreateStatistician() {
       if (!res.ok) throw new Error(res.message ?? 'Failed to create statistician');
       return res.data!;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.statisticians() });
-    },
+    onSuccess: () =>
+      refreshAll(queryClient, [
+        queryKeys.statisticians(),
+      ]),
   });
 }
 
@@ -762,10 +894,11 @@ export function useUpdateStatistician() {
       if (!res.ok) throw new Error(res.message ?? 'Failed to update statistician');
       return res.data!;
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.statisticians() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.statistician(data.id) });
-    },
+    onSuccess: (data) =>
+      refreshAll(queryClient, [
+        queryKeys.statisticians(),
+        queryKeys.statistician(data.id),
+      ]),
   });
 }
 
@@ -777,10 +910,11 @@ export function useUploadStatisticianPhoto() {
       if (!res.ok) throw new Error(res.message ?? 'Failed to upload statistician photo');
       return res.data!;
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.statisticians() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.statistician(data.id) });
-    },
+    onSuccess: (data) =>
+      refreshAll(queryClient, [
+        queryKeys.statisticians(),
+        queryKeys.statistician(data.id),
+      ]),
   });
 }
 
@@ -790,10 +924,10 @@ export function useDeleteStatistician() {
     mutationFn: async (id: string) => {
       await apiClient.statistician.delete(id);
     },
-    onSuccess: (_, id) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.statisticians() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.statistician(id) });
-    },
+    onMutate: (id: string) =>
+      applyOptimisticEdits(queryClient, [{ key: queryKeys.statisticians(), update: removeById(id) }]),
+    onError: (_err, _id, context) => rollbackOptimisticEdits(queryClient, context),
+    onSettled: () => refreshAll(queryClient, [queryKeys.statisticians()]),
   });
 }
 

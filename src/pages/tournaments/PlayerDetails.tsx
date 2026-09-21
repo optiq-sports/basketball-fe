@@ -1,6 +1,8 @@
 import React from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useMatch } from '../../api/hooks';
+import { usePlayerGameProjection } from '../../services/statdash';
+import { pickGameSessionId, pickPlayerStats } from './playerMatchStats';
 
 function formatDob(dob?: string | null): string {
   if (!dob) return '—';
@@ -23,6 +25,13 @@ export default function PlayerDetails() {
   const navigate = useNavigate();
   const location = useLocation();
   const matchQuery = useMatch(matchId);
+
+  // Live stats come from the game's projection, which is keyed by session id, not match id.
+  // Only polls while the match is actually live; otherwise it's a single fetch (used as a
+  // fallback when nothing was saved for a finished game).
+  const gameSessionId = pickGameSessionId(matchQuery.data?.gameSessions);
+  const isLive = matchQuery.data?.status === 'LIVE';
+  const projectionQuery = usePlayerGameProjection(gameSessionId, playerId, { live: isLive });
 
   const fromTournamentLeaders = location.state?.from === 'tournament-leaders';
   const fromPlayersPage = location.state?.from === 'players-page';
@@ -69,16 +78,37 @@ export default function PlayerDetails() {
   const opponentName = homeEntry ? (awayTeam?.name ?? DASH) : (homeTeam?.name ?? DASH);
   const tournamentName = match.tournament?.name ?? DASH;
 
-  // Stat summary row — from MatchStat record
-  const pts = playerStat?.points ?? null;
-  const reb = playerStat?.rebounds ?? null;
-  const ast = playerStat?.assists ?? null;
-  const blk = playerStat?.blocks ?? null;
-  const stl = playerStat?.steals ?? null;
-  const pf = playerStat?.fouls ?? null;
-  const to = playerStat?.turnovers ?? null;
+  // Live projection while the game is on; the saved MatchStat record once it's over.
+  const picked = pickPlayerStats({
+    isLive,
+    saved: playerStat
+      ? {
+          points: playerStat.points ?? 0,
+          rebounds: playerStat.rebounds ?? 0,
+          assists: playerStat.assists ?? 0,
+          blocks: playerStat.blocks ?? 0,
+          steals: playerStat.steals ?? 0,
+          fouls: playerStat.fouls ?? 0,
+          turnovers: playerStat.turnovers ?? 0,
+        }
+      : null,
+    projection: projectionQuery.data,
+  });
+  const pts = picked?.stats.points ?? null;
+  const reb = picked?.stats.rebounds ?? null;
+  const ast = picked?.stats.assists ?? null;
+  const blk = picked?.stats.blocks ?? null;
+  const stl = picked?.stats.steals ?? null;
+  const pf = picked?.stats.fouls ?? null;
+  const to = picked?.stats.turnovers ?? null;
 
-  const hasStats = playerStat !== null;
+  const hasStats = picked !== null;
+  // Live but the projection can't be reached (or hasn't loaded): whatever is shown is the last
+  // saved record, which lags the game — say so instead of presenting it as current.
+  const liveUnavailable = isLive && picked?.source !== 'live';
+  const lastUpdated = projectionQuery.dataUpdatedAt
+    ? new Date(projectionQuery.dataUpdatedAt).toLocaleTimeString()
+    : null;
 
   const summaryCards = [
     { label: 'PTS', value: pts ?? DASH },
@@ -152,6 +182,40 @@ export default function PlayerDetails() {
 
         {/* Stat Summary Cards */}
         <div className="bg-white rounded-2xl shadow-sm p-8 mb-8">
+          {isLive && (
+            <div
+              className={`mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm ${
+                liveUnavailable ? 'text-amber-700' : 'text-gray-600'
+              }`}
+              role="status"
+            >
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide ${
+                  liveUnavailable ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700'
+                }`}
+              >
+                <span
+                  className={`size-2 rounded-full ${
+                    liveUnavailable ? 'bg-amber-500' : 'animate-pulse bg-red-500'
+                  }`}
+                />
+                Live
+              </span>
+              {liveUnavailable ? (
+                <span>Live updates unavailable — showing the last saved stats, which may be behind the game.</span>
+              ) : (
+                <span>
+                  Updating every 5 seconds
+                  {lastUpdated ? ` · last updated ${lastUpdated}` : ''}
+                </span>
+              )}
+            </div>
+          )}
+          {!isLive && picked?.source === 'projection' && (
+            <p className="text-xs text-gray-500 mb-4">
+              Final stats haven&rsquo;t been saved for this game yet — showing the game&rsquo;s recorded events.
+            </p>
+          )}
           {!hasStats && (
             <p className="text-sm text-gray-500 mb-4">No recorded stats for this player in this match yet.</p>
           )}

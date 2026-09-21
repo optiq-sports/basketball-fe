@@ -10,6 +10,7 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { useToast } from '../../hooks/useToast';
 import DataTable from '../../components/ui/DataTable';
+import Spinner from '../../components/ui/Spinner';
 
 const POSITION_OPTIONS = [
   { value: 'POINT_GUARD', label: 'Point Guard' },
@@ -140,6 +141,7 @@ const TeamDetails: React.FC = () => {
   const [editPhotoFile, setEditPhotoFile] = useState<File | null>(null);
   const [editPortraitPreview, setEditPortraitPreview] = useState<string | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
 
   const teamQuery = useTeam(id ?? null);
   const playersQuery = usePlayers(id ?? undefined);
@@ -377,11 +379,16 @@ const TeamDetails: React.FC = () => {
                     deleteTeam.mutate(teamData.id, { onSuccess: () => navigate('/teams-management'), onError: (e) => toast.error(e.message) });
                   }
                 }}
-                className="flex items-center gap-2 px-4 py-2 bg-red-500/80 hover:bg-red-600/90 text-white rounded-lg transition-colors backdrop-blur-sm"
+                disabled={deleteTeam.isPending}
+                className="flex items-center gap-2 px-4 py-2 bg-red-500/80 hover:bg-red-600/90 text-white rounded-lg transition-colors backdrop-blur-sm disabled:cursor-not-allowed disabled:opacity-60"
                 title="Delete Team"
               >
-                <FiTrash size={18} />
-                <span className="font-medium">Delete</span>
+                {deleteTeam.isPending ? (
+                  <Spinner className="size-[18px]" />
+                ) : (
+                  <FiTrash size={18} />
+                )}
+                <span className="font-medium">{deleteTeam.isPending ? 'Deleting…' : 'Delete'}</span>
               </button>
             </div>
           </div>
@@ -412,11 +419,11 @@ const TeamDetails: React.FC = () => {
               {/* Team Logo */}
               <div className="relative">
                 <div className="w-40 h-40 relative">
-                  {teamData.logo ? (
+                  {logoPreviewUrl || teamData.logo ? (
                     <img
-                      src={teamData.logo}
+                      src={logoPreviewUrl ?? teamData.logo ?? undefined}
                       alt={teamData.name}
-                      className="relative z-10 w-full h-full object-cover rounded-2xl"
+                      className={`relative z-10 w-full h-full object-cover rounded-2xl transition-opacity ${logoFile ? 'opacity-60' : ''}`}
                     />
                   ) : (
                     <div className="w-full h-full bg-white/20 rounded-2xl flex items-center justify-center">
@@ -425,7 +432,7 @@ const TeamDetails: React.FC = () => {
                   )}
                 </div>
                 <label className="mt-2 inline-block px-3 py-1.5 text-xs font-medium bg-white/20 hover:bg-white/30 text-white rounded-lg cursor-pointer transition-colors">
-                  {logoFile || updateTeam.isPending ? (updateTeam.isPending ? 'Uploading...' : 'Selected') : 'Change logo'}
+                  {logoFile || updateTeam.isPending ? 'Uploading…' : 'Change logo'}
                   <input
                     type="file"
                     accept="image/*"
@@ -435,6 +442,10 @@ const TeamDetails: React.FC = () => {
                       const file = e.target.files?.[0];
                       if (!file || !id) return;
                       setLogoFile(file);
+                      // Show the chosen image immediately; it's replaced by the uploaded one (or
+                      // dropped if the upload fails).
+                      const previewUrl = URL.createObjectURL(file);
+                      setLogoPreviewUrl(previewUrl);
                       try {
                         const res = await uploadFile.mutateAsync(file);
                         await updateTeam.mutateAsync({ id, data: { logo: res.url } });
@@ -443,10 +454,12 @@ const TeamDetails: React.FC = () => {
                         toast.error(err instanceof Error ? err.message : 'Upload failed');
                       } finally {
                         setLogoFile(null);
+                        setLogoPreviewUrl(null);
+                        URL.revokeObjectURL(previewUrl);
                         e.target.value = '';
                       }
                     }}
-                    disabled={updateTeam.isPending}
+                    disabled={updateTeam.isPending || logoFile !== null}
                   />
                 </label>
               </div>

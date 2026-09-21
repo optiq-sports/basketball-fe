@@ -57,7 +57,19 @@ export async function statdashRequest<TResponse>(
   // same pattern as ApiClient.ts (see refreshAccessToken in src/auth/authSession.ts for why
   // this doesn't just call apiClient.auth.refresh()).
   if (response.status === 401 && token) {
-    const newToken = await refreshAccessToken();
+    let newToken: string | null;
+    try {
+      newToken = await refreshAccessToken();
+    } catch (error) {
+      // The refresh call itself couldn't complete (network dropped mid-flight, server error).
+      // That says nothing about the session, so don't wipe it — report a network failure (status
+      // 0), which the event queue treats as "keep this command and retry later".
+      throw new StatDashApiError(
+        error instanceof Error ? error.message : 'Network unavailable',
+        0,
+        'NETWORK_ERROR',
+      );
+    }
     if (newToken) {
       token = newToken;
       ({ response, payload } = await performFetch<TResponse>(endpoint, init, token));

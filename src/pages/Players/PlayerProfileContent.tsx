@@ -2,34 +2,34 @@ import React from 'react';
 import { resolvePlayerPhotoUrl, handlePhotoLoadError } from '../../utils/playerPhotoPlaceholder';
 import type { Player, Team } from '../../types/api';
 
-const PLACEHOLDER_GAMES = Array(4).fill({
-  opponent: 'vs TEAM, DATE',
-  phase: 'Tournament phase',
-  pts: '—',
-  fg: '—',
-  twoFg: '—',
-  threeFg: '—',
-  ft: '—',
-  reb: '—',
-  oreb: '—',
-  dreb: '—',
-  ast: '—',
-  stl: '—',
-  blk: '—',
-  pf: '—',
-  to: '—',
-  plusMinus: '—',
-  eff: '—',
-});
+/** One entry of `recentMatches` on GET /players/:id (see PlayersService.findOne). */
+interface RecentMatch {
+  matchId: string;
+  opponent: string | null;
+  scheduledDate?: string | null;
+  points: number;
+  rebounds: number;
+  assists: number;
+  blocks: number;
+  steals: number;
+  fouls: number;
+  turnovers: number;
+}
 
-const STAT_SUMMARY = [
-  { label: 'PPG', value: '—' },
-  { label: 'RPG', value: '—' },
-  { label: 'APG', value: '—' },
-  { label: 'BPG', value: '—' },
-  { label: 'SPG', value: '—' },
-  { label: 'FG%', value: '—' },
-];
+// Stat columns after the "Game(s)" label, in table order. Only some are tracked per game by the
+// backend; the rest (FG splits, OREB/DREB, +/-, EFF) stay "—" until it records them.
+const STAT_COLUMNS = ['PTS', 'FG', '2PT FG', '3PT FG', 'FT', 'REB', 'OREB', 'DREB', 'AST', 'STL', 'BLK', 'PF', 'TO', '+/-', 'EFF'] as const;
+
+function statCells(m: Pick<RecentMatch, 'points' | 'rebounds' | 'assists' | 'steals' | 'blocks' | 'fouls' | 'turnovers'>, digits = 0): string[] {
+  const f = (n: number) => (digits === 0 ? String(n) : n.toFixed(digits));
+  return [f(m.points), '—', '—', '—', '—', f(m.rebounds), '—', '—', f(m.assists), f(m.steals), f(m.blocks), f(m.fouls), f(m.turnovers), '—', '—'];
+}
+
+function formatGameDate(raw: string | null | undefined): string {
+  if (!raw) return '';
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
 
 function formatDateOfBirth(raw: string | undefined): string {
   if (!raw) return '—';
@@ -48,6 +48,29 @@ const PlayerProfileContent: React.FC<PlayerProfileContentProps> = ({ player, tea
   const teamName = team?.name ?? (player as { teamName?: string }).teamName ?? (player.teamId ? '—' : 'No team');
   const dobDisplay = formatDateOfBirth(player.dateOfBirth);
   const positionLabel = typeof player.position === 'string' ? player.position.replace(/_/g, ' ') : '—';
+
+  const recentRaw = (player as { recentMatches?: RecentMatch[] }).recentMatches;
+  const recentMatches: RecentMatch[] = Array.isArray(recentRaw) ? recentRaw : [];
+  const totals = recentMatches.reduce(
+    (t, m) => ({
+      points: t.points + m.points, rebounds: t.rebounds + m.rebounds, assists: t.assists + m.assists,
+      steals: t.steals + m.steals, blocks: t.blocks + m.blocks, fouls: t.fouls + m.fouls, turnovers: t.turnovers + m.turnovers,
+    }),
+    { points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0, fouls: 0, turnovers: 0 },
+  );
+  const n = recentMatches.length;
+  const averages = n > 0
+    ? { points: totals.points / n, rebounds: totals.rebounds / n, assists: totals.assists / n, steals: totals.steals / n, blocks: totals.blocks / n, fouls: totals.fouls / n, turnovers: totals.turnovers / n }
+    : null;
+  const avg1 = (v: number | undefined) => (v == null ? '—' : v.toFixed(1));
+  const statSummary = [
+    { label: 'PPG', value: avg1(averages?.points) },
+    { label: 'RPG', value: avg1(averages?.rebounds) },
+    { label: 'APG', value: avg1(averages?.assists) },
+    { label: 'BPG', value: avg1(averages?.blocks) },
+    { label: 'SPG', value: avg1(averages?.steals) },
+    { label: 'FG%', value: '—' },
+  ];
 
   return (
     <div>
@@ -107,7 +130,7 @@ const PlayerProfileContent: React.FC<PlayerProfileContentProps> = ({ player, tea
 
       <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-theme-sm p-8 mb-8">
         <div className="grid grid-cols-6 gap-6">
-          {STAT_SUMMARY.map((stat, i) => (
+          {statSummary.map((stat, i) => (
             <div key={i} className="bg-brand-500 rounded-xl p-6 text-center text-white">
               <div className="text-3xl font-bold mb-2">{stat.value}</div>
               <div className="text-sm text-brand-100">{stat.label}</div>
@@ -141,39 +164,36 @@ const PlayerProfileContent: React.FC<PlayerProfileContentProps> = ({ player, tea
                 </tr>
               </thead>
               <tbody>
-                {PLACEHOLDER_GAMES.map((game, index) => (
-                  <tr key={index} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-white/[0.02]">
-                    <td className="px-4 py-4">
-                      <div className="text-sm font-medium text-brand-700 dark:text-brand-400">{game.opponent}</div>
-                      <div className="text-xs text-gray-600 dark:text-gray-400">{game.phase}</div>
+                {recentMatches.length === 0 && (
+                  <tr className="border-b border-gray-100 dark:border-gray-800">
+                    <td colSpan={STAT_COLUMNS.length + 1} className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+                      No recorded games yet.
                     </td>
-                    <td className="px-4 py-4 text-center text-sm text-gray-800 dark:text-gray-300">{game.pts}</td>
-                    <td className="px-4 py-4 text-center text-sm text-gray-800 dark:text-gray-300">{game.fg}</td>
-                    <td className="px-4 py-4 text-center text-sm text-gray-800 dark:text-gray-300">{game.twoFg}</td>
-                    <td className="px-4 py-4 text-center text-sm text-gray-800 dark:text-gray-300">{game.threeFg}</td>
-                    <td className="px-4 py-4 text-center text-sm text-gray-800 dark:text-gray-300">{game.ft}</td>
-                    <td className="px-4 py-4 text-center text-sm text-gray-800 dark:text-gray-300">{game.reb}</td>
-                    <td className="px-4 py-4 text-center text-sm text-gray-800 dark:text-gray-300">{game.oreb}</td>
-                    <td className="px-4 py-4 text-center text-sm text-gray-800 dark:text-gray-300">{game.dreb}</td>
-                    <td className="px-4 py-4 text-center text-sm text-gray-800 dark:text-gray-300">{game.ast}</td>
-                    <td className="px-4 py-4 text-center text-sm text-gray-800 dark:text-gray-300">{game.stl}</td>
-                    <td className="px-4 py-4 text-center text-sm text-gray-800 dark:text-gray-300">{game.blk}</td>
-                    <td className="px-4 py-4 text-center text-sm text-gray-800 dark:text-gray-300">{game.pf}</td>
-                    <td className="px-4 py-4 text-center text-sm text-gray-800 dark:text-gray-300">{game.to}</td>
-                    <td className="px-4 py-4 text-center text-sm text-gray-800 dark:text-gray-300">{game.plusMinus}</td>
-                    <td className="px-4 py-4 text-center text-sm text-gray-800 dark:text-gray-300">{game.eff}</td>
+                  </tr>
+                )}
+                {recentMatches.map((game) => (
+                  <tr key={game.matchId} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-white/[0.02]">
+                    <td className="px-4 py-4">
+                      <div className="text-sm font-medium text-brand-700 dark:text-brand-400">
+                        {game.opponent ? `vs ${game.opponent}` : 'Game'}
+                      </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400">{formatGameDate(game.scheduledDate)}</div>
+                    </td>
+                    {statCells(game).map((cell, i) => (
+                      <td key={i} className="px-4 py-4 text-center text-sm text-gray-800 dark:text-gray-300">{cell}</td>
+                    ))}
                   </tr>
                 ))}
                 <tr className="bg-brand-50 dark:bg-brand-500/10 border-b border-gray-200 dark:border-gray-800">
                   <td className="px-4 py-4 text-sm font-semibold text-brand-900 dark:text-brand-300">Cumulative</td>
-                  {Array(15).fill(0).map((_, i) => (
-                    <td key={i} className="px-4 py-4 text-center text-sm font-medium text-gray-800 dark:text-gray-300">—</td>
+                  {(n > 0 ? statCells(totals) : STAT_COLUMNS.map(() => '—')).map((cell, i) => (
+                    <td key={i} className="px-4 py-4 text-center text-sm font-medium text-gray-800 dark:text-gray-300">{cell}</td>
                   ))}
                 </tr>
                 <tr className="bg-brand-50 dark:bg-brand-500/10">
                   <td className="px-4 py-4 text-sm font-semibold text-brand-900 dark:text-brand-300">Average</td>
-                  {Array(15).fill(0).map((_, i) => (
-                    <td key={i} className="px-4 py-4 text-center text-sm font-medium text-gray-800 dark:text-gray-300">—</td>
+                  {(averages ? statCells(averages, 1) : STAT_COLUMNS.map(() => '—')).map((cell, i) => (
+                    <td key={i} className="px-4 py-4 text-center text-sm font-medium text-gray-800 dark:text-gray-300">{cell}</td>
                   ))}
                 </tr>
               </tbody>
@@ -181,7 +201,9 @@ const PlayerProfileContent: React.FC<PlayerProfileContentProps> = ({ player, tea
           </div>
         </div>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-3 text-center">
-          Stats will appear here when game data is available from the backend.
+          {n > 0
+            ? `Based on the player's ${n} most recent recorded game${n === 1 ? '' : 's'}. Shooting splits, OREB/DREB, +/- and EFF aren't tracked per game yet.`
+            : 'Stats will appear here once this player has recorded games.'}
         </p>
       </div>
     </div>

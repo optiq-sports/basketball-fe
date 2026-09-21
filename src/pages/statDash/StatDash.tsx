@@ -74,8 +74,36 @@ import {
   fullRoster,
   LINEUP_SLOTS,
   lineupIsComplete,
+  swapPlayers,
 } from "./substitutionLineupUtils";
-import { readGameSetupOrientation } from "../gameSetupOrientation";
+import LogEditorModal from "./components/LogEditorModal";
+import {
+  lastClockEvent,
+  readClockAnchor,
+  restoreClock,
+  writeClockAnchor,
+} from "../../features/statdash/clockAnchor";
+import {
+  actionTitle,
+  buildCorrectedPayload,
+  toCommandPayload,
+  canSwapBack,
+  describeUndo,
+  draftPoints,
+  editScoreDelta,
+  isDraftDirty,
+  planUndo,
+  pointsOf,
+  shotValueFor,
+  substitutionEditOptions,
+  syncStateFor,
+  type CorrectionContext,
+} from "./logEdit/logEditModel";
+import {
+  readGameSetupOrientation,
+  readGameSetupOrientationForSession,
+  writeGameSetupOrientation,
+} from "../gameSetupOrientation";
 import {
   clearJumpBallWinnerTeamId,
   readJumpBallWinnerTeamId,
@@ -190,6 +218,24 @@ const StatDash: React.FC = () => {
   // Backend GameSession.status (PENDING/IN_PROGRESS/PAUSED/COMPLETED/CANCELLED) — distinct from
   // `isRunning`, which only tracks the local clock. Drives the Pause/Resume/Finish/Cancel menu.
   const [sessionStatus, setSessionStatus] = useState<string>("PENDING");
+
+  // The clock is remembered on this device at every change, so a reload, reconnect or resync brings
+  // back the clock the statistician left (stopped, running, or paused) instead of guessing from the
+  // session status. Read through refs so saving never depends on a value from an older render.
+  const clockRefs = useRef({ isRunning: false, seconds: QUARTER_DURATION_SEC, quarter: 1, status: "PENDING" });
+  const saveClockAnchor = useCallback((secondsOverride?: number) => {
+    const context = readStoredSessionContext();
+    if (!context) return;
+    const c = clockRefs.current;
+    writeClockAnchor({
+      sessionId: context.sessionId,
+      isRunning: c.isRunning,
+      seconds: secondsOverride ?? c.seconds,
+      period: c.quarter,
+      status: c.status,
+      at: Date.now(),
+    });
+  }, []);
   const [isTogglingPause, setIsTogglingPause] = useState(false);
   const [finishConfirmOpen, setFinishConfirmOpen] = useState(false);
   const [isFinishingSession, setIsFinishingSession] = useState(false);
@@ -247,7 +293,8 @@ const StatDash: React.FC = () => {
   );
   const [editingLog, setEditingLog] = useState<GameLogEntry | null>(null);
   const [editDraft, setEditDraft] = useState<Record<string, unknown>>({});
-  const [isReconcilingLog, setIsReconcilingLog] = useState(false);
+  /** The draft as it was when the editor opened, so Save can tell whether anything changed. */
+  const [editInitial, setEditInitial] = useState<Record<string, unknown>>({});
   const [switchSidesOpen, setSwitchSidesOpen] = useState(false);
   const [startersModalOpen, setStartersModalOpen] = useState(false);
 
@@ -331,6 +378,12 @@ const StatDash: React.FC = () => {
     pendingCourtClickRef.current = null;
   }, []);
 
+  clockRefs.current = { isRunning, seconds: timerSeconds, quarter, status: sessionStatus };
+  useEffect(() => {
+    if (isBootstrapping) return;
+    saveClockAnchor();
+  }, [isBootstrapping, isRunning, quarter, sessionStatus, saveClockAnchor]);
+
   const clockLabel = formatClock(timerSeconds);
   const periodLabel = formatPeriodLabel(quarter);
 
@@ -354,6 +407,16 @@ const StatDash: React.FC = () => {
     ]);
   }, []);
   const latestVersionRef = useRef<number>(readStoredExpectedVersion());
+  // The session version only ever goes up, but a version read from GET /state can be OLDER than
+  // one we already got back from a command: the backend serves /state from a 30-second snapshot
+  // cache, and starting/pausing a session neither bumps the version nor clears that cache. Taking
+  // such a read at face value moved our version backwards, so the next command was sent stale and
+  // rejected. Anything that isn't a direct answer to one of our own commands goes through here.
+  const raiseKnownVersion = useCallback((version: number) => {
+    if (version <= latestVersionRef.current) return;
+    latestVersionRef.current = version;
+    writeStoredExpectedVersion(version);
+  }, []);
   const pendingCountRef = useRef(0);
   const queueRef = useRef<QueuedEvent[]>([]);
   const markersRestoredRef = useRef(false);
@@ -366,8 +429,17 @@ const StatDash: React.FC = () => {
     useRef<SessionStateSnapshot["activeLineups"]>(undefined);
 
   const applyAuthoritativeState = useCallback(
-    (state: SessionStateSnapshot, opts?: { trustScore?: boolean }) => {
+    (
+      state: SessionStateSnapshot,
+      opts?: {
+        trustScore?: boolean;
+        /** Take the quarter and clock from the server. Off for background resyncs: this device's
+         * clock is the live one, and the server's copy can be stale (its /state is cached). */
+        applyClock?: boolean;
+      },
+    ) => {
       const trustScore = opts?.trustScore ?? true;
+      const applyClock = opts?.applyClock ?? true;
       if (trustScore) {
         setHomeScore(state.score.home);
         setAwayScore(state.score.away);
@@ -382,9 +454,15 @@ const StatDash: React.FC = () => {
         setHomeScore((prev) => Math.max(prev, state.score.home));
         setAwayScore((prev) => Math.max(prev, state.score.away));
       }
-      setQuarter(state.quarter);
-      setTimerSeconds(state.clockSecondsRemaining);
-      setIsRunning(state.status === "IN_PROGRESS");
+      if (applyClock) {
+        setQuarter(state.quarter);
+        setTimerSeconds(state.clockSecondsRemaining);
+      }
+      // "In progress" only means the game has started — the statistician can stop the clock at a
+      // dead ball without the session leaving it. So a server state can stop the clock (game
+      // paused, finished, not started) but must never start it: whether it is running is decided
+      // by the clock's own start/stop, restored from what was remembered (see restoreClock).
+      if (state.status !== "IN_PROGRESS") setIsRunning(false);
       setSessionStatus(state.status);
     },
     [],
@@ -453,6 +531,7 @@ const StatDash: React.FC = () => {
     [playerRefByPlayerId],
   );
 
+  const getQueueRef = useRef<() => QueuedEvent[]>(() => []);
   const {
     enqueue,
     queue,
@@ -461,21 +540,33 @@ const StatDash: React.FC = () => {
     isOnline,
     retryFailed,
     discardEvent,
+    updateEvent,
+    getQueue,
   } = useEventQueue({
       getLatestVersion: () => latestVersionRef.current,
+      onVersionObserved: raiseKnownVersion,
       onCommandAccepted: (event, response) => {
         writeStoredExpectedVersion(response.version);
         latestVersionRef.current = response.version;
-        // Never regress the displayed score here: commands in this queue are processed
-        // strictly in order, but the user can tap several actions (e.g. Made FT, Miss FT,
-        // Made FT) before any of their network responses land. Each response only reflects
-        // the backend's state as of *that* command, which can be briefly behind an already-
-        // applied optimistic update from a later tap. A real correction/reversal never goes
-        // through this callback (see applyAuthoritativeState's trustScore:true default) —
-        // it always calls setHomeScore/setAwayScore directly, so a legitimate decrease is
-        // never blocked by this guard.
-        setHomeScore((prev) => Math.max(prev, response.score.home));
-        setAwayScore((prev) => Math.max(prev, response.score.away));
+        // Commands in this queue are processed strictly in order, but the user can tap several
+        // actions (e.g. Made FT, Miss FT, Made FT) before any of their network responses land.
+        // Each response only reflects the backend's state as of *that* command, which can be
+        // briefly behind an already-applied optimistic update from a later tap — so a response
+        // must not drag the displayed score backwards while more is still on its way.
+        // Once nothing else is waiting to be sent, this response IS the server's current score,
+        // so take it as-is — that lets an undo or edit legitimately lower the score and corrects
+        // any drift in the local arithmetic. While other plays are still in flight it only ever
+        // moves up, because it can be behind plays already applied locally.
+        const othersWaiting = getQueueRef.current().some(
+          (q) => q.localId !== event.localId && (q.status === "pending" || q.status === "inflight"),
+        );
+        if (othersWaiting) {
+          setHomeScore((prev) => Math.max(prev, response.score.home));
+          setAwayScore((prev) => Math.max(prev, response.score.away));
+        } else {
+          setHomeScore(response.score.home);
+          setAwayScore(response.score.away);
+        }
         if (pendingCountRef.current === 0) {
           setSyncNotice(null);
         }
@@ -497,6 +588,7 @@ const StatDash: React.FC = () => {
         }
       },
     });
+  getQueueRef.current = getQueue;
 
   useEffect(() => {
     if (matchForNamesQuery.data?.homeTeam?.name)
@@ -595,7 +687,7 @@ const StatDash: React.FC = () => {
     async (
       commandType: string,
       payload: Record<string, unknown>,
-      options?: { stampClock?: boolean; parentEventId?: string },
+      options?: { stampClock?: boolean; parentEventId?: string; parentLocalId?: string },
     ): Promise<(CommandAcceptedResponse & { localId: string }) | null> => {
       const context = readStoredSessionContext();
       if (!context) {
@@ -636,6 +728,7 @@ const StatDash: React.FC = () => {
         expectedVersion: latestVersionRef.current,
         localId: idempotencyKey,
         parentEventId: options?.parentEventId,
+        parentLocalId: options?.parentLocalId,
       });
 
       return {
@@ -699,10 +792,44 @@ const StatDash: React.FC = () => {
           sessionId: context.sessionId,
         });
         applyAuthoritativeState(snapshot);
+        // Bring back the clock exactly as it was left: stopped stays stopped, running keeps
+        // counting, and a just-paused game stays paused even if the server's cached status lags.
+        const restoredClock = restoreClock({
+          serverStatus: snapshot.status,
+          serverSeconds: snapshot.clockSecondsRemaining,
+          anchor: readClockAnchor(context.sessionId),
+          serverClockEvent: lastClockEvent(snapshot.recentEvents),
+        });
+        setIsRunning(restoredClock.isRunning);
+        setTimerSeconds(restoredClock.seconds);
+        setSessionStatus(restoredClock.status as typeof snapshot.status);
         writeStoredExpectedVersion(snapshot.version);
         latestVersionRef.current = snapshot.version;
         recentEventsRef.current = snapshot.recentEvents ?? [];
         activeLineupsRef.current = snapshot.activeLineups;
+        // Court orientation (Backend Gap #17). This tab's own saved choice wins — it is what the
+        // statistician actually picked — and the backend is brought in line with it if it differs
+        // (this also heals sessions created before the backend stored orientation, which sit at
+        // the true/true default). With nothing saved for this session (new device, cleared
+        // storage) the backend's value is adopted instead.
+        const localOrientation = readGameSetupOrientationForSession(
+          snapshot.sessionId,
+        );
+        if (localOrientation) {
+          if (
+            localOrientation.homeOnLeft !== snapshot.orientation.homeOnLeft ||
+            localOrientation.homeAttacksLeft !==
+              snapshot.orientation.homeAttacksLeft
+          ) {
+            void sessionsApi
+              .updateOrientation(snapshot.sessionId, localOrientation)
+              .catch(() => undefined);
+          }
+        } else {
+          setHomeOnLeft(snapshot.orientation.homeOnLeft);
+          setHomeAttacksLeft(snapshot.orientation.homeAttacksLeft);
+          writeGameSetupOrientation(snapshot.orientation, snapshot.sessionId);
+        }
         const winningTeamId = readJumpBallWinnerTeamId();
         if (winningTeamId && snapshot.status !== "IN_PROGRESS") {
           // The pre-game JumpBall page only stored this locally before — now it's sent
@@ -956,9 +1083,8 @@ const StatDash: React.FC = () => {
 
       try {
         const latest = await sessionsApi.getSessionState(context.sessionId);
-        applyAuthoritativeState(latest, { trustScore: false });
-        latestVersionRef.current = latest.version;
-        writeStoredExpectedVersion(latest.version);
+        applyAuthoritativeState(latest, { trustScore: false, applyClock: false });
+        raiseKnownVersion(latest.version);
         setSyncNotice(null);
       } catch {
         setSyncNotice("Realtime sync update failed. Pull to refresh state.");
@@ -973,9 +1099,8 @@ const StatDash: React.FC = () => {
           try {
             const latest = await sessionsApi.getSessionState(context.sessionId);
             if (latest.version > latestVersionRef.current) {
-              applyAuthoritativeState(latest, { trustScore: false });
-              latestVersionRef.current = latest.version;
-              writeStoredExpectedVersion(latest.version);
+              applyAuthoritativeState(latest, { trustScore: false, applyClock: false });
+              raiseKnownVersion(latest.version);
             }
           } catch {
             setSyncNotice(
@@ -1013,11 +1138,15 @@ const StatDash: React.FC = () => {
     }
     setIsStartingGame(true);
     try {
-      await sessionsApi.startSession(context.sessionId);
+      const started = await sessionsApi.startSession(context.sessionId);
       const latest = await sessionsApi.getSessionState(context.sessionId);
-      writeStoredExpectedVersion(latest.version);
-      latestVersionRef.current = latest.version;
-      applyAuthoritativeState(latest);
+      raiseKnownVersion(latest.version);
+      // Status comes from the start call itself, not the (cached) state read.
+      applyAuthoritativeState(
+        { ...latest, status: started.status as typeof latest.status },
+        { applyClock: false },
+      );
+      setIsRunning(true);
       setQuarterBreakPending(false);
       setStartGamePromptOpen(false);
     } catch {
@@ -1044,15 +1173,21 @@ const StatDash: React.FC = () => {
     }
     setIsTogglingPause(true);
     try {
-      if (sessionStatus === "PAUSED") {
-        await sessionsApi.startSession(context.sessionId);
-      } else {
-        await sessionsApi.pauseSession(context.sessionId);
-      }
+      // The status comes from the pause/start call itself. Re-reading it from GET /state would
+      // return the backend's cached snapshot, which isn't cleared by a pause and still says the
+      // game is in progress — flipping the screen straight back to "running".
+      const updated =
+        sessionStatus === "PAUSED"
+          ? await sessionsApi.startSession(context.sessionId)
+          : await sessionsApi.pauseSession(context.sessionId);
       const latest = await sessionsApi.getSessionState(context.sessionId);
-      writeStoredExpectedVersion(latest.version);
-      latestVersionRef.current = latest.version;
-      applyAuthoritativeState(latest);
+      raiseKnownVersion(latest.version);
+      applyAuthoritativeState(
+        { ...latest, status: updated.status as typeof latest.status },
+        { applyClock: false },
+      );
+      // Resuming runs the clock again; pausing stops it.
+      setIsRunning(updated.status === "IN_PROGRESS");
     } catch (error) {
       setSyncNotice(
         error instanceof Error
@@ -1111,13 +1246,14 @@ const StatDash: React.FC = () => {
         Math.min(MAX_TIMER_SECONDS, timerSeconds + delta),
       );
       setTimerSeconds(next);
+      saveClockAnchor(next);
       void commitEventCommand("clock", {
         period: quarter,
         clockSecondsRemaining: next,
         isRunning,
       });
     },
-    [commitEventCommand, timerSeconds, quarter, isRunning],
+    [commitEventCommand, saveClockAnchor, timerSeconds, quarter, isRunning],
   );
 
   const onAdjustSeconds = useCallback(
@@ -1127,13 +1263,14 @@ const StatDash: React.FC = () => {
         Math.min(MAX_TIMER_SECONDS, timerSeconds + delta),
       );
       setTimerSeconds(next);
+      saveClockAnchor(next);
       void commitEventCommand("clock", {
         period: quarter,
         clockSecondsRemaining: next,
         isRunning,
       });
     },
-    [commitEventCommand, timerSeconds, quarter, isRunning],
+    [commitEventCommand, saveClockAnchor, timerSeconds, quarter, isRunning],
   );
 
   const onStartStop = useCallback(() => {
@@ -1591,15 +1728,11 @@ const StatDash: React.FC = () => {
         typeof draft.ftAssistJersey === "number" ? draft.ftAssistJersey : null;
 
       // Each free throw is its own backend command, sent the moment it's tapped.
-      // Backend Gap #15: carry the fouling event's real backend ID as parentEventId so
-      // reversing the foul later cascades to reverse its free throws too. It may not have
-      // synced yet (network still in flight) — in that case this FT just isn't linked,
-      // same as before this fix; every later FT in the sequence gets another chance.
-      const foulLocalId = currentFoulLocalIdRef.current;
-      const parentEventId = foulLocalId
-        ? gameLogRef.current.find((entry) => entry.localId === foulLocalId)
-            ?.backendEventId
-        : undefined;
+      // Backend Gap #15: a free throw belongs to the foul that awarded it, so reversing the foul
+      // later removes them together. It's linked by the foul's queue id and resolved to its real
+      // event id at the moment the free throw is sent — so the link exists even if the foul was
+      // still syncing when this was tapped.
+      const parentLocalId = currentFoulLocalIdRef.current ?? undefined;
       void (async () => {
         const cmd = await commitEventCommand(
           "free_throw",
@@ -1617,7 +1750,7 @@ const StatDash: React.FC = () => {
                 }
               : {}),
           },
-          { parentEventId },
+          { parentLocalId },
         );
         if (attempt === 1) ftFirstLocalIdRef.current = cmd?.localId ?? null;
         appendLog({
@@ -1637,6 +1770,7 @@ const StatDash: React.FC = () => {
             foulerSide: draft.foulerSide,
             foulerJersey: draft.foulerJersey,
             foulType: draft.foulType,
+            parentLocalId,
           },
         });
         // One assist max for the whole sequence, shown once at least one FT is made.
@@ -3162,16 +3296,30 @@ const StatDash: React.FC = () => {
       return;
     const homeDiff = diffLineupOnCourt(homeLineup, subDraftHome);
     const awayDiff = diffLineupOnCourt(awayLineup, subDraftAway);
-    const summary = `${formatSubstitutionDiff(homeName, homeDiff)} · ${formatSubstitutionDiff(awayName, awayDiff)}`;
-    // Full resulting five-man lineups (not just the swapped pair) so the backend can persist
-    // a restorable snapshot — see Backend Gap #10. Same target lineup on every command in this
-    // batch since subDraftHome/subDraftAway don't change until the whole submission completes.
-    const homeLineupIds = compactOnCourt(subDraftHome).map((jersey) =>
-      getPlayerId("home", jersey),
-    );
-    const awayLineupIds = compactOnCourt(subDraftAway).map((jersey) =>
-      getPlayerId("away", jersey),
-    );
+    // Every command carries the full five-man lineups (not just the swapped pair) so the
+    // backend can persist a restorable snapshot — see Backend Gap #10. Each command must carry
+    // the lineups *as they stand after that one swap*, not the batch's final target: the
+    // backend validates playerOutId is on court and playerInId is not, against the snapshot
+    // left by the previous command. Sending the final lineup on every command made the first
+    // command apply every swap at once, so the second command's playerOutId was already gone
+    // ("not on court") and its playerInId already in ("already on court") — which broke any
+    // submit with more than one swap, including one swap per team.
+    const runningLineups: Record<TeamSide, string[]> = {
+      home: compactOnCourt(homeLineup).map((jersey) =>
+        getPlayerId("home", jersey),
+      ),
+      away: compactOnCourt(awayLineup).map((jersey) =>
+        getPlayerId("away", jersey),
+      ),
+    };
+    // One log row per swap, each tied to its own command, so a single swap can be undone (and
+    // shows whether it has synced) without touching the others.
+    const committedSwaps: Array<{
+      side: TeamSide;
+      outJersey: number;
+      inJersey: number;
+      localId: string;
+    }> = [];
     void (async () => {
       try {
         const submitTeamSubs = async (
@@ -3185,12 +3333,17 @@ const StatDash: React.FC = () => {
             return false;
           }
           for (let idx = 0; idx < diff.out.length; idx += 1) {
+            const outId = getPlayerId(side, diff.out[idx]);
+            const inId = getPlayerId(side, diff.in[idx]);
+            runningLineups[side] = runningLineups[side].map((id) =>
+              id === outId ? inId : id,
+            );
             const committed = await commitEventCommand("substitution", {
               teamId: getTeamIdForSide(side),
-              playerOutId: getPlayerId(side, diff.out[idx]),
-              playerInId: getPlayerId(side, diff.in[idx]),
-              homeLineup: homeLineupIds,
-              awayLineup: awayLineupIds,
+              playerOutId: outId,
+              playerInId: inId,
+              homeLineup: runningLineups.home,
+              awayLineup: runningLineups.away,
             });
             if (!committed) {
               setSyncNotice(
@@ -3198,6 +3351,12 @@ const StatDash: React.FC = () => {
               );
               return false;
             }
+            committedSwaps.push({
+              side,
+              outJersey: diff.out[idx],
+              inJersey: diff.in[idx],
+              localId: committed.localId,
+            });
           }
           return true;
         };
@@ -3205,14 +3364,22 @@ const StatDash: React.FC = () => {
         if (!(await submitTeamSubs("home", homeDiff))) return;
         if (!(await submitTeamSubs("away", awayDiff))) return;
 
-        appendLog({
-          period: periodLabel,
-          clock: clockLabel,
-          team: "—",
-          player: "—",
-          action: "substitution",
-          result: summary,
-        });
+        for (const swap of committedSwaps) {
+          appendLog({
+            period: periodLabel,
+            clock: clockLabel,
+            team: swap.side === "home" ? homeName : awayName,
+            player: "—",
+            action: "substitution",
+            result: `Out ${getPlayerLabel(swap.side, swap.outJersey)} · In ${getPlayerLabel(swap.side, swap.inJersey)}`,
+            localId: swap.localId,
+            meta: {
+              side: swap.side,
+              outJersey: swap.outJersey,
+              inJersey: swap.inJersey,
+            },
+          });
+        }
         const nextHomeLineup = cloneLineup(subDraftHome);
         const nextAwayLineup = cloneLineup(subDraftAway);
         setHomeLineup(nextHomeLineup);
@@ -3240,6 +3407,9 @@ const StatDash: React.FC = () => {
     appendLog,
     clockLabel,
     commitEventCommand,
+    getPlayerId,
+    getPlayerLabel,
+    getTeamIdForSide,
     periodLabel,
     homeName,
     awayName,
@@ -3253,41 +3423,31 @@ const StatDash: React.FC = () => {
   const handleTimeoutSelect = useCallback(
     (choice: TimeoutChoice) => {
       void (async () => {
-        // Official timeouts have no owning team — backend requires teamId so we skip the command
-        if (choice !== "officials") {
-          const committed = await commitEventCommand("timeout", {
-            teamId: getTeamIdForSide(choice),
-            timeoutType: "full",
-          });
-          if (!committed) return;
-        }
+        // Official/media timeouts have no owning team, so they omit teamId and use
+        // timeoutType "official" (Backend Gap #13 — TimeoutCommandDto.teamId is optional).
+        const committed = await commitEventCommand(
+          "timeout",
+          choice === "officials"
+            ? { timeoutType: "official" }
+            : { teamId: getTeamIdForSide(choice), timeoutType: "full" },
+        );
+        if (!committed) return;
+        // Linked to the command by localId, like every other play, so the log editor can tell
+        // whether it has synced and can undo it.
+        const timeoutRow = {
+          period: periodLabel,
+          clock: clockLabel,
+          player: "—",
+          action: "timeout",
+          localId: committed.localId,
+          meta: { choice },
+        };
         if (choice === "home") {
-          appendLog({
-            period: periodLabel,
-            clock: clockLabel,
-            team: homeName,
-            player: "—",
-            action: "timeout",
-            result: "full",
-          });
+          appendLog({ ...timeoutRow, team: homeName, result: "full" });
         } else if (choice === "away") {
-          appendLog({
-            period: periodLabel,
-            clock: clockLabel,
-            team: awayName,
-            player: "—",
-            action: "timeout",
-            result: "full",
-          });
+          appendLog({ ...timeoutRow, team: awayName, result: "full" });
         } else {
-          appendLog({
-            period: periodLabel,
-            clock: clockLabel,
-            team: "Officials",
-            player: "—",
-            action: "timeout",
-            result: "official / media",
-          });
+          appendLog({ ...timeoutRow, team: "Officials", result: "official / media" });
         }
         setTimeoutModalOpen(false);
       })();
@@ -3325,6 +3485,8 @@ const StatDash: React.FC = () => {
           player: "—",
           action: "jump ball",
           result: "possession",
+          localId: committed.localId,
+          meta: { winner: choice },
         });
         setJumpBallModalOpen(false);
         // Start game clock as soon as the jump-ball winner is selected.
@@ -3427,250 +3589,449 @@ const StatDash: React.FC = () => {
       // purely for display. Editing it as a standalone event sends a
       // differently-shaped correction than the backend expects and silently
       // fails to apply. Always edit the shot (and its assist) together instead.
+      // An assist / steal / block row isn't its own play — it belongs to the shot or turnover
+      // recorded in the same command (same localId). Open that parent, which carries the field.
       let target = entry;
-      if (entry.action === "assist" && entry.localId) {
-        const parentShot = gameLog.find(
-          (row) => row.action === "shot" && row.localId === entry.localId,
+      if (entry.action === "assist" || entry.action === "steal" || entry.action === "block") {
+        // Rows restored from history after a reload have no localId; their companion rows are
+        // named after the play they belong to (`replay_<id>_assist`).
+        const replayParentId = entry.id.replace(/_(assist|steal|block)$/, "");
+        const parent = gameLog.find(
+          (row) =>
+            (row.action === "shot" || row.action === "turnover") &&
+            ((entry.localId && row.localId === entry.localId) ||
+              (replayParentId !== entry.id && row.id === replayParentId)),
         );
-        if (parentShot) target = parentShot;
+        if (parent) target = parent;
       }
       setEditingLog(target);
       const draft: Record<string, unknown> = target.meta
         ? { ...target.meta }
         : {};
-      if (target.action === "shot" && target.localId) {
+      // Rows logged before these carried their own details: work them out from the team named.
+      if (target.action === "timeout" && draft.choice === undefined) {
+        draft.choice =
+          target.team === homeName ? "home" : target.team === awayName ? "away" : "officials";
+      }
+      if (target.action === "jump ball" && draft.winner === undefined) {
+        draft.winner = target.team === awayName ? "away" : "home";
+      }
+      if (target.action === "shot" && target.localId && draft.assistJersey === undefined) {
         const companionAssist = gameLog.find(
           (row) => row.action === "assist" && row.localId === target.localId,
         );
         draft.assistJersey = companionAssist?.meta?.assistJersey ?? "none";
       }
       setEditDraft(draft);
+      setEditInitial(draft);
     },
-    [gameLog],
+    [gameLog, homeName, awayName],
   );
 
   const handleCloseLogEditor = useCallback(() => {
     setEditingLog(null);
     setEditDraft({});
+    setEditInitial({});
   }, []);
 
-  const handleSaveEditingLog = useCallback(() => {
-    if (editingLog === null) return;
-    // Narrow once here — the async IIFE below closes over `editingLog`, and TS
-    // can't carry the `!editingLog.backendEventId` guard's narrowing across
-    // that closure boundary, so it re-widens back to `string | undefined`.
-    const backendEventId = editingLog.backendEventId;
-    if (!backendEventId) {
-      setSyncNotice("Waiting for sync confirmation. Try again in a moment.");
-      return;
-    }
-    const context = readStoredSessionContext();
-    if (!context) {
-      navigate("/match-key", { replace: true });
-      return;
-    }
-    setIsReconcilingLog(true);
-    void (async () => {
-      try {
-        let correctedPayload: Record<string, unknown>;
-        const action = editingLog.action;
-        if (action === "shot") {
-          const side = editDraft.side as TeamSide;
-          const result = (editDraft.result as string) ?? "made";
-          const hasPosition = editDraft.x != null && editDraft.y != null;
-          // Point value is derived from where the shot was taken on the court,
-          // never a free-floating field — changing the shooter or make/miss
-          // must not silently change how many points the shot is worth. If we
-          // don't have a recorded position (older entry), keep whatever value
-          // was already there instead of guessing.
-          const shotValue = hasPosition
-            ? isCourtClickThreePointer(
-                editDraft.x as number,
-                editDraft.y as number,
-                side,
-                homeAttacksLeft,
-              )
-              ? 3
-              : 2
-            : ((editDraft.shotValue as number) ?? 2);
-          correctedPayload = {
-            teamId: getTeamIdForSide(side),
-            shooterPlayerId: getPlayerId(
-              side,
-              editDraft.shooterJersey as number,
-            ),
-            shotValue,
-            result,
-            ...(hasPosition ? { x: editDraft.x, y: editDraft.y } : {}),
-            // Assist lives on the same backend event as the shot (see
-            // handleOpenLogEditor) — submit it here instead of as a separate
-            // correction with a payload shape the backend doesn't expect.
-            ...(result === "made" &&
-            editDraft.assistJersey &&
-            editDraft.assistJersey !== "none"
-              ? {
-                  assistPlayerId: getPlayerId(
-                    side,
-                    editDraft.assistJersey as number,
-                  ),
-                }
-              : {}),
-          };
-        } else if (action === "foul") {
-          const foulerSide = editDraft.foulerSide as TeamSide;
-          const fouledSide = opponentOf(foulerSide);
-          correctedPayload = {
-            teamId: getTeamIdForSide(foulerSide),
-            foulerPlayerId:
-              typeof editDraft.foulerJersey === "number"
-                ? getPlayerId(foulerSide, editDraft.foulerJersey)
-                : undefined,
-            ...(typeof editDraft.fouledJersey === "number"
-              ? {
-                  fouledPlayerId: getPlayerId(
-                    fouledSide,
-                    editDraft.fouledJersey,
-                  ),
-                }
-              : {}),
-            foulType: foulTypeToApiType(editDraft.foulType as FoulTypeId),
-          };
-        } else if (action === "free throw") {
-          const side = editDraft.shooterSide as TeamSide;
-          correctedPayload = {
-            teamId: getTeamIdForSide(side),
-            shooterPlayerId: getPlayerId(
-              side,
-              editDraft.shooterJersey as number,
-            ),
-            attempt: editDraft.attempt as number,
-            totalAttempts: editDraft.totalAttempts as number,
-            result: editDraft.result as string,
-          };
-        } else if (action === "turnover") {
-          const side = editDraft.side as TeamSide;
-          correctedPayload = {
-            teamId: getTeamIdForSide(side),
-            playerId: getPlayerId(side, editDraft.jersey as number),
-            turnoverType: editDraft.turnoverType as string,
-          };
-        } else if (action === "steal") {
-          const side = editDraft.side as TeamSide;
-          correctedPayload = {
-            teamId: getTeamIdForSide(side),
-            playerId: getPlayerId(side, editDraft.jersey as number),
-          };
-        } else if (action === "rebound") {
-          const side = editDraft.side as TeamSide;
-          correctedPayload = {
-            teamId: getTeamIdForSide(side),
-            playerId: getPlayerId(side, editDraft.jersey as number),
-            reboundType: editDraft.reboundType as string,
-          };
-        } else if (action === "block") {
-          const side = editDraft.side as TeamSide;
-          correctedPayload = {
-            teamId: getTeamIdForSide(side),
-            blockerPlayerId: getPlayerId(side, editDraft.jersey as number),
-          };
-        } else {
-          setSyncNotice(
-            "This event type cannot be edited. Use Reverse to undo it.",
-          );
-          setIsReconcilingLog(false);
-          return;
+  // ---- Editing and undoing plays -----------------------------------------------------------------
+  // Both are local-first: the log, scoreboard, court and lineups change the instant the statistician
+  // confirms, and whatever the server needs is sent in the background through the same ordered queue
+  // as everything else. Nothing here waits for a play to finish syncing.
+
+  const correctionCtx = useMemo<CorrectionContext>(
+    () => ({
+      getPlayerId,
+      getTeamIdForSide,
+      isThreePointer: (x, y, side) =>
+        isCourtClickThreePointer(x, y, side, homeAttacksLeft),
+      shotTypeToApiType: (t) =>
+        shotTypeToApiType(t as Parameters<typeof shotTypeToApiType>[0]),
+      foulTypeToApiType: (t) => foulTypeToApiType(t as FoulTypeId),
+    }),
+    [getPlayerId, getTeamIdForSide, homeAttacksLeft],
+  );
+
+  const nudgeScore = useCallback((delta: { home: number; away: number }) => {
+    if (delta.home !== 0) setHomeScore((v) => Math.max(0, v + delta.home));
+    if (delta.away !== 0) setAwayScore((v) => Math.max(0, v + delta.away));
+  }, []);
+
+  /** Rewrites the log rows of an edited play so they read exactly like a freshly recorded one. */
+  const rebuildRowsAfterEdit = useCallback(
+    (
+      rows: GameLogEntry[],
+      entry: GameLogEntry,
+      draft: Record<string, unknown>,
+    ): GameLogEntry[] => {
+      const action = entry.action;
+      const withMeta = (row: GameLogEntry, patch: Record<string, unknown>) => ({
+        ...row,
+        meta: { ...(row.meta ?? {}), ...patch },
+      });
+
+      if (action === "shot") {
+        const side = draft.side as TeamSide;
+        const made = draft.result !== "missed";
+        const value = shotValueFor(draft, side, correctionCtx);
+        const shooterJersey = draft.shooterJersey as number;
+        const resultText =
+          value === 3
+            ? `3pt ${made ? "made" : "missed"}`
+            : shotTypeResultPhrase(
+                draft.shotType as Parameters<typeof shotTypeResultPhrase>[0],
+                made ? "made" : "missed",
+              );
+        const assistJersey =
+          made && typeof draft.assistJersey === "number"
+            ? draft.assistJersey
+            : null;
+        const next: GameLogEntry[] = [];
+        let assistSeen = false;
+        for (const row of rows) {
+          if (row.id === entry.id) {
+            next.push({
+              ...withMeta(row, {
+                shooterJersey,
+                shotValue: value,
+                result: made ? "made" : "missed",
+              }),
+              player: getPlayerLabel(side, shooterJersey),
+              result: resultText,
+            });
+            if (assistJersey !== null && !rows.some((r) => r.action === "assist" && r.localId === entry.localId)) {
+              // The play gained an assist: add its row under the shot, like a newly recorded one.
+              next.push({
+                id: newLogId(),
+                localId: entry.localId,
+                period: entry.period,
+                clock: entry.clock,
+                team: entry.team,
+                player: getPlayerLabel(side, assistJersey),
+                action: "assist",
+                result: `To ${getPlayerLabel(side, shooterJersey)}`,
+                meta: { side, assistJersey, assistedJersey: shooterJersey },
+              });
+            }
+            continue;
+          }
+          if (row.action === "assist" && entry.localId && row.localId === entry.localId) {
+            assistSeen = true;
+            if (assistJersey === null) continue; // assist removed
+            next.push({
+              ...withMeta(row, { assistJersey, assistedJersey: shooterJersey }),
+              player: getPlayerLabel(side, assistJersey),
+              result: `To ${getPlayerLabel(side, shooterJersey)}`,
+            });
+            continue;
+          }
+          next.push(row);
         }
-
-        const response = await commandsApi.correctEvent(backendEventId, {
-          reason: "Corrected from StatDash log editor",
-          correctedPayload,
-        });
-        writeStoredExpectedVersion(response.version);
-        latestVersionRef.current = response.version;
-        const latest = await sessionsApi.getSessionState(context.sessionId);
-        applyAuthoritativeState(latest);
-        setEditingLog(null);
-        setEditDraft({});
-        setSyncNotice("Correction submitted and synced.");
-      } catch (error) {
-        setSyncNotice(
-          error instanceof Error ? error.message : "Failed to correct event.",
-        );
-      } finally {
-        setIsReconcilingLog(false);
+        void assistSeen;
+        return next;
       }
-    })();
-  }, [
-    applyAuthoritativeState,
-    editDraft,
-    editingLog,
-    getPlayerId,
-    getTeamIdForSide,
-    navigate,
-  ]);
 
-  const handleReverseEditingLog = useCallback(() => {
+      return rows.map((row) => {
+        if (row.id !== entry.id) return row;
+        if (action === "substitution") {
+          const side = draft.side as TeamSide;
+          const outJersey = draft.outJersey as number;
+          const inJersey = draft.inJersey as number;
+          return {
+            ...withMeta(row, { outJersey, inJersey }),
+            result: `Out ${getPlayerLabel(side, outJersey)} · In ${getPlayerLabel(side, inJersey)}`,
+          };
+        }
+        if (action === "timeout") {
+          const choice = draft.choice as TeamSide | "officials";
+          return {
+            ...withMeta(row, { choice }),
+            team: choice === "home" ? homeName : choice === "away" ? awayName : "Officials",
+            result: choice === "officials" ? "official / media" : "full",
+          };
+        }
+        if (action === "jump ball") {
+          const winner = draft.winner as TeamSide;
+          return {
+            ...withMeta(row, { winner }),
+            team: winner === "home" ? homeName : awayName,
+          };
+        }
+        if (action === "foul") {
+          const foulerSide = draft.foulerSide as TeamSide;
+          const fouledSide = opponentOf(foulerSide);
+          const foulerJersey = draft.foulerJersey as number;
+          const fouledJersey = draft.fouledJersey as number | undefined;
+          const technical = draft.foulType === "technical";
+          return {
+            ...withMeta(row, { foulerJersey, fouledJersey: technical ? null : fouledJersey }),
+            player: getPlayerLabel(foulerSide, foulerJersey),
+            result: technical
+              ? "Technical foul"
+              : `${foulTypeLabel(draft.foulType as FoulTypeId)} on ${fouledSide === "home" ? homeName : awayName} ${getPlayerLabel(fouledSide, fouledJersey as number)}`,
+          };
+        }
+        if (action === "free throw") {
+          const side = draft.shooterSide as TeamSide;
+          const jersey = draft.shooterJersey as number;
+          const made = draft.result !== "missed";
+          return {
+            ...withMeta(row, { shooterJersey: jersey, result: made ? "made" : "missed" }),
+            player: getPlayerLabel(side, jersey),
+            result: `${made ? "Made" : "Missed"} (${String(draft.attempt)}/${String(draft.totalAttempts)})`,
+          };
+        }
+        if (action === "turnover") {
+          const side = draft.side as TeamSide;
+          const jersey = draft.jersey as number;
+          return { ...withMeta(row, { jersey }), player: getPlayerLabel(side, jersey) };
+        }
+        if (action === "rebound") {
+          const side = draft.side as TeamSide;
+          const jersey = draft.jersey as number;
+          const offensive = draft.reboundType === "offensive";
+          return {
+            ...withMeta(row, { jersey, reboundType: offensive ? "offensive" : "defensive" }),
+            player: getPlayerLabel(side, jersey),
+            result: offensive ? "Off Rebound" : "Def Rebound",
+          };
+        }
+        return row;
+      });
+    },
+    [correctionCtx, getPlayerLabel, homeName, awayName],
+  );
+
+  const handleSaveLogEdit = useCallback(() => {
     if (editingLog === null) return;
-    const backendEventId = editingLog.backendEventId;
-    if (!backendEventId) {
-      setSyncNotice("Waiting for sync confirmation. Try again in a moment.");
-      return;
-    }
     const context = readStoredSessionContext();
     if (!context) {
       navigate("/match-key", { replace: true });
       return;
     }
-    setIsReconcilingLog(true);
-    void (async () => {
-      try {
-        const response = await commandsApi.reverseEvent(
-          backendEventId,
-          {
-            reason: "Reversed from StatDash log editor",
-          },
-        );
-        writeStoredExpectedVersion(response.version);
-        latestVersionRef.current = response.version;
-        const latest = await sessionsApi.getSessionState(context.sessionId);
-        applyAuthoritativeState(latest);
-        // Remove this entry and any sibling entries sharing the same localId (e.g. foul + FTs)
-        setGameLog((prev) =>
-          editingLog.localId
-            ? prev.filter((e) => e.localId !== editingLog.localId)
-            : prev.filter((e) => e.id !== editingLog.id),
-        );
-        setEditingLog(null);
-        setEditDraft({});
-        setSyncNotice("Event reversed and synced.");
-      } catch (error) {
-        setSyncNotice(
-          error instanceof Error ? error.message : "Failed to reverse event.",
-        );
-      } finally {
-        setIsReconcilingLog(false);
-      }
-    })();
-  }, [applyAuthoritativeState, editingLog, navigate]);
+    const action = editingLog.action;
 
-  // A queued command that the backend permanently rejected (status 'failed',
-  // e.g. a validation error) never gets a backendEventId and so can never be
-  // corrected or reversed via the server — there's nothing there to reverse.
-  // This removes it locally only: no backend call, since none is possible.
-  const handleDiscardEditingLog = useCallback(() => {
-    if (editingLog === null) return;
-    if (editingLog.localId) {
-      discardEvent(editingLog.localId);
-      setGameLog((prev) => prev.filter((e) => e.localId !== editingLog.localId));
+    if (action === "substitution") {
+      // Changing who came on/off = take the original swap back, then make the new one, sent as ONE
+      // lineup-only command. Each substitution command carries the whole lineup, so patching or
+      // dropping one in the middle of the queue would leave later ones inconsistent; a lineup
+      // command that states the correct final lineup can't conflict with anything before it.
+      const side = editDraft.side as TeamSide;
+      const originalOut = editingLog.meta?.outJersey as number;
+      const originalIn = editingLog.meta?.inJersey as number;
+      const nextOut = editDraft.outJersey as number;
+      const nextIn = editDraft.inJersey as number;
+      const current = side === "home" ? homeLineup : awayLineup;
+      const options = substitutionEditOptions(
+        { outJersey: originalOut, inJersey: originalIn },
+        compactOnCourt(current),
+        fullRoster(current),
+      );
+      if (!options.ok) {
+        setSyncNotice(options.reason);
+        return;
+      }
+      if (!options.outOptions.includes(nextOut) || !options.inOptions.includes(nextIn)) {
+        setSyncNotice("Those players can't be swapped at this point in the game.");
+        return;
+      }
+      const finalLineup = swapPlayers(swapPlayers(current, originalIn, originalOut), nextOut, nextIn);
+      const home = side === "home" ? finalLineup : homeLineup;
+      const away = side === "away" ? finalLineup : awayLineup;
+      setHomeLineup(home);
+      setAwayLineup(away);
+      writeStoredLineups({ home, away });
+      void commitEventCommand("substitution", {
+        teamId: getTeamIdForSide(side),
+        homeLineup: compactOnCourt(home).map((j) => getPlayerId("home", j)),
+        awayLineup: compactOnCourt(away).map((j) => getPlayerId("away", j)),
+      });
+      setGameLog((prev) => rebuildRowsAfterEdit(prev, editingLog, editDraft));
+      setEditingLog(null);
+      setEditDraft({});
+      setEditInitial({});
+      setSyncNotice(null);
+      return;
+    }
+
+    const queued = editingLog.localId
+      ? getQueue().find(
+          (q) => q.localId === editingLog.localId && (q.kind ?? "command") === "command",
+        )
+      : undefined;
+    // A play restored after a reload has no queued command; its recorded payload rides on the row.
+    const restoredPayload = editingLog.meta?.originalPayload as Record<string, unknown> | undefined;
+    const corrected = buildCorrectedPayload(
+      action,
+      editDraft,
+      queued?.payload ?? restoredPayload,
+      correctionCtx,
+    );
+    if (!corrected) {
+      setSyncNotice("This kind of play can't be edited. Undo it and record it again.");
+      return;
+    }
+
+    if (queued && (queued.status === "pending" || queued.status === "failed")) {
+      // Not sent yet (or rejected): fix the command itself, so the server only ever sees the
+      // corrected version. A rejected one gets another go now that it has changed.
+      const merged: Record<string, unknown> = {
+        ...queued.payload,
+        ...toCommandPayload(action, corrected),
+      };
+      for (const key of Object.keys(merged)) if (merged[key] === null) delete merged[key];
+      updateEvent(queued.localId, {
+        payload: merged,
+        status: "pending",
+        attempts: 0,
+        lastError: undefined,
+      });
     } else {
-      setGameLog((prev) => prev.filter((e) => e.id !== editingLog.id));
+      const targetBackendEventId = editingLog.backendEventId ?? queued?.backendEventIds?.[0];
+      if (!queued && !targetBackendEventId) {
+        setSyncNotice("Couldn't find this play on the server to change it. Undo it and record it again.");
+        return;
+      }
+      enqueue({
+        sessionId: context.sessionId,
+        commandType: "correct",
+        kind: "correct",
+        payload: {},
+        expectedVersion: latestVersionRef.current,
+        correctedPayload: corrected,
+        targetLocalId: queued?.localId,
+        targetBackendEventId,
+        reason: "Corrected from StatDash",
+      });
+    }
+
+    nudgeScore(
+      editScoreDelta(pointsOf(editingLog), draftPoints(action, editDraft, correctionCtx)),
+    );
+    setGameLog((prev) => rebuildRowsAfterEdit(prev, editingLog, editDraft));
+    if (action === "shot" && typeof editDraft.x === "number" && typeof editDraft.y === "number") {
+      const kind = editDraft.result === "missed" ? "missed" : "made";
+      setCourtShotMarkers((prev) =>
+        prev.map((m) =>
+          Math.abs(m.nx - (editDraft.x as number)) < 1e-6 && Math.abs(m.ny - (editDraft.y as number)) < 1e-6
+            ? { ...m, kind }
+            : m,
+        ),
+      );
     }
     setEditingLog(null);
     setEditDraft({});
-    setSyncNotice(
-      "Discarded. The server rejected this action and never applied it, so there was nothing to reverse.",
+    setEditInitial({});
+    setSyncNotice(null);
+  }, [
+    awayLineup,
+    commitEventCommand,
+    correctionCtx,
+    editDraft,
+    editingLog,
+    enqueue,
+    getPlayerId,
+    getQueue,
+    getTeamIdForSide,
+    homeLineup,
+    navigate,
+    nudgeScore,
+    rebuildRowsAfterEdit,
+    updateEvent,
+  ]);
+
+  const handleUndoLogEntry = useCallback(() => {
+    if (editingLog === null) return;
+    const context = readStoredSessionContext();
+    if (!context) {
+      navigate("/match-key", { replace: true });
+      return;
+    }
+    const plan = planUndo(editingLog, gameLogRef.current, getQueue());
+
+    let nextHome: TeamLineup | null = null;
+    let nextAway: TeamLineup | null = null;
+    if (plan.substitution) {
+      const { swap } = plan.substitution;
+      const current = swap.side === "home" ? homeLineup : awayLineup;
+      const check = canSwapBack(swap, compactOnCourt(current));
+      if (!check.ok) {
+        setSyncNotice(check.reason);
+        return;
+      }
+      const swapped = swapPlayers(current, swap.outJersey, swap.inJersey);
+      if (swap.side === "home") nextHome = swapped;
+      else nextAway = swapped;
+    }
+
+    // 1. Commands the server never got: just drop them.
+    for (const id of plan.cancelLocalIds) discardEvent(id);
+    // 2. Plays the server has (or is about to have): reverse them, queued behind whatever they undo.
+    for (const r of plan.reversals) {
+      enqueue({
+        sessionId: context.sessionId,
+        commandType: "reverse",
+        kind: "reverse",
+        payload: {},
+        expectedVersion: latestVersionRef.current,
+        targetLocalId: r.targetLocalId,
+        targetBackendEventId: r.targetBackendEventId,
+        reason: "Undone from StatDash",
+      });
+    }
+    // 3. A substitution is undone by swapping the players back — reversing the event would not
+    //    restore who is on the court.
+    if (plan.substitution && (nextHome || nextAway)) {
+      const home = nextHome ?? homeLineup;
+      const away = nextAway ?? awayLineup;
+      setHomeLineup(home);
+      setAwayLineup(away);
+      writeStoredLineups({ home, away });
+      if (!plan.substitution.cancelOnly) {
+        const { swap } = plan.substitution;
+        void commitEventCommand("substitution", {
+          teamId: getTeamIdForSide(swap.side),
+          homeLineup: compactOnCourt(home).map((j) => getPlayerId("home", j)),
+          awayLineup: compactOnCourt(away).map((j) => getPlayerId("away", j)),
+        });
+      }
+    }
+    // 4. Everything the statistician sees, immediately.
+    const removed = new Set(plan.removeRowIds);
+    const removedShots = gameLogRef.current.filter(
+      (r) => removed.has(r.id) && r.action === "shot" && typeof r.meta?.x === "number" && typeof r.meta?.y === "number",
     );
-  }, [discardEvent, editingLog]);
+    setGameLog((prev) => prev.filter((r) => !removed.has(r.id)));
+    nudgeScore(plan.scoreDelta);
+    if (removedShots.length > 0) {
+      setCourtShotMarkers((prev) =>
+        prev.filter(
+          (m) =>
+            !removedShots.some(
+              (r) =>
+                Math.abs(m.nx - (r.meta!.x as number)) < 1e-6 &&
+                Math.abs(m.ny - (r.meta!.y as number)) < 1e-6,
+            ),
+        ),
+      );
+    }
+    setEditingLog(null);
+    setEditDraft({});
+    setEditInitial({});
+    setSyncNotice(`${actionTitle(editingLog.action)} undone.`);
+  }, [
+    awayLineup,
+    commitEventCommand,
+    discardEvent,
+    editingLog,
+    enqueue,
+    getPlayerId,
+    getQueue,
+    getTeamIdForSide,
+    homeLineup,
+    navigate,
+    nudgeScore,
+  ]);
 
   useEffect(() => {
     const onEscape = (e: KeyboardEvent) => {
@@ -4162,477 +4523,116 @@ const StatDash: React.FC = () => {
 
       {editingLog &&
         (() => {
-          const action = editingLog.action;
-          const hasSyncId = Boolean(editingLog.backendEventId);
-          // A 'failed' queue entry was rejected by the backend and will never get
-          // a backendEventId — it was never applied server-side, so it can only be
-          // discarded locally, never "reversed" (there's nothing there to reverse).
-          const queuedEntry = editingLog.localId
-            ? queue.find((q) => q.localId === editingLog.localId)
-            : undefined;
-          const isFailedLocally = !hasSyncId && queuedEntry?.status === "failed";
-          // Determine team side from meta for player roster lookups
-          const editSide = (editDraft.side ?? editDraft.foulerSide) as
-            | TeamSide
-            | undefined;
+          const entry = editingLog;
+          const action = entry.action;
 
-          // Who could actually have made this play: whoever was on the court for
-          // that team at the moment it happened (stamped by appendLog), not the
-          // full roster — you can't shoot, rebound, or steal from the bench.
-          // Falls back to the full roster for older entries logged before this
-          // snapshot existed, and always keeps the play's original player
-          // selectable even if a lineup mismatch would otherwise exclude them.
-          const onCourtRosterFor = (
+          // Who could have made this play: whoever was on the court for that side at the moment it
+          // happened (stamped when it was logged) — you can't shoot, rebound or steal from the
+          // bench. Older entries without that snapshot fall back to the full roster, and the play's
+          // own player always stays selectable.
+          const playersFor = (
             side: TeamSide | undefined,
-            currentValue: unknown,
+            current: unknown,
           ): number[] => {
             if (!side) return [];
             const snapshot =
               side === "home"
-                ? (editingLog.meta?.onCourtHome as number[] | undefined)
-                : (editingLog.meta?.onCourtAway as number[] | undefined);
+                ? (entry.meta?.onCourtHome as number[] | undefined)
+                : (entry.meta?.onCourtAway as number[] | undefined);
+            const roster = side === "home" ? homeRosterList : awayRosterList;
+            // Plays restored after a reload carry no snapshot: use who is on the court now — most
+            // likely right — and let the statistician reach anyone else from "Bench".
+            const nowOnCourt = compactOnCourt(
+              side === "home" ? homeLineup : awayLineup,
+            );
             const base =
               snapshot && snapshot.length > 0
                 ? snapshot
-                : side === "home"
-                  ? homeRosterList
-                  : awayRosterList;
+                : nowOnCourt.length > 0
+                  ? nowOnCourt
+                  : roster;
             const withCurrent =
-              typeof currentValue === "number" && !base.includes(currentValue)
-                ? [...base, currentValue]
+              typeof current === "number" && !base.includes(current)
+                ? [...base, current]
                 : base;
             return [...withCurrent].sort((a, b) => a - b);
           };
 
-          const editRosterNums = onCourtRosterFor(
-            editSide,
-            editDraft.shooterJersey ??
-              editDraft.jersey ??
-              editDraft.assistJersey,
-          );
-          const foulerSideEdit = editDraft.foulerSide as TeamSide | undefined;
-          const fouledSideEdit = foulerSideEdit
-            ? opponentOf(foulerSideEdit)
-            : undefined;
-          const foulerRoster = onCourtRosterFor(
-            foulerSideEdit,
-            editDraft.foulerJersey,
-          );
-          const fouledRoster = onCourtRosterFor(
-            fouledSideEdit,
-            editDraft.fouledJersey,
-          );
-          const assistCandidates = onCourtRosterFor(
-            editSide,
-            editDraft.assistJersey,
-          ).filter((j) => j !== editDraft.shooterJersey);
-
-          // Point value follows the shot's recorded court position, same rule
-          // the live recording flow uses — it's derived, not a separate field
-          // the statistician can set independently of where the shot was taken.
-          const hasShotPosition = editDraft.x != null && editDraft.y != null;
-          const derivedShotValue =
+          const editSide = (editDraft.side ??
+            editDraft.foulerSide ??
+            editDraft.shooterSide) as TeamSide | undefined;
+          const shotValue =
             action === "shot" && editSide
-              ? hasShotPosition
-                ? isCourtClickThreePointer(
-                    editDraft.x as number,
-                    editDraft.y as number,
-                    editSide,
-                    homeAttacksLeft,
-                  )
-                  ? 3
-                  : 2
-                : ((editDraft.shotValue as number) ?? 2)
+              ? shotValueFor(editDraft, editSide, correctionCtx)
               : 2;
-
-          const sel =
-            "border border-gray-300 px-2 py-1.5 text-sm w-full focus:outline-none focus:ring-2 focus:ring-sky-400/50";
-          const lbl = "flex flex-col gap-1 text-xs font-semibold text-gray-700";
-
-          // "assist" isn't independently editable — handleOpenLogEditor always
-          // redirects an assist row to its parent shot, which carries the
-          // assist field too. It only reaches here if that redirect couldn't
-          // find a parent (data anomaly), where "cannot be edited" is correct.
-          const canEdit = [
-            "shot",
-            "foul",
-            "free throw",
-            "turnover",
-            "steal",
-            "rebound",
-            "block",
-          ].includes(action);
+          const hasShotPosition =
+            typeof editDraft.x === "number" && typeof editDraft.y === "number";
+          const dirty = isDraftDirty(action, editInitial, editDraft);
+          const plan = planUndo(entry, gameLog, queue);
+          let substitutionOptions: ReturnType<typeof substitutionEditOptions> | undefined;
+          if (
+            action === "substitution" &&
+            (entry.meta?.side === "home" || entry.meta?.side === "away") &&
+            typeof entry.meta?.outJersey === "number" &&
+            typeof entry.meta?.inJersey === "number"
+          ) {
+            const lineup = entry.meta.side === "home" ? homeLineup : awayLineup;
+            substitutionOptions = substitutionEditOptions(
+              { outJersey: entry.meta.outJersey, inJersey: entry.meta.inJersey },
+              compactOnCourt(lineup),
+              fullRoster(lineup),
+            );
+          }
+          let undoBlockedReason: string | undefined;
+          if (plan.substitution) {
+            const current =
+              plan.substitution.swap.side === "home" ? homeLineup : awayLineup;
+            const check = canSwapBack(
+              plan.substitution.swap,
+              compactOnCourt(current),
+            );
+            if (!check.ok) undoBlockedReason = check.reason;
+          }
 
           return (
-            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 px-3 backdrop-blur-sm">
-              <div className="w-full max-w-lg border-2 border-gray-800 bg-white p-5 shadow-[0_30px_60px_-20px_rgba(15,23,42,0.5)]">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <h3 className="text-base font-bold text-gray-900 capitalize">
-                      {action} — Edit
-                    </h3>
-                    <p className="mt-0.5 text-xs text-gray-500">
-                      {editingLog.period} · {editingLog.clock} ·{" "}
-                      {editingLog.team}
-                    </p>
-                  </div>
-                  {!hasSyncId && (
-                    <span
-                      className={`shrink-0 px-2 py-0.5 text-xs font-semibold ${
-                        isFailedLocally
-                          ? "bg-rose-100 text-rose-700"
-                          : "bg-amber-100 text-amber-700"
-                      }`}
-                    >
-                      {isFailedLocally ? "Sync failed" : "Pending sync"}
-                    </span>
-                  )}
-                </div>
-
-                <div className="mt-3 flex flex-col gap-3">
-                  {action === "shot" && editSide && (
-                    <>
-                      <label className={lbl}>
-                        Shooter
-                        <span className="text-[10px] font-normal normal-case text-gray-400">
-                          Only players on the court for this play
-                        </span>
-                        <select
-                          className={sel}
-                          value={(editDraft.shooterJersey as number) ?? ""}
-                          onChange={(e) =>
-                            setEditDraft((d) => ({
-                              ...d,
-                              shooterJersey: +e.target.value,
-                            }))
-                          }
-                        >
-                          {editRosterNums.map((j) => (
-                            <option key={j} value={j}>
-                              {getPlayerLabel(editSide, j)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className={lbl}>
-                        Result
-                        <select
-                          className={sel}
-                          value={(editDraft.result as string) ?? "made"}
-                          onChange={(e) =>
-                            setEditDraft((d) => ({
-                              ...d,
-                              result: e.target.value,
-                            }))
-                          }
-                        >
-                          <option value="made">Made</option>
-                          <option value="missed">Missed</option>
-                        </select>
-                      </label>
-
-                      <div className="flex items-center justify-between border border-gray-200 bg-gray-50 px-3 py-2">
-                        <span className="text-xs font-semibold text-gray-700">
-                          Shot value
-                        </span>
-                        <span className="text-sm font-bold text-gray-900">
-                          {derivedShotValue} pt
-                        </span>
-                      </div>
-                      <p className="-mt-2 text-[10px] text-gray-400">
-                        {hasShotPosition
-                          ? "Set from where the shot was taken on the court — changing the shooter or result won't change this."
-                          : "No court position was recorded for this shot, so the original point value is kept as-is."}
-                      </p>
-
-                      {editDraft.result === "made" && (
-                        <label className={lbl}>
-                          Assist
-                          <select
-                            className={sel}
-                            value={(editDraft.assistJersey as
-                              | number
-                              | "none") ?? "none"}
-                            onChange={(e) =>
-                              setEditDraft((d) => ({
-                                ...d,
-                                assistJersey:
-                                  e.target.value === "none"
-                                    ? "none"
-                                    : +e.target.value,
-                              }))
-                            }
-                          >
-                            <option value="none">No assist</option>
-                            {assistCandidates.map((j) => (
-                              <option key={j} value={j}>
-                                {getPlayerLabel(editSide, j)}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      )}
-                    </>
-                  )}
-
-                  {action === "foul" && foulerSideEdit && fouledSideEdit && (
-                    <>
-                      <p className="text-xs text-gray-500 -mb-1">
-                        Foul type:{" "}
-                        <span className="font-semibold text-gray-700">
-                          {foulTypeLabel(editDraft.foulType as FoulTypeId)}
-                        </span>
-                      </p>
-                      <label className={lbl}>
-                        Fouler
-                        <select
-                          className={sel}
-                          value={(editDraft.foulerJersey as number) ?? ""}
-                          onChange={(e) =>
-                            setEditDraft((d) => ({
-                              ...d,
-                              foulerJersey: +e.target.value,
-                            }))
-                          }
-                        >
-                          {foulerRoster.map((j) => (
-                            <option key={j} value={j}>
-                              {getPlayerLabel(foulerSideEdit, j)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      {editDraft.foulType !== "technical" && (
-                        <label className={lbl}>
-                          Fouled player
-                          <select
-                            className={sel}
-                            value={(editDraft.fouledJersey as number) ?? ""}
-                            onChange={(e) =>
-                              setEditDraft((d) => ({
-                                ...d,
-                                fouledJersey: +e.target.value,
-                              }))
-                            }
-                          >
-                            {fouledRoster.map((j) => (
-                              <option key={j} value={j}>
-                                {getPlayerLabel(fouledSideEdit, j)}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      )}
-                    </>
-                  )}
-
-                  {action === "free throw" &&
-                    (() => {
-                      const ftSide = editDraft.shooterSide as
-                        | TeamSide
-                        | undefined;
-                      if (!ftSide) return null;
-                      const ftRoster = onCourtRosterFor(
-                        ftSide,
-                        editDraft.shooterJersey,
-                      );
-                      return (
-                        <>
-                          <p className="text-xs text-gray-500 -mb-1">
-                            Free throw {editDraft.attempt as number} of{" "}
-                            {editDraft.totalAttempts as number}
-                          </p>
-                          <label className={lbl}>
-                            Shooter
-                            <select
-                              className={sel}
-                              value={(editDraft.shooterJersey as number) ?? ""}
-                              onChange={(e) =>
-                                setEditDraft((d) => ({
-                                  ...d,
-                                  shooterJersey: +e.target.value,
-                                }))
-                              }
-                            >
-                              {ftRoster.map((j) => (
-                                <option key={j} value={j}>
-                                  {getPlayerLabel(ftSide, j)}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className={lbl}>
-                            Result
-                            <select
-                              className={sel}
-                              value={(editDraft.result as string) ?? "made"}
-                              onChange={(e) =>
-                                setEditDraft((d) => ({
-                                  ...d,
-                                  result: e.target.value,
-                                }))
-                              }
-                            >
-                              <option value="made">Made</option>
-                              <option value="missed">Missed</option>
-                            </select>
-                          </label>
-                        </>
-                      );
-                    })()}
-
-                  {action === "turnover" && editSide && (
-                    <>
-                      <label className={lbl}>
-                        Player
-                        <select
-                          className={sel}
-                          value={(editDraft.jersey as number) ?? ""}
-                          onChange={(e) =>
-                            setEditDraft((d) => ({
-                              ...d,
-                              jersey: +e.target.value,
-                            }))
-                          }
-                        >
-                          {editRosterNums.map((j) => (
-                            <option key={j} value={j}>
-                              {getPlayerLabel(editSide, j)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <p className="text-xs text-gray-500">
-                        Type:{" "}
-                        <span className="font-semibold text-gray-700">
-                          {turnoverTypeLabel(
-                            editDraft.turnoverType as TurnoverTypeId,
-                          )}
-                        </span>
-                      </p>
-                    </>
-                  )}
-
-                  {(action === "steal" || action === "block") && editSide && (
-                    <label className={lbl}>
-                      Player
-                      <select
-                        className={sel}
-                        value={(editDraft.jersey as number) ?? ""}
-                        onChange={(e) =>
-                          setEditDraft((d) => ({
-                            ...d,
-                            jersey: +e.target.value,
-                          }))
-                        }
-                      >
-                        {editRosterNums.map((j) => (
-                          <option key={j} value={j}>
-                            {getPlayerLabel(editSide, j)}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-
-                  {action === "rebound" && editSide && (
-                    <>
-                      <label className={lbl}>
-                        Player
-                        <select
-                          className={sel}
-                          value={(editDraft.jersey as number) ?? ""}
-                          onChange={(e) =>
-                            setEditDraft((d) => ({
-                              ...d,
-                              jersey: +e.target.value,
-                            }))
-                          }
-                        >
-                          {editRosterNums.map((j) => (
-                            <option key={j} value={j}>
-                              {getPlayerLabel(editSide, j)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className={lbl}>
-                        Type
-                        <select
-                          className={sel}
-                          value={
-                            (editDraft.reboundType as string) ?? "defensive"
-                          }
-                          onChange={(e) =>
-                            setEditDraft((d) => ({
-                              ...d,
-                              reboundType: e.target.value,
-                            }))
-                          }
-                        >
-                          <option value="offensive">Offensive</option>
-                          <option value="defensive">Defensive</option>
-                        </select>
-                      </label>
-                    </>
-                  )}
-
-                  {!canEdit && (
-                    <p className="text-sm text-gray-600 border border-gray-200 bg-gray-50 p-3">
-                      This event type cannot be edited directly. Use{" "}
-                      <strong>Reverse</strong> to undo it.
-                    </p>
-                  )}
-
-                  {!hasSyncId && (
-                    <p
-                      className={`text-xs p-2 ${isFailedLocally ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-700"}`}
-                    >
-                      {isFailedLocally
-                        ? "The server rejected this action, so it was never applied — Save and Reverse aren't available since there's nothing to correct or undo server-side. Discard removes it from your log."
-                        : "Still syncing to the server. Save and Reverse unlock once this action is confirmed."}
-                    </p>
-                  )}
-                </div>
-
-                <div className="mt-4 flex justify-end gap-2">
-                  <button
-                    type="button"
-                    disabled={isReconcilingLog}
-                    onClick={handleCloseLogEditor}
-                    className="border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isReconcilingLog || (!hasSyncId && !isFailedLocally)}
-                    onClick={
-                      isFailedLocally
-                        ? handleDiscardEditingLog
-                        : handleReverseEditingLog
-                    }
-                    className="bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-40"
-                  >
-                    {isReconcilingLog
-                      ? "Applying…"
-                      : isFailedLocally
-                        ? "Discard"
-                        : "Reverse"}
-                  </button>
-                  {canEdit && (
-                    <button
-                      type="button"
-                      disabled={isReconcilingLog || !hasSyncId}
-                      onClick={handleSaveEditingLog}
-                      className="bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-40"
-                    >
-                      {isReconcilingLog ? "Saving…" : "Save"}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
+            <LogEditorModal
+              entry={entry}
+              draft={editDraft}
+              onDraftChange={setEditDraft}
+              dirty={dirty}
+              sync={syncStateFor(entry, queue)}
+              teamNames={{ home: homeName, away: awayName }}
+              getPlayerLabel={getPlayerLabel}
+              playersFor={playersFor}
+              rosterFor={(side) =>
+                side === "home"
+                  ? homeRosterList
+                  : side === "away"
+                    ? awayRosterList
+                    : []
+              }
+              shotValue={shotValue}
+              hasShotPosition={hasShotPosition}
+              foulTypeLabel={(id) => foulTypeLabel(id as FoulTypeId)}
+              turnoverTypeLabel={(id) => turnoverTypeLabel(id as TurnoverTypeId)}
+              scoreChange={
+                dirty
+                  ? editScoreDelta(
+                      pointsOf(entry),
+                      draftPoints(action, editDraft, correctionCtx),
+                    )
+                  : { home: 0, away: 0 }
+              }
+              undoDescription={describeUndo(entry, plan, {
+                home: homeName,
+                away: awayName,
+              })}
+              undoBlockedReason={undoBlockedReason}
+              substitution={substitutionOptions}
+              onSave={handleSaveLogEdit}
+              onUndo={handleUndoLogEntry}
+              onClose={handleCloseLogEditor}
+            />
           );
         })()}
 
@@ -4647,6 +4647,17 @@ const StatDash: React.FC = () => {
           setHomeOnLeft(next.homeOnLeft);
           setHomeAttacksLeft(next.homeAttacksLeft);
           setSwitchSidesOpen(false);
+          // Persist so a refresh/resume keeps the switched sides (previously this only lived in
+          // React state and silently reverted to the pre-game choice on reload).
+          const sessionId = readStoredSessionContext()?.sessionId;
+          writeGameSetupOrientation(next, sessionId);
+          if (sessionId) {
+            void sessionsApi
+              .updateOrientation(sessionId, next)
+              .catch(() =>
+                setSyncNotice("Couldn't save the side switch to the server."),
+              );
+          }
         }}
       />
 

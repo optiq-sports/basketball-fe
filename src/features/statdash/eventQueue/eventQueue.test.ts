@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { StatDashApiError } from '../../../services/statdash';
-import { clearDrainRetryTimer, drainQueue } from './drain';
+import { MAX_CONFLICT_RETRIES, clearDrainRetryTimer, drainQueue } from './drain';
 import { clearSentEvents, loadQueue, saveQueue } from './storage';
 import type { QueuedEvent } from './types';
 import { useEventQueue } from './useEventQueue';
@@ -95,6 +95,163 @@ describe('event queue', () => {
       onCommandFailed: () => undefined,
     });
     expect(sent).toEqual([queue[1].localId, queue[0].localId]);
+  });
+
+  it('sends each command with the version confirmed by the previous response, even when a command consumed several version slots', async () => {
+    // A made free throw with an assist emits two events, so it moves the session version by 2.
+    // Versions guessed at enqueue time (+1 each: 5, 6, 7) would leave the 2nd command stale.
+    const queue = [
+      makeEvent({ enqueuedAt: 1, expectedVersion: 5 }),
+      makeEvent({ enqueuedAt: 2, expectedVersion: 6 }),
+      makeEvent({ enqueuedAt: 3, expectedVersion: 7 }),
+    ];
+    const live = makeLiveQueue(queue);
+    const sentVersions: number[] = [];
+    let serverVersion = 5;
+    await drainQueue({
+      getQueue: live.getQueue,
+      applyQueueUpdate: live.applyQueueUpdate,
+      getIsOnline: () => true,
+      getLatestVersion: () => 5,
+      sendCommand: async (event) => {
+        sentVersions.push(event.expectedVersion);
+        if (event.expectedVersion !== serverVersion) {
+          throw new StatDashApiError('stale', 409, 'VERSION_CONFLICT');
+        }
+        serverVersion += sentVersions.length === 1 ? 2 : 1;
+        return { sessionId: event.sessionId, version: serverVersion, score: { home: 0, away: 0 }, emittedEvents: [] };
+      },
+      onCommandAccepted: () => undefined,
+      onCommandFailed: () => undefined,
+    });
+    expect(sentVersions).toEqual([5, 7, 8]);
+    expect(live.current.every((event) => event.status === 'sent')).toBe(true);
+  });
+
+  it('forwards parentEventId to the backend so a reversed foul can cascade to its free throws', async () => {
+    const { commandsApi } = await import('../../../services/statdash');
+    vi.mocked(commandsApi.sendCommand).mockResolvedValue({
+      sessionId: 's1',
+      version: 2,
+      score: { home: 0, away: 0 },
+      emittedEvents: [],
+    });
+    localStorage.removeItem('statdash_event_queue_v1');
+    Object.defineProperty(window.navigator, 'onLine', { value: true, configurable: true });
+    const { result } = renderHook(() => useEventQueue({ getLatestVersion: () => 1 }), { wrapper });
+    act(() => {
+      result.current.enqueue({
+        sessionId: 's1',
+        commandType: 'free_throw',
+        payload: {},
+        expectedVersion: 1,
+        parentEventId: 'foul-event-1',
+      });
+    });
+    await vi.waitFor(() => expect(commandsApi.sendCommand).toHaveBeenCalled());
+    expect(vi.mocked(commandsApi.sendCommand).mock.calls[0][0]).toMatchObject({
+      commandType: 'free_throw',
+      expectedVersion: 1,
+      parentEventId: 'foul-event-1',
+    });
+  });
+
+  describe('recovering from a stale version, using the response the server really sends', () => {
+    // The backend answers HTTP 409 with only { statusCode, message }: no `code`, no `latestVersion`.
+    const staleFor = (sent: number, latest: number) =>
+      new StatDashApiError(`Stale version. Expected ${sent}, latest is ${latest}`, 409);
+
+    it('re-sends with the version the server reported, without a GET /state and without alarming the user', async () => {
+      const { sessionsApi } = await import('../../../services/statdash');
+      const live = makeLiveQueue([makeEvent({ enqueuedAt: 1 })]);
+      const sentVersions: number[] = [];
+      const observed: number[] = [];
+      const failures: unknown[] = [];
+      await drainQueue({
+        getQueue: live.getQueue,
+        applyQueueUpdate: live.applyQueueUpdate,
+        getIsOnline: () => true,
+        getLatestVersion: () => 1, // stale: the server is already at 2
+        onVersionObserved: (v) => observed.push(v),
+        sendCommand: async (event) => {
+          sentVersions.push(event.expectedVersion);
+          if (event.expectedVersion !== 2) throw staleFor(event.expectedVersion, 2);
+          return { sessionId: event.sessionId, version: 3, score: { home: 0, away: 0 }, emittedEvents: [] };
+        },
+        onCommandAccepted: () => undefined,
+        onCommandFailed: (_e, err) => failures.push(err),
+      });
+      expect(sentVersions).toEqual([1, 2]);
+      expect(live.current[0].status).toBe('sent');
+      expect(sessionsApi.getSessionState).not.toHaveBeenCalled(); // the cached /state is never trusted
+      expect(failures).toHaveLength(0);
+      expect(observed).toEqual([2, 3]);
+    });
+
+    it('REGRESSION (new game): several commands queued behind a stale version all go through, in order', async () => {
+      // Server is at 2 (jump ball + opening lineup). The client wrongly believes 1 — the exact state
+      // in the reported screenshot — with a shot and two substitutions waiting.
+      const live = makeLiveQueue([
+        makeEvent({ enqueuedAt: 1, commandType: 'shot' }),
+        makeEvent({ enqueuedAt: 2, commandType: 'substitution' }),
+        makeEvent({ enqueuedAt: 3, commandType: 'substitution' }),
+      ]);
+      let serverVersion = 2;
+      const accepted: string[] = [];
+      await drainQueue({
+        getQueue: live.getQueue,
+        applyQueueUpdate: live.applyQueueUpdate,
+        getIsOnline: () => true,
+        getLatestVersion: () => 1,
+        sendCommand: async (event) => {
+          if (event.expectedVersion !== serverVersion) throw staleFor(event.expectedVersion, serverVersion);
+          serverVersion += 1;
+          accepted.push(event.commandType);
+          return { sessionId: event.sessionId, version: serverVersion, score: { home: 0, away: 0 }, emittedEvents: [] };
+        },
+        onCommandAccepted: () => undefined,
+        onCommandFailed: () => undefined,
+      });
+      expect(accepted).toEqual(['shot', 'substitution', 'substitution']);
+      expect(live.current.every((e) => e.status === 'sent')).toBe(true);
+      expect(serverVersion).toBe(5);
+    });
+
+    it('does not retry a different 409 as if the version were the problem', async () => {
+      const live = makeLiveQueue([makeEvent()]);
+      const send = vi.fn().mockRejectedValue(
+        new StatDashApiError('idempotencyKey already exists for a different request payload', 409, 'SD_IDEMPOTENCY_KEY_REUSED_DIFFERENT_REQUEST'),
+      );
+      await drainQueue({
+        getQueue: live.getQueue,
+        applyQueueUpdate: live.applyQueueUpdate,
+        getIsOnline: () => true,
+        getLatestVersion: () => 1,
+        sendCommand: send,
+        onCommandAccepted: () => undefined,
+        onCommandFailed: () => undefined,
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(live.current[0].status).toBe('failed');
+    });
+
+    it('gives up after a bounded number of retries instead of looping forever, and reports it once', async () => {
+      const live = makeLiveQueue([makeEvent()]);
+      const failures: unknown[] = [];
+      const send = vi.fn().mockRejectedValue(staleFor(1, 5)); // the server never accepts what we send
+      await drainQueue({
+        getQueue: live.getQueue,
+        applyQueueUpdate: live.applyQueueUpdate,
+        getIsOnline: () => true,
+        getLatestVersion: () => 1,
+        sendCommand: send,
+        onCommandAccepted: () => undefined,
+        onCommandFailed: (_e, err) => failures.push(err),
+      });
+      expect(send).toHaveBeenCalledTimes(MAX_CONFLICT_RETRIES + 1);
+      expect(live.current[0].status).toBe('failed');
+      expect(failures).toHaveLength(1);
+    });
   });
 
   it('drainQueue skips when offline', async () => {
@@ -259,10 +416,12 @@ describe('event queue', () => {
   });
 
   it('retryFailed resets failed events to pending', async () => {
-    saveQueue([makeEvent({ status: 'failed' })]);
+    saveQueue([makeEvent({ status: 'failed', attempts: 2, lastError: 'Stale version. Expected 1, latest is 2' })]);
     const { result } = renderHook(() => useEventQueue(), { wrapper });
     act(() => result.current.retryFailed());
     expect(result.current.queue[0].status).toBe('pending');
+    expect(result.current.queue[0].attempts).toBe(0); // a fresh start, not one strike from giving up
+    expect(result.current.queue[0].lastError).toBeUndefined();
   });
 
   it('clearSentEvents removes sent entries older than 30 minutes', () => {

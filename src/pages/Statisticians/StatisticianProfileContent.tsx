@@ -7,14 +7,41 @@ interface Game {
   id: string;
   teamA: string;
   teamAColor: string;
-  teamAScore: number | string;
+  teamAScore?: number | string;
   teamB: string;
   teamBColor: string;
-  teamBScore: number | string;
+  teamBScore?: number | string;
   venue: string;
   datetime?: string;
   time?: string;
   date?: string;
+}
+
+/** One entry of `gamesOfficiated` on GET /statistician/:id (see StatisticianService.findOne). */
+interface GameOfficiated {
+  matchId: string;
+  homeTeam?: { name?: string } | null;
+  awayTeam?: { name?: string } | null;
+  scheduledDate?: string | null;
+  venue?: string | null;
+}
+
+function buildGames(stat: Statistician): Game[] {
+  const raw = (stat as { gamesOfficiated?: GameOfficiated[] }).gamesOfficiated;
+  if (!Array.isArray(raw)) return [];
+  return raw.map((g) => ({
+    id: g.matchId,
+    teamA: g.homeTeam?.name?.trim() || 'Home',
+    teamAColor: 'yellow',
+    teamB: g.awayTeam?.name?.trim() || 'Away',
+    teamBColor: 'blue',
+    venue: g.venue ?? '',
+    datetime: g.scheduledDate
+      ? new Date(g.scheduledDate).toLocaleString(undefined, {
+          hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short', year: 'numeric',
+        })
+      : undefined,
+  }));
 }
 
 function buildDisplayStatistician(stat: Statistician | undefined): {
@@ -77,8 +104,11 @@ function buildDisplayStatistician(stat: Statistician | undefined): {
     (stat as { photo?: string }).photo ??
     (stat.image as string | undefined);
 
+  const officiated = (stat as { gamesOfficiated?: unknown[] }).gamesOfficiated;
   const gamesRecorded =
-    (stat as { gamesRecorded?: number }).gamesRecorded != null
+    Array.isArray(officiated)
+      ? String(officiated.length)
+      : (stat as { gamesRecorded?: number }).gamesRecorded != null
       ? String((stat as { gamesRecorded?: number }).gamesRecorded)
       : (stat as { matchesCount?: number }).matchesCount != null
       ? String((stat as { matchesCount?: number }).matchesCount)
@@ -117,9 +147,7 @@ interface StatisticianProfileContentProps {
 const StatisticianProfileContent: React.FC<StatisticianProfileContentProps> = ({ stat }) => {
   const navigate = useNavigate();
   const display = buildDisplayStatistician(stat);
-  // GET /statistician/:id does not yet return match history — the backend
-  // needs to include gameEvents → gameSession → match in the findOne query.
-  const games: Game[] = [];
+  const games = buildGames(stat);
 
   return (
     <div>
@@ -198,7 +226,9 @@ const StatisticianProfileContent: React.FC<StatisticianProfileContentProps> = ({
                       />
                     </div>
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300 w-20">{game.teamA}</span>
-                    <span className="text-sm font-semibold text-gray-800 dark:text-white">- {game.teamAScore}</span>
+                    {game.teamAScore != null && (
+                      <span className="text-sm font-semibold text-gray-800 dark:text-white">- {game.teamAScore}</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     <div className="flex items-center justify-center w-10 h-10 bg-blue-100 rounded">
@@ -209,7 +239,9 @@ const StatisticianProfileContent: React.FC<StatisticianProfileContentProps> = ({
                       />
                     </div>
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300 w-20">{game.teamB}</span>
-                    <span className="text-sm font-semibold text-gray-800 dark:text-white">- {game.teamBScore}</span>
+                    {game.teamBScore != null && (
+                      <span className="text-sm font-semibold text-gray-800 dark:text-white">- {game.teamBScore}</span>
+                    )}
                   </div>
                 </div>
                 <div className="text-right text-xs text-gray-500 dark:text-gray-400">

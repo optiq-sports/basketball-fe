@@ -81,3 +81,11 @@ export function formatSubstitutionDiff(
   if (parts.length === 0) return `${teamLabel}: no change`;
   return `${teamLabel}: ${parts.join('; ')}`;
 }
+
+/** Swaps one player off the court for one from the bench, keeping the on-court slot position. */
+export function swapPlayers(lineup: TeamLineup, outJersey: number, inJersey: number): TeamLineup {
+  const onCourt = lineup.onCourt.map((j) => (j === outJersey ? inJersey : j)) as OnCourtSlots;
+  const bench = [...lineup.bench.filter((j) => j !== inJersey), outJersey];
+  return { onCourt, bench };
+}
+

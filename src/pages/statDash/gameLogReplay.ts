@@ -49,6 +49,20 @@ function prettyType(raw: unknown): string {
     .join(' ');
 }
 
+/** Server shot type -> the id the editor uses ("jump_shot" -> "jump"). */
+const SHOT_TYPE_IDS: Record<string, string> = {
+  jump_shot: 'jump',
+  layup: 'layup',
+  dunk: 'dunk',
+  post_shot: 'post',
+};
+
+/** Server foul type -> the id the editor uses (the app's own spelling of "unsportsmanlike"). */
+function foulTypeId(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  return raw === 'unsportsmanlike' ? 'unsportmanlike' : raw;
+}
+
 function periodClockFromPayload(payload: Record<string, unknown>): {
   period: string;
   clock: string;
@@ -89,6 +103,8 @@ export function buildGameLogFromEvents(
         const made = shot.result === 'made';
         const value = typeof shot.value === 'number' ? shot.value : null;
         const typeLabel = prettyType(shot.type) || 'Shot';
+        const assistRef =
+          typeof payload.assistPlayerId === 'string' ? ctx.resolvePlayer(payload.assistPlayerId) : null;
         entries.push({
           id: `replay_${event.id}`,
           backendEventId: event.id,
@@ -98,6 +114,16 @@ export function buildGameLogFromEvents(
           player: shooter.text,
           action: 'shot',
           result: `${typeLabel} ${made ? 'made' : 'missed'}${value ? ` (${value}pt)` : ''}`,
+          meta: {
+            ...(shooter.ref ? { side: shooter.ref.side, shooterJersey: shooter.ref.jersey } : {}),
+            shotType: SHOT_TYPE_IDS[String(shot.type)],
+            shotValue: value ?? undefined,
+            result: made ? 'made' : 'missed',
+            ...(typeof shot.x === 'number' && typeof shot.y === 'number' ? { x: shot.x, y: shot.y } : {}),
+            assistJersey: assistRef ? assistRef.jersey : 'none',
+            // The recorded payload, so an edit keeps the parts of the shot it doesn't change.
+            originalPayload: payload,
+          },
         });
         if (typeof payload.assistPlayerId === 'string') {
           const assister = playerField(ctx, payload.assistPlayerId);
@@ -140,6 +166,12 @@ export function buildGameLogFromEvents(
           player: shooter.text,
           action: 'free throw',
           result: `${payload.result === 'made' ? 'Made' : 'Missed'}${countLabel}`,
+          meta: {
+            ...(shooter.ref ? { shooterSide: shooter.ref.side, shooterJersey: shooter.ref.jersey } : {}),
+            attempt: typeof attempt === 'number' ? attempt : 1,
+            totalAttempts: typeof total === 'number' ? total : 1,
+            result: payload.result === 'made' ? 'made' : 'missed',
+          },
         });
         break;
       }
@@ -155,6 +187,10 @@ export function buildGameLogFromEvents(
           player: player.text,
           action: 'rebound',
           result: rebound.type === 'offensive' ? 'Off Rebound' : 'Def Rebound',
+          meta: {
+            ...(player.ref ? { side: player.ref.side, jersey: player.ref.jersey } : {}),
+            reboundType: rebound.type === 'offensive' ? 'offensive' : 'defensive',
+          },
         });
         break;
       }
@@ -173,12 +209,19 @@ export function buildGameLogFromEvents(
           result: isTechnical
             ? 'Technical foul'
             : `${prettyType(payload.foulType)} foul${fouled.ref ? ` on ${fouled.text}` : ''}`,
+          meta: {
+            ...(fouler.ref ? { foulerSide: fouler.ref.side, foulerJersey: fouler.ref.jersey } : {}),
+            foulType: foulTypeId(payload.foulType),
+            fouledJersey: isTechnical ? null : (fouled.ref?.jersey ?? null),
+          },
         });
         break;
       }
       case 'turnover': {
+        // Stored as { playerId, turnoverType } (older/other writers used the command's field names).
         const turnover = (payload.turnover ?? {}) as Record<string, unknown>;
-        const player = playerField(ctx, payload.turnoverPlayerId);
+        const turnoverType = payload.turnoverType ?? turnover.type;
+        const player = playerField(ctx, payload.playerId ?? payload.turnoverPlayerId);
         entries.push({
           id: `replay_${event.id}`,
           backendEventId: event.id,
@@ -187,7 +230,11 @@ export function buildGameLogFromEvents(
           team: teamNameForId(ctx, payload.teamId),
           player: player.text,
           action: 'turnover',
-          result: prettyType(turnover.type) || 'Turnover',
+          result: prettyType(turnoverType) || 'Turnover',
+          meta: {
+            ...(player.ref ? { side: player.ref.side, jersey: player.ref.jersey } : {}),
+            turnoverType: typeof turnoverType === 'string' ? turnoverType : undefined,
+          },
         });
         if (typeof payload.stealPlayerId === 'string') {
           const stealer = playerField(ctx, payload.stealPlayerId);
@@ -229,19 +276,38 @@ export function buildGameLogFromEvents(
           player: '—',
           action: 'substitution',
           result: `${playerIn.text} in / ${playerOut.text} out`,
+          meta: {
+            ...(playerIn.ref && playerOut.ref
+              ? { side: playerIn.ref.side, outJersey: playerOut.ref.jersey, inJersey: playerIn.ref.jersey }
+              : {}),
+          },
         });
         break;
       }
       case 'timeout': {
+        // Official/media timeouts belong to neither team and carry no teamId; the live
+        // log labels them "Officials" / "official / media", so the replay must match.
+        const isOfficial = payload.timeoutType === 'official';
         entries.push({
           id: `replay_${event.id}`,
           backendEventId: event.id,
           period,
           clock,
-          team: teamNameForId(ctx, payload.teamId),
+          team: isOfficial ? 'Officials' : teamNameForId(ctx, payload.teamId),
           player: '—',
           action: 'timeout',
-          result: typeof payload.timeoutType === 'string' ? payload.timeoutType : 'full',
+          result: isOfficial
+            ? 'official / media'
+            : typeof payload.timeoutType === 'string'
+              ? payload.timeoutType
+              : 'full',
+          meta: {
+            choice: isOfficial
+              ? 'officials'
+              : payload.teamId === ctx.awayTeamId
+                ? 'away'
+                : 'home',
+          },
         });
         break;
       }
@@ -255,6 +321,7 @@ export function buildGameLogFromEvents(
           player: '—',
           action: 'jump ball',
           result: 'possession',
+          meta: { winner: payload.winningTeamId === ctx.awayTeamId ? 'away' : 'home' },
         });
         break;
       }

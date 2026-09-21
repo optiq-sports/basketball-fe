@@ -5,3 +5,4 @@ export * from './projections.api';
 export * from './realtime.client';
 export * from './sessions.api';
 export * from './types';
+export * from './versionConflict';

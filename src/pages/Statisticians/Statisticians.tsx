@@ -197,7 +197,25 @@ const Statisticians: React.FC = () => {
     }
   };
 
+  // Covers the whole save — creating/updating AND the profile photo upload that follows — not just
+  // the first request. Otherwise the button dropped back to "Create"/"Update" while the photo was
+  // still uploading, which read as finished and allowed a second click (a duplicate statistician).
+  const [isSaving, setIsSaving] = useState(false);
+  const [savingStep, setSavingStep] = useState('');
+
   const handleSaveStatistician = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    setSavingStep('Saving…');
+    try {
+      await saveStatistician();
+    } finally {
+      setIsSaving(false);
+      setSavingStep('');
+    }
+  };
+
+  const saveStatistician = async () => {
     if (!formData.email?.trim()) {
       toast.error('Email is required');
       return;
@@ -224,6 +242,7 @@ const Statisticians: React.FC = () => {
 
       if (profilePhotoFile) {
         try {
+          setSavingStep('Uploading photo…');
           await uploadStatisticianPhoto.mutateAsync({ id: editingStatistician.id, file: profilePhotoFile });
         } catch (err) {
           toast.error(err instanceof Error ? err.message : 'Profile picture upload failed');
@@ -260,6 +279,7 @@ const Statisticians: React.FC = () => {
 
       if (profilePhotoFile && created) {
         try {
+          setSavingStep('Uploading photo…');
           await uploadStatisticianPhoto.mutateAsync({ id: created.id, file: profilePhotoFile });
         } catch (err) {
           toast.error(err instanceof Error ? err.message : 'Profile picture upload failed');
@@ -588,16 +608,17 @@ const Statisticians: React.FC = () => {
             <div className="flex justify-end gap-4 p-6 border-t border-gray-200 dark:border-gray-800">
               <button
                 onClick={() => { setIsModalOpen(false); setEditingStatistician(null); resetForm(); }}
-                className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-white/5"
+                disabled={isSaving}
+                className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 disabled:opacity-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-white/5"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveStatistician}
-                disabled={createStatistician.isPending || updateStatistician.isPending}
+                disabled={isSaving}
                 className="px-6 py-2.5 bg-brand-500 text-white rounded-lg font-medium hover:bg-brand-600 disabled:opacity-70"
               >
-                {createStatistician.isPending || updateStatistician.isPending ? 'Saving...' : editingStatistician ? 'Update' : 'Create'}
+                {isSaving ? savingStep || 'Saving…' : editingStatistician ? 'Update' : 'Create'}
               </button>
             </div>
           </div>

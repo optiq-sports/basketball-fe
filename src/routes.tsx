@@ -1,6 +1,7 @@
 import React, { Suspense, lazy, useEffect, useLayoutEffect } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AUTH_SESSION_EXPIRED_EVENT, clearAuthTokens, getAccessToken } from './auth/authSession';
+import { decideGate } from './auth/gateDecision';
 import { useQueryClient } from '@tanstack/react-query';
 import Login from './pages/login/login';
 import ForgotPassword from './pages/login/ForgotPassword';
@@ -22,28 +23,57 @@ const LoadingScreen: React.FC = () => (
   </div>
 );
 
+const UnreachableScreen: React.FC<{ onRetry: () => void; retrying: boolean }> = ({ onRetry, retrying }) => (
+  <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-[#F4F7F9] px-6 text-center">
+    <p className="text-lg font-semibold text-gray-800">Can&rsquo;t reach the server</p>
+    <p className="max-w-sm text-sm text-gray-600">
+      You&rsquo;re still signed in. Anything you&rsquo;ve recorded is saved on this device and will sync once
+      you&rsquo;re back online. This page reconnects on its own, or you can retry now.
+    </p>
+    <button
+      type="button"
+      onClick={onRetry}
+      disabled={retrying}
+      className="rounded-lg bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-60"
+    >
+      {retrying ? 'Retrying…' : 'Retry'}
+    </button>
+  </div>
+);
+
 /** Resolves auth token and forks STATISTICIAN users into isolated routes vs main app shell. */
 const AppGate: React.FC = () => {
   const hasToken = typeof window !== 'undefined' && !!getAccessToken();
   const profile = useProfile(hasToken);
   const queryClient = useQueryClient();
 
-  if (!hasToken) {
+  const decision = decideGate({
+    hasToken,
+    isLoading: profile.isLoading,
+    isPaused: profile.fetchStatus === 'paused',
+    isError: profile.isError,
+    hasData: profile.data !== undefined,
+    error: profile.error,
+  });
+
+  if (decision === 'login') {
+    // Reaching here with a token means the server itself refused it (401/403) — ApiClient's
+    // request() already tried a silent refresh-and-retry first (see refreshAccessToken in
+    // src/auth/authSession.ts). Clear everything, not just the access token, so a stale
+    // refresh token doesn't linger. Merely being offline never lands here (see decideGate).
+    if (hasToken) {
+      clearAuthTokens();
+      queryClient.removeQueries({ queryKey: queryKeys.auth.profile });
+    }
     return <Navigate to="/login" replace />;
   }
 
-  if (profile.isLoading) {
+  if (decision === 'loading') {
     return <LoadingScreen />;
   }
 
-  if (profile.isError) {
-    // ApiClient's request() already tried a silent refresh-and-retry before this error
-    // surfaced (see refreshAccessToken in src/auth/authSession.ts) — reaching here means
-    // that failed too, or there was no refresh token to try. Clear everything, not just
-    // the access token, so a stale refresh token doesn't linger.
-    clearAuthTokens();
-    queryClient.removeQueries({ queryKey: queryKeys.auth.profile });
-    return <Navigate to="/login" replace />;
+  if (decision === 'unreachable') {
+    return <UnreachableScreen onRetry={() => void profile.refetch()} retrying={profile.isFetching} />;
   }
 
   const rawRole = (profile.data as { role?: string } | undefined)?.role;

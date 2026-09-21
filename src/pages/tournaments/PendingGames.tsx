@@ -87,6 +87,26 @@ const PendingGames: React.FC = () => {
     toast.success('Match code copied!');
   };
 
+  // Preselect whoever is already assigned once the match loads.
+  const assignedStatisticianId = match?.statisticianId ?? '';
+  useEffect(() => {
+    setSelectedStatistician(assignedStatisticianId);
+  }, [assignedStatisticianId]);
+
+  // Picking the blank "Assign Statistician" option and saving unassigns (backend turns "" into null).
+  const handleAssignStatistician = () => {
+    if (!matchId) return;
+    updateMatch.mutate(
+      { id: matchId, data: { statisticianId: selectedStatistician } },
+      {
+        onSuccess: () =>
+          toast.success(selectedStatistician ? 'Statistician assigned.' : 'Statistician unassigned.'),
+        onError: (err) =>
+          toast.error(err instanceof Error ? err.message : 'Failed to save statistician.'),
+      },
+    );
+  };
+
   const handleStatusUpdate = (status: MatchStatus) => {
     if (!matchId) return;
     updateMatch.mutate(
@@ -234,13 +254,16 @@ const PendingGames: React.FC = () => {
                 </option>
               ))}
             </select>
-            {/* Save disabled: Match schema has no statisticianId field yet — backend update required */}
             <button
-              disabled
-              title="Statistician assignment save requires a backend schema update (statisticianId field on Match)"
-              className="px-5 py-3 bg-[#21409A] text-white rounded-lg font-medium opacity-40 cursor-not-allowed"
+              onClick={handleAssignStatistician}
+              disabled={updateMatch.isPending || selectedStatistician === assignedStatisticianId}
+              className="px-5 py-3 bg-[#21409A] text-white rounded-lg font-medium hover:bg-[#1a3380] disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Assign
+              {updateMatch.isPending
+                ? 'Saving…'
+                : !selectedStatistician && assignedStatisticianId
+                  ? 'Unassign'
+                  : 'Assign'}
             </button>
           </div>
 

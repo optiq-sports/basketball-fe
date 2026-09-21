@@ -271,6 +271,11 @@ const Players: React.FC = () => {
     setIsModalOpen(true);
   };
 
+  // Covers the whole save — the player AND the portrait upload — so the button can't drop back to
+  // idle mid-save and be clicked a second time (which created duplicate players).
+  const [isSaving, setIsSaving] = useState(false);
+  const [savingStep, setSavingStep] = useState('');
+
   const handleSavePlayer = () => {
     if (!formData.name || !formData.surname || !formData.number) {
       toast.error('Please fill in first name, last name and jersey number');
@@ -283,58 +288,23 @@ const Players: React.FC = () => {
     }
     const position = formData.position as 'POINT_GUARD' | 'SHOOTING_GUARD' | 'SMALL_FORWARD' | 'POWER_FORWARD' | 'CENTER';
 
-    const doUpdate = async (photoUrl?: string) => {
-      const data: Parameters<typeof updatePlayer.mutate>[0]['data'] = {
-        firstName: formData.name,
-        lastName: formData.surname,
-        position,
-        height: formData.height || undefined,
-        dateOfBirth: formData.dob || undefined,
-      };
-      if (photoUrl) data.photo = photoUrl;
-      updatePlayer.mutate(
-        { id: editingPlayer!.id, data },
-        {
-          onSuccess: () => {
-            setIsModalOpen(false);
-            setEditingPlayer(null);
-            setPortraitFile(null);
-            setPortraitPreview(null);
-            setFormData({ name: '', surname: '', number: '', teamId: '', teamName: '', position: 'POINT_GUARD', country: '', height: '', dob: '' });
-          },
-          onError: (e) => toast.error(e.message),
-        }
-      );
-    };
-
-    const doCreate = async (photoUrl?: string) => {
-      const payload: Parameters<typeof createPlayer.mutate>[0] = {
-        teamId: formData.teamId,
-        firstName: formData.name,
-        lastName: formData.surname,
-        jerseyNumber: jerseyNum,
-        position,
-        height: formData.height || undefined,
-        dateOfBirth: formData.dob || undefined,
-        photo: photoUrl || undefined,
-      };
-      createPlayer.mutate(payload, {
-        onSuccess: () => {
-          setIsModalOpen(false);
-          setPortraitFile(null);
-          setPortraitPreview(null);
-          setFormData({ name: '', surname: '', number: '', teamId: '', teamName: '', position: 'POINT_GUARD', country: '', height: '', dob: '' });
-        },
-        onError: (e) => toast.error(e.message),
-      });
+    const EMPTY_FORM = { name: '', surname: '', number: '', teamId: '', teamName: '', position: 'POINT_GUARD', country: '', height: '', dob: '' };
+    const closeAndReset = () => {
+      setIsModalOpen(false);
+      setEditingPlayer(null);
+      setPortraitFile(null);
+      setPortraitPreview(null);
+      setFormData(EMPTY_FORM);
     };
 
     const runSubmit = async () => {
       if (editingPlayer) {
-        // For edits, keep current behavior: upload (if any) then update.
+        // Upload the new portrait (if any), then update — awaited end to end, so the button stays
+        // busy for the whole thing.
         let photoUrl: string | undefined;
         if (portraitFile) {
           try {
+            setSavingStep('Uploading photo…');
             const res = await uploadImageFile.mutateAsync(portraitFile);
             photoUrl = res.url;
           } catch (err) {
@@ -342,7 +312,23 @@ const Players: React.FC = () => {
             return;
           }
         }
-        doUpdate(photoUrl);
+        setSavingStep('Saving…');
+        try {
+          await updatePlayer.mutateAsync({
+            id: editingPlayer.id,
+            data: {
+              firstName: formData.name,
+              lastName: formData.surname,
+              position,
+              height: formData.height || undefined,
+              dateOfBirth: formData.dob || undefined,
+              ...(photoUrl ? { photo: photoUrl } : {}),
+            },
+          });
+          closeAndReset();
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : 'Failed to update player');
+        }
         return;
       }
 
@@ -352,10 +338,11 @@ const Players: React.FC = () => {
         return;
       }
 
-      // 1) Create player without photo first.
+      // 1) Create the player without a photo first.
       let created: ApiPlayer | undefined;
       try {
-        const payload: Parameters<typeof createPlayer.mutateAsync>[0] = {
+        setSavingStep('Saving…');
+        created = await createPlayer.mutateAsync({
           teamId: formData.teamId,
           firstName: formData.name,
           lastName: formData.surname,
@@ -363,61 +350,33 @@ const Players: React.FC = () => {
           position,
           height: formData.height || undefined,
           dateOfBirth: formData.dob || undefined,
-        };
-        created = await createPlayer.mutateAsync(payload);
+        });
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Failed to create player');
         return;
       }
 
-      // 2) If no portrait selected, we're done.
-      if (!portraitFile || !created) {
-        setIsModalOpen(false);
-        setPortraitFile(null);
-        setPortraitPreview(null);
-        setFormData({
-          name: '',
-          surname: '',
-          number: '',
-          teamId: '',
-          teamName: '',
-          position: 'POINT_GUARD',
-          country: '',
-          height: '',
-          dob: '',
-        });
-        return;
+      // 2) With a portrait, upload it and attach it to the new player.
+      if (portraitFile && created) {
+        try {
+          setSavingStep('Uploading photo…');
+          const res = await uploadImageFile.mutateAsync(portraitFile);
+          await updatePlayer.mutateAsync({ id: created.id, data: { photo: res.url } });
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : 'Photo upload failed');
+          // The player was created successfully even if the photo wasn't.
+        }
       }
-
-      // 3) If portrait exists, upload and then patch the player with the photo URL.
-      try {
-        const res = await uploadImageFile.mutateAsync(portraitFile);
-        await updatePlayer.mutateAsync({
-          id: created.id,
-          data: { photo: res.url },
-        });
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Photo upload failed');
-        // Even if photo upload fails, the player was created successfully.
-      } finally {
-        setIsModalOpen(false);
-        setPortraitFile(null);
-        setPortraitPreview(null);
-        setFormData({
-          name: '',
-          surname: '',
-          number: '',
-          teamId: '',
-          teamName: '',
-          position: 'POINT_GUARD',
-          country: '',
-          height: '',
-          dob: '',
-        });
-      }
+      closeAndReset();
     };
 
-    runSubmit();
+    if (isSaving) return;
+    setIsSaving(true);
+    setSavingStep('Saving…');
+    void runSubmit().finally(() => {
+      setIsSaving(false);
+      setSavingStep('');
+    });
   };
 
   const columns = useMemo<ColumnDef<PlayerDisplay>[]>(
@@ -1075,6 +1034,7 @@ const Players: React.FC = () => {
 
             <div className="flex justify-end gap-4 p-6 border-t border-gray-200 dark:border-gray-800">
               <button
+                disabled={isSaving}
                 onClick={() => {
                   setIsModalOpen(false);
                   setEditingPlayer(null);
@@ -1082,16 +1042,16 @@ const Players: React.FC = () => {
                   setPortraitPreview(null);
                   setFormData({ name: '', surname: '', number: '', teamId: '', teamName: '', position: 'POINT_GUARD', country: '', height: '', dob: '' });
                 }}
-                className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-white/5"
+                className="px-6 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors disabled:opacity-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-white/5"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSavePlayer}
-                disabled={createPlayer.isPending || updatePlayer.isPending}
+                disabled={isSaving}
                 className="px-6 py-2.5 bg-brand-500 text-white rounded-lg font-medium hover:bg-brand-600 transition-colors disabled:opacity-70"
               >
-                {createPlayer.isPending || updatePlayer.isPending ? 'Saving...' : editingPlayer ? 'Update' : 'Create'}
+                {isSaving ? savingStep || 'Saving…' : editingPlayer ? 'Update' : 'Create'}
               </button>
             </div>
           </div>

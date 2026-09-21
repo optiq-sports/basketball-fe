@@ -28,6 +28,17 @@ export const sessionsApi = {
     );
   },
 
+  /** Persists which side of the court each team is on / attacking (Backend Gap #17). */
+  updateOrientation(
+    sessionId: string,
+    orientation: { homeOnLeft: boolean; homeAttacksLeft: boolean },
+  ): Promise<SessionStateSnapshot> {
+    return statdashRequest<SessionStateSnapshot>(
+      `/statdash/sessions/${encodeURIComponent(sessionId)}/orientation`,
+      { method: 'PATCH', body: JSON.stringify(orientation) },
+    );
+  },
+
   startSession(sessionId: string): Promise<SessionLifecycleResponse> {
     return statdashRequest<SessionLifecycleResponse>(
       `/statdash/sessions/${encodeURIComponent(sessionId)}/start`,

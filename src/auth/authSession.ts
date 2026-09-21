@@ -35,6 +35,18 @@ type RefreshResponsePayload = {
   refresh_token?: string;
 };
 
+/**
+ * The refresh call never got a usable answer (offline, timed out, server error). Unlike a
+ * refresh token the server *rejected*, this says nothing about the session — callers must keep
+ * the user signed in and surface it as a network failure so work can retry later.
+ */
+export class RefreshUnavailableError extends Error {
+  constructor(message = 'Could not reach the server to refresh the session') {
+    super(message);
+    this.name = 'RefreshUnavailableError';
+  }
+}
+
 let refreshInFlight: Promise<string | null> | null = null;
 
 /**
@@ -42,6 +54,10 @@ let refreshInFlight: Promise<string | null> | null = null;
  * both of those call this function when they see a 401, so going through either of them
  * here would recurse. Concurrent 401s from multiple in-flight requests share one refresh
  * call instead of each firing their own (see `refreshInFlight`).
+ *
+ * Resolves to `null` only when there is nothing to refresh with or the server *rejected* the
+ * refresh token (the session is genuinely dead). Rejects with RefreshUnavailableError when the
+ * request couldn't complete or the server errored — the session may be fine.
  */
 export function refreshAccessToken(): Promise<string | null> {
   if (refreshInFlight) return refreshInFlight;
@@ -50,19 +66,25 @@ export function refreshAccessToken(): Promise<string | null> {
 
   refreshInFlight = (async () => {
     try {
-      const response = await fetch(`${API_BASE}/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: refreshToken }),
-      });
+      let response: Response;
+      try {
+        response = await fetch(`${API_BASE}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+      } catch {
+        throw new RefreshUnavailableError();
+      }
+      if (response.status >= 500) {
+        throw new RefreshUnavailableError(`Server error (${response.status}) while refreshing the session`);
+      }
       if (!response.ok) return null;
       const payload = (await response.json().catch(() => null)) as RefreshResponsePayload | null;
       const data = payload?.data ?? payload;
       if (!data?.access_token) return null;
       storeAuthTokens({ access_token: data.access_token, refresh_token: data.refresh_token });
       return data.access_token;
-    } catch {
-      return null;
     } finally {
       refreshInFlight = null;
     }

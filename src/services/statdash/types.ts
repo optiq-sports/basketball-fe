@@ -108,6 +108,18 @@ export interface ProjectionRequestParams {
   fromVersion?: number;
 }
 
+/** One player's line from GET /statdash/projections/player/:playerId/game/:sessionId. */
+export interface PlayerGameProjection {
+  playerId: string;
+  points: number;
+  rebounds: number;
+  assists: number;
+  blocks: number;
+  steals: number;
+  fouls: number;
+  turnovers: number;
+}
+
 export interface BoxScoreProjection {
   players: Record<
     string,

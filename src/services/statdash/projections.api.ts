@@ -1,6 +1,7 @@
 import { statdashRequest } from './client';
 import type {
   BoxScoreProjection,
+  PlayerGameProjection,
   SessionSummaryProjection,
   ShotChartProjection,
 } from './types';
@@ -15,6 +16,13 @@ export const projectionsApi = {
   getShotChart(sessionId: string): Promise<ShotChartProjection[]> {
     return statdashRequest<ShotChartProjection[]>(
       `/statdash/projections/match/${encodeURIComponent(sessionId)}/shot-chart`,
+    );
+  },
+
+  /** Live per-player line for one game; all zeros (not an error) if the player has no events yet. */
+  getPlayerGame(sessionId: string, playerId: string): Promise<PlayerGameProjection> {
+    return statdashRequest<PlayerGameProjection>(
+      `/statdash/projections/player/${encodeURIComponent(playerId)}/game/${encodeURIComponent(sessionId)}`,
     );
   },
 

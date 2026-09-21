@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { FiMapPin, FiCalendar, FiEdit2, FiTrash2, FiUserPlus, FiChevronLeft, FiChevronDown } from 'react-icons/fi';
 import { LuTrophy } from 'react-icons/lu';
@@ -9,6 +9,7 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { useToast } from '../../hooks/useToast';
 import DataTable from '../../components/ui/DataTable';
+import Spinner from '../../components/ui/Spinner';
 
 // Copy Icon Component
 const CopyIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -30,10 +31,13 @@ const LEADER_STAT_LABELS: Record<LeaderStat, string> = {
 
 const LEADER_COLORS = ['#FFCA69', '#80B7D5', '#7FD99A'];
 
+const GROUPS = ['A', 'B', 'C', 'D'] as const;
+
 interface DisplayTeam {
   id: string;
   name: string;
   color: string;
+  group: string | null;
   gp: number;
   w: number;
   l: number;
@@ -92,6 +96,7 @@ const CompetitionDetailPage: React.FC = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAddTeamsModal, setShowAddTeamsModal] = useState(false);
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
+  const [addTeamsGroup, setAddTeamsGroup] = useState<string>('');
   const [editForm, setEditForm] = useState({
     name: '',
     division: 'PREMIER' as TournamentDivision,
@@ -139,9 +144,9 @@ const CompetitionDetailPage: React.FC = () => {
     return new Set(tournamentTeams.map((tt) => tt.teamId));
   }, [tournament]);
 
-  const teams: DisplayTeam[] = useMemo(() => {
+  const serverTeams: DisplayTeam[] = useMemo(() => {
     if (!tournament) return [];
-    const tournamentTeams = (tournament as Record<string, unknown>).teams as Array<{ teamId: string; team: { id: string; name: string; color: string } }> ?? [];
+    const tournamentTeams = (tournament as Record<string, unknown>).teams as Array<{ teamId: string; group?: string | null; team: { id: string; name: string; color: string } }> ?? [];
     const completedMatches = matchesRaw.filter(m => m.status === 'COMPLETED');
 
     const statsMap: Record<string, { gp: number; w: number; l: number }> = {};
@@ -167,6 +172,7 @@ const CompetitionDetailPage: React.FC = () => {
         return {
           id: tt.team.id,
           name: tt.team.name,
+          group: tt.group ?? null,
           color: tt.team.color === 'yellow' || tt.team.color === 'blue' ? tt.team.color : (i % 2 === 0 ? 'yellow' : 'blue'),
           gp: s.gp,
           w: s.w,
@@ -177,6 +183,36 @@ const CompetitionDetailPage: React.FC = () => {
       })
       .sort((a, b) => b.points - a.points || b.percent - a.percent);
   }, [tournament, matchesRaw]);
+
+  // Optimistic group moves: teamId -> the group the admin just picked.
+  //  - While the save is in flight (`savingTeamIds`) the row stays where it is, showing the picked
+  //    group in its dropdown with a "Saving…" spinner, so it's obvious something is happening.
+  //  - As soon as the server accepts it, the team moves to its new group right away, without
+  //    waiting for the refetch round trip; the overlay is dropped once fresh data matches.
+  //  - If the save fails the overlay is removed and the dropdown snaps back.
+  const [pendingGroups, setPendingGroups] = useState<Record<string, string>>({});
+  const [savingTeamIds, setSavingTeamIds] = useState<string[]>([]);
+
+  const teams: DisplayTeam[] = useMemo(
+    () =>
+      serverTeams.map((t) =>
+        pendingGroups[t.id] !== undefined && !savingTeamIds.includes(t.id)
+          ? { ...t, group: pendingGroups[t.id] }
+          : t,
+      ),
+    [serverTeams, pendingGroups, savingTeamIds],
+  );
+
+  // Once the server data has caught up with a pending move, the overlay is no longer needed.
+  useEffect(() => {
+    setPendingGroups((prev) => {
+      const stale = serverTeams.filter((t) => prev[t.id] !== undefined && t.group === prev[t.id]);
+      if (stale.length === 0) return prev;
+      const next = { ...prev };
+      for (const t of stale) delete next[t.id];
+      return next;
+    });
+  }, [serverTeams]);
 
   const tournamentLeaders = useMemo(() => {
     const playerMap: Record<string, {
@@ -274,11 +310,12 @@ const CompetitionDetailPage: React.FC = () => {
       return;
     }
     addTeams.mutate(
-      { tournamentId, body: { teamIds: selectedTeamIds } },
+      { tournamentId, body: { teamIds: selectedTeamIds, ...(addTeamsGroup ? { group: addTeamsGroup } : {}) } },
       {
         onSuccess: () => {
           setShowAddTeamsModal(false);
           setSelectedTeamIds([]);
+          setAddTeamsGroup('');
         },
         onError: (e) => toast.error(e.message),
       }
@@ -302,6 +339,67 @@ const CompetitionDetailPage: React.FC = () => {
     );
   }
 
+  // A tournament that hasn't assigned any team to a group yet keeps showing every team on every tab
+  // (as before). Once any team has a group, each tab shows only its own teams, and teams with no
+  // group yet are surfaced separately so they don't silently disappear.
+  const usesGroups = teams.some((t) => t.group);
+  const groupTeams = usesGroups ? teams.filter((t) => t.group === activeGroup) : teams;
+  const unassignedTeams = usesGroups ? teams.filter((t) => !t.group) : [];
+
+  const handleMoveTeamToGroup = async (teamId: string, group: string) => {
+    if (!tournamentId || !group) return;
+    const team = serverTeams.find((t) => t.id === teamId);
+    setPendingGroups((prev) => ({ ...prev, [teamId]: group }));
+    setSavingTeamIds((prev) => [...prev, teamId]);
+    try {
+      // mutateAsync (not mutate): several teams can be saving at once, and per-call callbacks of
+      // mutate() only fire for the most recent call, which would swallow earlier failures.
+      await addTeams.mutateAsync({ tournamentId, body: { teamIds: [teamId], group } });
+      toast.success(`${team?.name ?? 'Team'} moved to Group ${group}.`);
+      // Pull the authoritative data; the effect above drops the overlay once it matches. If this
+      // refetch itself fails the overlay just stays until the next successful refresh.
+      await tournamentQuery.refetch().catch(() => undefined);
+    } catch (e) {
+      // Save failed: put the team back where the server says it is.
+      setPendingGroups((prev) => {
+        const next = { ...prev };
+        delete next[teamId];
+        return next;
+      });
+      toast.error(e instanceof Error ? e.message : `Could not move ${team?.name ?? 'the team'} to Group ${group}.`);
+    } finally {
+      setSavingTeamIds((prev) => prev.filter((id) => id !== teamId));
+    }
+  };
+
+  const groupSelect = (team: DisplayTeam) => {
+    const saving = savingTeamIds.includes(team.id);
+    return (
+      <span className="inline-flex items-center gap-2" aria-busy={saving}>
+        <select
+          value={pendingGroups[team.id] ?? team.group ?? ''}
+          disabled={saving}
+          onChange={(e) => void handleMoveTeamToGroup(team.id, e.target.value)}
+          aria-label={`Group for ${team.name}`}
+          className={`rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 transition-opacity dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 ${
+            saving ? 'opacity-60' : ''
+          }`}
+        >
+          <option value="" disabled>—</option>
+          {GROUPS.map((g) => (
+            <option key={g} value={g}>Group {g}</option>
+          ))}
+        </select>
+        {saving && (
+          <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400" role="status">
+            <Spinner className="size-3.5" />
+            Saving…
+          </span>
+        )}
+      </span>
+    );
+  };
+
   const standingsColumns: ColumnDef<DisplayTeam>[] = [
     {
       accessorKey: 'name',
@@ -323,6 +421,7 @@ const CompetitionDetailPage: React.FC = () => {
     { accessorKey: 'l', header: 'L' },
     { accessorKey: 'percent', header: '%' },
     { accessorKey: 'points', header: 'Points' },
+    { id: 'group', header: 'Group', cell: ({ row }) => groupSelect(row.original) },
   ];
 
   return (
@@ -391,9 +490,10 @@ const CompetitionDetailPage: React.FC = () => {
               onClick={handleDeleteTournament}
               disabled={deleteTournament.isPending}
               title="Delete tournament"
+              aria-busy={deleteTournament.isPending}
               className="flex items-center justify-center size-9 rounded-lg text-error-500 hover:bg-error-50 transition-colors disabled:opacity-70 dark:hover:bg-error-500/10"
             >
-              <FiTrash2 className="size-4" />
+              {deleteTournament.isPending ? <Spinner label="Deleting tournament" /> : <FiTrash2 className="size-4" />}
             </button>
           </div>
         </div>
@@ -448,8 +548,22 @@ const CompetitionDetailPage: React.FC = () => {
                   </p>
                 )}
               </div>
+              <div className="flex items-center gap-3 px-6 pb-4">
+                <label htmlFor="add-teams-group" className="text-sm font-medium text-gray-700 dark:text-gray-300">Group</label>
+                <select
+                  id="add-teams-group"
+                  value={addTeamsGroup}
+                  onChange={(e) => setAddTeamsGroup(e.target.value)}
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+                >
+                  <option value="">No group</option>
+                  {GROUPS.map((g) => (
+                    <option key={g} value={g}>Group {g}</option>
+                  ))}
+                </select>
+              </div>
               <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-800">
-                <button onClick={() => { setShowAddTeamsModal(false); setSelectedTeamIds([]); }} className="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5">Cancel</button>
+                <button onClick={() => { setShowAddTeamsModal(false); setSelectedTeamIds([]); setAddTeamsGroup(''); }} className="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5">Cancel</button>
                 <button onClick={handleAddTeams} disabled={addTeams.isPending || selectedTeamIds.length === 0} className="px-4 py-2 bg-brand-500 text-white rounded-lg font-medium hover:bg-brand-600 disabled:opacity-70 disabled:cursor-not-allowed">{addTeams.isPending ? 'Adding…' : 'Add Teams'}</button>
               </div>
             </div>
@@ -587,7 +701,7 @@ const CompetitionDetailPage: React.FC = () => {
 
         {/* Group Tabs */}
         <div className="mb-6 inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-white p-1 dark:border-gray-800 dark:bg-gray-900">
-          {['A', 'B', 'C', 'D'].map((group) => (
+          {GROUPS.map((group) => (
             <button
               key={group}
               onClick={() => setActiveGroup(group)}
@@ -615,10 +729,25 @@ const CompetitionDetailPage: React.FC = () => {
             <div className="p-5 pt-0">
               <DataTable
                 columns={standingsColumns}
-                data={teams}
+                data={groupTeams}
                 pageSize={20}
-                emptyMessage="No teams in this tournament yet."
+                emptyMessage={usesGroups ? `No teams in Group ${activeGroup} yet.` : 'No teams in this tournament yet.'}
               />
+              {unassignedTeams.length > 0 && (
+                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
+                  <p className="mb-2 text-xs font-semibold text-amber-800 dark:text-amber-300">
+                    Not in a group yet
+                  </p>
+                  <ul className="space-y-1.5">
+                    {unassignedTeams.map((t) => (
+                      <li key={t.id} className="flex items-center justify-between gap-3 text-sm text-gray-700 dark:text-gray-300">
+                        <span>{t.name}</span>
+                        {groupSelect(t)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
 

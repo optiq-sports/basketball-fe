@@ -10,6 +10,8 @@ export const statdashQueryKeys = {
   boxScore: (sessionId: string) => ['statdash', 'session', sessionId, 'projection', 'boxScore'] as const,
   shotChart: (sessionId: string) => ['statdash', 'session', sessionId, 'projection', 'shotChart'] as const,
   summary: (sessionId: string) => ['statdash', 'session', sessionId, 'projection', 'summary'] as const,
+  playerGame: (sessionId: string, playerId: string) =>
+    ['statdash', 'session', sessionId, 'projection', 'player', playerId] as const,
 };
 
 export function useSessionStateQuery(sessionId: string | undefined, enabled = true) {
@@ -46,6 +48,21 @@ export function useShotChartProjection(sessionId: string | undefined, enabled = 
     queryFn: () => projectionsApi.getShotChart(sessionId!),
     enabled: enabled && !!sessionId,
     staleTime: 1000 * 5,
+  });
+}
+
+/** Poll every few seconds while the game is live so the page updates as the statistician records. */
+export function usePlayerGameProjection(
+  sessionId: string | undefined,
+  playerId: string | undefined,
+  options: { live?: boolean } = {},
+) {
+  return useQuery({
+    queryKey: statdashQueryKeys.playerGame(sessionId ?? '', playerId ?? ''),
+    queryFn: () => projectionsApi.getPlayerGame(sessionId!, playerId!),
+    enabled: !!sessionId && !!playerId,
+    staleTime: 1000 * 3,
+    refetchInterval: options.live ? 1000 * 5 : false,
   });
 }
 

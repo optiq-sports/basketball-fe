@@ -5,6 +5,7 @@ import StatisticianLayout from '../../components/StatisticianLayout';
 import { useStatisticianTeamColors } from '../../contexts/StatisticianTeamColorsContext';
 import { writeGameSetupOrientation } from '../gameSetupOrientation';
 import { readStoredSessionContext } from '../../features/statdash/sessionContextStorage';
+import { sessionsApi } from '../../services/statdash';
 import { GATEWAY_DISPLAY_FONT_STACK, GATEWAY_FONT_STACK } from '../../authGatewayTheme';
 
 const CW = 620;
@@ -184,13 +185,22 @@ const ChooseSides: React.FC = () => {
 
   const handleContinue = async () => {
     const orientation = { homeOnLeft, homeAttacksLeft };
-    writeGameSetupOrientation(orientation);
     const context = readStoredSessionContext();
     if (!context) {
       navigate('/match-key', { replace: true });
       return;
     }
+    writeGameSetupOrientation(orientation, context.sessionId);
     setIsSaving(true);
+    // Persist to the backend so resuming from another device/browser gets the real sides
+    // (Backend Gap #17). The local write above stays as the same-tab source of truth, and
+    // StatDash re-syncs the backend from it on load — so a failure here must not block the
+    // pre-game flow.
+    try {
+      await sessionsApi.updateOrientation(context.sessionId, orientation);
+    } catch (error) {
+      console.warn('[ChooseSides] Could not save orientation to the backend yet:', error);
+    }
     navigate('/jump-ball');
     setIsSaving(false);
   };
