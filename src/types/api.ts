@@ -7,15 +7,33 @@ export interface ApiResponse<T = unknown> {
   status?: number;
 }
 
-export interface PaginatedResponse<T> {
-  data: T[];
-  pagination: {
-    total: number;
-    totalPages: number;
-    currentPage: number;
-    hasNext: boolean;
-    hasPrev: boolean;
-  };
+/**
+ * Shape every list endpoint returns as of the Sep 2026 backend pagination rollout
+ * (`PaginatedResponseDto` / `PageMetaDto` in basketball-be). `ApiResponse.data` for a
+ * list call is `Paginated<T>`, not `T[]` — see `ApiClient.ts` for how each `getAll`
+ * exposes this (some flatten it back to `T[]` for existing callers; see their doc comments).
+ */
+export interface PageMeta {
+  page: number;
+  limit: number;
+  itemCount: number;
+  pageCount: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+}
+
+export interface Paginated<T> {
+  items: T[];
+  meta: PageMeta;
+}
+
+/** page/limit/search/sortBy/sortOrder accepted by every paginated GET list endpoint. */
+export interface PaginationParams {
+  page?: number;
+  limit?: number;
+  search?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 // API Error
@@ -41,6 +59,16 @@ export interface RegisterRequest {
   email: string;
   password: string;
   role?: 'SUPER_ADMIN' | 'ADMIN' | 'STATISTICIAN';
+}
+
+/**
+ * `POST /auth/change-password`. `oldPassword` is whatever the account currently signs in with —
+ * for an account created with an auto-generated password (see `PASSWORD_CHANGE_REQUIRED`
+ * handling in `src/auth/gateDecision.ts`), that's the one just used to log in.
+ */
+export interface ChangePasswordRequest {
+  oldPassword: string;
+  newPassword: string;
 }
 
 export interface AuthUser {

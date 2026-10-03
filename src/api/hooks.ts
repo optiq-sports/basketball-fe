@@ -27,6 +27,7 @@ import type {
   TournamentAddTeamsBody,
   MatchCreate,
   MatchUpdate,
+  ChangePasswordRequest,
 } from '../types/api';
 
 const TOKEN_KEY = 'access_token';
@@ -185,6 +186,26 @@ export function useRegister() {
           localStorage.setItem('user_name', String(user.name).trim());
         }
       }
+    },
+  });
+}
+
+/**
+ * `POST /auth/change-password` — used both by a voluntary password change and by the forced
+ * change-password screen (`src/pages/login/ChangePasswordRequired.tsx`) a `PASSWORD_CHANGE_REQUIRED`
+ * profile fetch lands the user on. On success, the profile is marked stale so the next read sees
+ * `forcePasswordChange: false` and `AppGate` lets the user through.
+ */
+export function useChangePassword() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: ChangePasswordRequest) => {
+      const res = await apiClient.auth.changePassword(data);
+      if (!res.ok) throw new Error(res.message ?? 'Failed to change password');
+      return res;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.auth.profile });
     },
   });
 }

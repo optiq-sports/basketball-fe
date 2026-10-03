@@ -24,6 +24,11 @@ vi.mock('./api/hooks', () => ({
 }));
 vi.mock('./pages/login/login', () => ({ default: () => <div>LOGIN PAGE</div> }));
 vi.mock('./pages/login/ForgotPassword', () => ({ default: () => <div>FORGOT PAGE</div> }));
+vi.mock('./pages/login/ChangePasswordRequired', () => ({
+  default: ({ onChanged }: { onChanged: () => void }) => (
+    <button onClick={onChanged}>CHANGE PASSWORD SCREEN</button>
+  ),
+}));
 vi.mock('./components/wrapper', () => ({ default: () => <div>ADMIN SHELL</div> }));
 vi.mock('./contexts/StatisticianTeamColorsContext', () => ({
   StatisticianTeamColorsProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -88,5 +93,18 @@ describe('AppGate when the profile check fails', () => {
     profileState.current = { ...profileState.current, data: undefined, isError: false, error: null };
     renderAt('/tournaments');
     expect(screen.getByText('LOGIN PAGE')).toBeTruthy();
+  });
+
+  it('REGRESSION: a new account forced to change its password sees that screen, not login, and keeps its token', () => {
+    profileState.current = {
+      ...profileState.current,
+      data: undefined,
+      isError: true,
+      error: { status: 403, message: 'PASSWORD_CHANGE_REQUIRED' },
+    };
+    renderAt('/tournaments');
+    expect(screen.getByText('CHANGE PASSWORD SCREEN')).toBeTruthy();
+    expect(screen.queryByText('LOGIN PAGE')).toBeNull();
+    expect(localStorage.getItem('access_token')).toBe('access');
   });
 });

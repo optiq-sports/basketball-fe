@@ -9,7 +9,19 @@ export function isAuthRejection(error: unknown): boolean {
   return status === 401 || status === 403;
 }
 
-export type GateDecision = 'login' | 'loading' | 'unreachable' | 'app';
+/**
+ * `GET /auth/profile` 403s with exactly this when the account has `forcePasswordChange: true`
+ * (`JwtAuthGuard.handleRequest` on the backend — new account created with an auto-generated
+ * password, see docs/BACKEND_GAPS.md Gap #27). This is also a 403, so it must be checked BEFORE
+ * `isAuthRejection` in `decideGate` or it would be treated as a generic rejection — which clears
+ * the user's tokens and strands them back at login, unable to ever get past this screen again.
+ */
+export function isPasswordChangeRequired(error: unknown): boolean {
+  const e = error as { status?: unknown; message?: unknown } | null | undefined;
+  return e?.status === 403 && e?.message === 'PASSWORD_CHANGE_REQUIRED';
+}
+
+export type GateDecision = 'login' | 'loading' | 'unreachable' | 'app' | 'password-change';
 
 export interface GateInput {
   hasToken: boolean;
@@ -25,6 +37,9 @@ export interface GateInput {
  * What AppGate should show for the current profile query state.
  *
  * - No token, or the server rejected the credentials → back to login.
+ * - The server specifically says this account must change its password first → the forced
+ *   change-password screen, token kept (checked before the generic rejection below, since this is
+ *   also a 403 — see `isPasswordChangeRequired`).
  * - A profile we already have is kept even if a background re-check fails: the profile
  *   deliberately revalidates on every mount and window focus (staleTime 0), and that
  *   re-check will fail whenever the device is offline. Expired tokens are still caught because a
@@ -34,6 +49,7 @@ export interface GateInput {
  */
 export function decideGate(input: GateInput): GateDecision {
   if (!input.hasToken) return 'login';
+  if (input.isError && isPasswordChangeRequired(input.error)) return 'password-change';
   if (input.isError && isAuthRejection(input.error)) return 'login';
   if (input.hasData) return 'app';
   if (input.isError || input.isPaused) return 'unreachable';

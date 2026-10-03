@@ -28,6 +28,9 @@ import type {
   Match,
   MatchCreate,
   MatchUpdate,
+  Paginated,
+  PaginationParams,
+  ChangePasswordRequest,
 } from '../types/api';
 import { ApiError } from '../types/api';
 import { API_BASE } from '../config';
@@ -130,6 +133,44 @@ class ApiClient {
     }
   }
 
+  /** Builds a query string, skipping undefined/null/empty values. `true`/`false` become 'true'/'false'. */
+  private static toQuery(params: Record<string, unknown>): string {
+    const sp = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value === undefined || value === null || value === '') continue;
+      sp.set(key, String(value));
+    }
+    const s = sp.toString();
+    return s ? `?${s}` : '';
+  }
+
+  /**
+   * Every list endpoint is now paginated server-side (backend's Sep 2026 pagination rollout —
+   * see `Paginated<T>` in `types/api.ts`), capped at 100 records per page. The admin screens that
+   * call `getAll()` still expect the *complete* list back (they search/sort/count client-side, and
+   * some build dropdowns from it) — so this walks every page and concatenates `items`, keeping
+   * `getAll()`'s contract exactly what it always was. A method that wants real server-side paging
+   * (its own `page`/`limit`, for a future paged UI) should call `fetchPage` directly instead.
+   */
+  private static async fetchAllPages<T>(
+    fetchPage: (page: number, limit: number) => Promise<ApiResponse<Paginated<T>>>,
+  ): Promise<ApiResponse<T[]>> {
+    const limit = 100;
+    const items: T[] = [];
+    let page = 1;
+    let last: ApiResponse<Paginated<T>> | null = null;
+    for (;;) {
+      const res = await fetchPage(page, limit);
+      last = res;
+      const data = res.data;
+      if (!data) break;
+      items.push(...data.items);
+      if (!data.meta.hasNextPage) break;
+      page += 1;
+    }
+    return { ok: last?.ok ?? true, data: items, message: last?.message, status: last?.status };
+  }
+
   auth = {
     register: async (
       data: RegisterRequest
@@ -167,6 +208,18 @@ class ApiClient {
       return this.request<{ success: boolean }>('/auth/logout', {
         method: 'POST',
         body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+    },
+
+    /**
+     * `POST /auth/change-password` — the one route exempt from the `PASSWORD_CHANGE_REQUIRED`
+     * lock (`@BypassPasswordChange()` on the backend), so it can be called by an account that's
+     * currently forced into it. See `src/auth/gateDecision.ts`.
+     */
+    changePassword: async (data: ChangePasswordRequest): Promise<ApiResponse<{ success: boolean }>> => {
+      return this.request<{ success: boolean }>('/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify(data),
       });
     },
   };
@@ -240,13 +293,17 @@ class ApiClient {
       });
     },
 
-    getAll: async (params?: { teamId?: string; unassigned?: boolean }): Promise<ApiResponse<Player[]>> => {
-      const sp = new URLSearchParams();
-      if (params?.teamId) sp.set('teamId', params.teamId);
-      if (params?.unassigned === true) sp.set('unassigned', 'true');
-      const search = sp.toString() ? `?${sp.toString()}` : '';
-      return this.request<Player[]>(`/players${search}`);
+    /** One page, server-side (search/sortBy/sortOrder on top of page/limit; max 100/page). */
+    getPage: async (
+      params?: { teamId?: string; unassigned?: boolean } & PaginationParams,
+    ): Promise<ApiResponse<Paginated<Player>>> => {
+      const qs = ApiClient.toQuery({ ...params, unassigned: params?.unassigned === true ? true : undefined });
+      return this.request<Paginated<Player>>(`/players${qs}`);
     },
+
+    /** The full roster matching `params`, walking every page — see `fetchAllPages`. */
+    getAll: async (params?: { teamId?: string; unassigned?: boolean }): Promise<ApiResponse<Player[]>> =>
+      ApiClient.fetchAllPages((page, limit) => this.players.getPage({ ...params, page, limit })),
 
     getById: async (id: string): Promise<ApiResponse<Player>> => {
       return this.request<Player>(`/players/${id}`);
@@ -353,11 +410,36 @@ class ApiClient {
       });
     },
 
+    /**
+     * One page, server-side, of every team (not scoped to a tournament — see `getAll`'s doc
+     * comment for why a `tournamentId` can't be sent here).
+     */
+    getPage: async (
+      params?: PaginationParams,
+    ): Promise<ApiResponse<Paginated<Team>>> => {
+      const qs = ApiClient.toQuery({ ...params });
+      return this.request<Paginated<Team>>(`/teams${qs}`);
+    },
+
+    /**
+     * Every team matching `params`, walking every page — see `fetchAllPages`.
+     *
+     * `tournamentId` is deliberately NOT sent to `GET /teams`: the backend's
+     * `TeamFilterDto.tournamentId` is validated with `@IsUUID()`, but every id in this app is a
+     * cuid (e.g. "cmuidecfq0001…"), so the backend 400s on it ("tournamentId must be a UUID") —
+     * confirmed live on the deployed API (see docs/BACKEND_GAPS.md). A tournament's teams are
+     * available fully formed (with rosters) from the tournament's own detail endpoint instead, so
+     * that's used as the workaround here.
+     */
     getAll: async (params?: { tournamentId?: string }): Promise<ApiResponse<Team[]>> => {
-      const search = params?.tournamentId
-        ? `?tournamentId=${encodeURIComponent(params.tournamentId)}`
-        : '';
-      return this.request<Team[]>(`/teams${search}`);
+      if (params?.tournamentId) {
+        const res = await this.tournaments.getById(params.tournamentId);
+        if (!res.ok || !res.data) return { ok: res.ok, data: undefined, message: res.message, status: res.status };
+        const nested = (res.data as unknown as { teams?: Array<{ team?: Team }> }).teams ?? [];
+        const teams = nested.map((tt) => tt.team).filter((t): t is Team => !!t);
+        return { ok: true, data: teams, message: res.message, status: res.status };
+      }
+      return ApiClient.fetchAllPages((page, limit) => this.teams.getPage({ page, limit }));
     },
 
     getById: async (id: string): Promise<ApiResponse<Team>> => {
@@ -401,9 +483,15 @@ class ApiClient {
       });
     },
 
-    getAll: async (): Promise<ApiResponse<Tournament[]>> => {
-      return this.request<Tournament[]>('/tournaments');
+    /** One page, server-side (search/sortBy/sortOrder on top of page/limit; max 100/page). */
+    getPage: async (params?: PaginationParams): Promise<ApiResponse<Paginated<Tournament>>> => {
+      const qs = ApiClient.toQuery({ ...params });
+      return this.request<Paginated<Tournament>>(`/tournaments${qs}`);
     },
+
+    /** Every tournament, walking every page — see `fetchAllPages`. */
+    getAll: async (): Promise<ApiResponse<Tournament[]>> =>
+      ApiClient.fetchAllPages((page, limit) => this.tournaments.getPage({ page, limit })),
 
     getById: async (id: string): Promise<ApiResponse<Tournament>> => {
       return this.request<Tournament>(`/tournaments/${id}`);
@@ -502,16 +590,20 @@ class ApiClient {
       });
     },
 
+    /** One page, server-side (search/sortBy/sortOrder on top of page/limit; max 100/page). */
+    getPage: async (
+      params?: { tournamentId?: string; status?: string } & PaginationParams,
+    ): Promise<ApiResponse<Paginated<Match>>> => {
+      const qs = ApiClient.toQuery({ ...params });
+      return this.request<Paginated<Match>>(`/matches${qs}`);
+    },
+
+    /** Every match matching `params`, walking every page — see `fetchAllPages`. */
     getAll: async (params?: {
       tournamentId?: string;
       status?: string;
-    }): Promise<ApiResponse<Match[]>> => {
-      const search = new URLSearchParams();
-      if (params?.tournamentId) search.set('tournamentId', params.tournamentId);
-      if (params?.status) search.set('status', params.status);
-      const qs = search.toString();
-      return this.request<Match[]>(`/matches${qs ? `?${qs}` : ''}`);
-    },
+    }): Promise<ApiResponse<Match[]>> =>
+      ApiClient.fetchAllPages((page, limit) => this.matches.getPage({ ...params, page, limit })),
 
     getById: async (id: string): Promise<ApiResponse<Match>> => {
       return this.request<Match>(`/matches/${id}`);
@@ -541,9 +633,17 @@ class ApiClient {
       });
     },
 
-    getAll: async (): Promise<ApiResponse<Admin[]>> => {
-      return this.request<Admin[]>('/admin');
+    /** One page, server-side (search/sortBy/sortOrder, `role`, `status`; max 100/page). */
+    getPage: async (
+      params?: { role?: string; status?: string } & PaginationParams,
+    ): Promise<ApiResponse<Paginated<Admin>>> => {
+      const qs = ApiClient.toQuery({ ...params });
+      return this.request<Paginated<Admin>>(`/admin${qs}`);
     },
+
+    /** Every admin/super-admin, walking every page — see `fetchAllPages`. */
+    getAll: async (): Promise<ApiResponse<Admin[]>> =>
+      ApiClient.fetchAllPages((page, limit) => this.admin.getPage({ page, limit })),
 
     getById: async (id: string): Promise<ApiResponse<Admin>> => {
       return this.request<Admin>(`/admin/${id}`);
@@ -575,9 +675,17 @@ class ApiClient {
       });
     },
 
-    getAll: async (): Promise<ApiResponse<Statistician[]>> => {
-      return this.request<Statistician[]>('/statistician');
+    /** One page, server-side (search/sortBy/sortOrder, `status`; max 100/page). */
+    getPage: async (
+      params?: { status?: string } & PaginationParams,
+    ): Promise<ApiResponse<Paginated<Statistician>>> => {
+      const qs = ApiClient.toQuery({ ...params });
+      return this.request<Paginated<Statistician>>(`/statistician${qs}`);
     },
+
+    /** Every statistician, walking every page — see `fetchAllPages`. */
+    getAll: async (): Promise<ApiResponse<Statistician[]>> =>
+      ApiClient.fetchAllPages((page, limit) => this.statistician.getPage({ page, limit })),
 
     getById: async (id: string): Promise<ApiResponse<Statistician>> => {
       return this.request<Statistician>(`/statistician/${id}`);

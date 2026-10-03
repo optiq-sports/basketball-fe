@@ -5,6 +5,7 @@ import { decideGate } from './auth/gateDecision';
 import { useQueryClient } from '@tanstack/react-query';
 import Login from './pages/login/login';
 import ForgotPassword from './pages/login/ForgotPassword';
+import ChangePasswordRequired from './pages/login/ChangePasswordRequired';
 import Wrapper from './components/wrapper';
 import { useProfile, queryKeys } from './api/hooks';
 import { ROLE_STATISTICIAN } from './constants/roles';
@@ -74,6 +75,10 @@ const AppGate: React.FC = () => {
 
   if (decision === 'unreachable') {
     return <UnreachableScreen onRetry={() => void profile.refetch()} retrying={profile.isFetching} />;
+  }
+
+  if (decision === 'password-change') {
+    return <ChangePasswordRequired onChanged={() => void profile.refetch()} />;
   }
 
   const rawRole = (profile.data as { role?: string } | undefined)?.role;
