@@ -1,5 +1,6 @@
 import React from 'react';
 import Modal from './Modal';
+import { Button } from './primitives/button';
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -28,24 +29,12 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     <Modal open={open} onClose={onClose} title={title} size="sm">
       <p className="text-sm text-gray-600 dark:text-gray-400">{description}</p>
       <div className="mt-6 flex items-center justify-end gap-3">
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={isLoading}
-          className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
-        >
+        <Button type="button" variant="secondary" onClick={onClose} disabled={isLoading}>
           {cancelLabel}
-        </button>
-        <button
-          type="button"
-          onClick={() => void onConfirm()}
-          disabled={isLoading}
-          className={`rounded-lg px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50 ${
-            tone === 'danger' ? 'bg-error-500 hover:bg-error-600' : 'bg-brand-500 hover:bg-brand-600'
-          }`}
-        >
+        </Button>
+        <Button type="button" variant={tone === 'danger' ? 'destructive' : 'primary'} onClick={() => void onConfirm()} disabled={isLoading}>
           {isLoading ? 'Please wait…' : confirmLabel}
-        </button>
+        </Button>
       </div>
     </Modal>
   );

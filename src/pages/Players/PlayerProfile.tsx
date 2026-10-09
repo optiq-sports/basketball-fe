@@ -1,68 +1,32 @@
 import React from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { FiArrowLeft } from 'react-icons/fi';
+import { Link, useParams } from 'react-router-dom';
 import { usePlayer, useTeam } from '../../api/hooks';
+import { ErrorState } from '../../components/admin/page-states';
+import Skeleton from '../../components/ui/Skeleton';
 import PlayerProfileContent from './PlayerProfileContent';
 
+const BackLink = () => (
+  <Link to="/players-management" className="w-fit text-sm font-semibold text-court-700 hover:underline dark:text-court-300">← Players</Link>
+);
+
+/** `/players-management/:playerId`: one player, their details, and their recent games. */
 const PlayerProfile: React.FC = () => {
   const { playerId } = useParams<{ playerId: string }>();
-  const navigate = useNavigate();
   const playerQuery = usePlayer(playerId ?? null);
   const player = playerQuery.data;
   const teamQuery = useTeam(player?.teamId, !!player?.teamId);
-  const team = teamQuery.data;
-
-  if (playerQuery.isPending || !playerId) {
-    return (
-      <div className="min-h-screen bg-[#FCFEFF] dark:bg-gray-950 p-6">
-        <div className="max-w-7xl mx-auto">
-          <p className="text-gray-500 dark:text-gray-400">Loading player...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (playerQuery.error || !player) {
-    return (
-      <div className="min-h-screen bg-[#FCFEFF] dark:bg-gray-950 p-6">
-        <div className="max-w-7xl mx-auto">
-          <p className="text-error-600 dark:text-error-500">{playerQuery.error?.message ?? 'Player not found'}</p>
-          <button
-            onClick={() => navigate('/players-management')}
-            className="mt-4 text-brand-600 dark:text-brand-400 hover:underline"
-          >
-            Back to Players
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="min-h-screen bg-[#FCFEFF] dark:bg-gray-950 p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-6 flex justify-between items-center">
-          <button
-            onClick={() => navigate('/players-management')}
-            className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-          >
-            <FiArrowLeft className="w-5 h-5" />
-            Back to Players
-          </button>
-          <h1 className="text-2xl font-semibold text-gray-800 dark:text-white">Player Profile</h1>
+    <div className="flex flex-col gap-4">
+      <BackLink />
+      {playerQuery.isPending && (
+        <div className="flex flex-col gap-4" aria-label="Loading player">
+          <Skeleton className="h-44 w-full rounded-xl" />
+          <Skeleton className="h-28 w-full rounded-xl" />
         </div>
-
-        <PlayerProfileContent player={player} team={team} />
-
-        <div className="mt-6 text-center">
-          <button
-            onClick={() => navigate('/players-management')}
-            className="px-8 py-3 bg-brand-500 hover:bg-brand-600 text-white font-medium rounded-lg transition-colors"
-          >
-            Back to Players
-          </button>
-        </div>
-      </div>
+      )}
+      {playerQuery.isError && <ErrorState message={playerQuery.error.message} onRetry={() => void playerQuery.refetch()} />}
+      {player && <PlayerProfileContent player={player} team={teamQuery.data} />}
     </div>
   );
 };

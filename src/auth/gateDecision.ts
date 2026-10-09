@@ -30,6 +30,8 @@ export interface GateInput {
   isPaused?: boolean;
   isError: boolean;
   hasData: boolean;
+  /** `forcePasswordChange` from the profile body (the profile is exempt from the lock since the Oct 2026 backend pull). */
+  forcePasswordChange?: boolean;
   error: unknown;
 }
 
@@ -51,6 +53,7 @@ export function decideGate(input: GateInput): GateDecision {
   if (!input.hasToken) return 'login';
   if (input.isError && isPasswordChangeRequired(input.error)) return 'password-change';
   if (input.isError && isAuthRejection(input.error)) return 'login';
+  if (input.hasData && input.forcePasswordChange) return 'password-change';
   if (input.hasData) return 'app';
   if (input.isError || input.isPaused) return 'unreachable';
   if (input.isLoading) return 'loading';

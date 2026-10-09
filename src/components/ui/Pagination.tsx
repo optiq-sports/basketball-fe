@@ -48,7 +48,7 @@ const Pagination: React.FC<PaginationProps> = ({
     'flex items-center justify-center h-9 min-w-9 rounded-lg text-sm font-medium border transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
   const inactive =
     'border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5';
-  const active = 'border-brand-500 bg-brand-500 text-white';
+  const active = 'border-court-700 bg-court-700 text-white dark:border-court-400 dark:bg-court-400 dark:text-court-950';
 
   return (
     <div className="flex flex-col items-center justify-between gap-3 border-t border-gray-200 px-4 py-4 dark:border-gray-800 sm:flex-row">
@@ -64,7 +64,7 @@ const Pagination: React.FC<PaginationProps> = ({
             <select
               value={pageSize}
               onChange={(e) => onPageSizeChange(Number(e.target.value))}
-              className="rounded-lg border border-gray-300 bg-white py-1 pl-2 pr-6 text-sm text-gray-700 focus:border-brand-300 focus:outline-none focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+              className="rounded-lg border border-gray-300 bg-white py-1 pl-2 pr-6 text-sm text-gray-700 focus:border-court-400 focus:outline-none focus:ring-3 focus:ring-court-400/20 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
             >
               {pageSizeOptions.map((size) => (
                 <option key={size} value={size}>

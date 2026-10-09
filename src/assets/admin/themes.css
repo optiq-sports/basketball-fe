@@ -39,6 +39,28 @@
   --color-brand-900: #262e89;
   --color-brand-950: #161950;
 
+  /* Admin redesign (Phase 1). "court" is the navy used for the sidebar and primary actions;
+     "signal" is the single warm accent for live state, highlights and score emphasis. Kept
+     separate from brand-* so StatDash and the statistician tree keep their current colours. */
+  --color-court-50: #f3f6fa;
+  --color-court-100: #e6ecf4;
+  --color-court-200: #c9d6e6;
+  --color-court-300: #9db3cd;
+  --color-court-400: #6a87ab;
+  --color-court-500: #41628a;
+  --color-court-600: #2e4a70;
+  --color-court-700: #20365a;
+  --color-court-800: #15243f;
+  --color-court-900: #0e1930;
+  --color-court-950: #0a1224;
+
+  --color-signal-50: #fff4ee;
+  --color-signal-100: #ffe3d3;
+  --color-signal-300: #ffa56b;
+  --color-signal-500: #ff6b2c;
+  --color-signal-600: #e8561a;
+  --color-signal-700: #bf4413;
+
   --color-success-25: #f6fef9;
   --color-success-50: #ecfdf3;
   --color-success-100: #d1fadf;

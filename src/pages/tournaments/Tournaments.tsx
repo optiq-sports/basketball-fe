@@ -1,885 +1,296 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { FiMapPin, FiCalendar, FiEdit2, FiTrash2, FiUserPlus, FiChevronLeft, FiChevronDown } from 'react-icons/fi';
-import { LuTrophy } from 'react-icons/lu';
-import type { ColumnDef } from '@tanstack/react-table';
-import { useTournament, useMatches, useTeams, useUpdateTournament, useDeleteTournament, useTournamentAddTeams } from '../../api/hooks';
-import type { Match as ApiMatch, TournamentDivision } from '../../types/api';
-import ConfirmDialog from '../../components/ui/ConfirmDialog';
-import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import React, { useMemo, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useDeleteTournament, useMatches, useTournament, useUpdateTournament } from '../../api/hooks';
 import { useToast } from '../../hooks/useToast';
-import DataTable from '../../components/ui/DataTable';
-import Spinner from '../../components/ui/Spinner';
+import type { Match, Tournament, TournamentCreate } from '../../types/api';
+import { PageHeader, ListSkeleton, EmptyState, ErrorState } from '../../components/admin/page-states';
+import { Button } from '../../components/ui/primitives/button';
+import { Badge } from '../../components/ui/primitives/badge';
+import { Card, CardTitle } from '../../components/ui/primitives/card';
+import TournamentFormDialog from '../../components/tournaments/TournamentFormDialog';
+import DeleteTournamentDialog, { type DeleteTarget } from '../../components/tournaments/DeleteTournamentDialog';
+import TournamentTeamsPanel from '../../components/tournaments/TournamentTeamsPanel';
+import AddTeamsDialog from '../../components/tournaments/AddTeamsDialog';
+import { divisionLabel } from '../../components/tournaments/tournament-form';
+import { computeStandings, leadersFrom, LEADER_LABELS, LEADER_STATS, type LeaderStat, type StandingsTeam } from './standings';
+import { cn } from '../../lib/utils';
+import { MatchCard, MATCH_GRID } from '../../components/matches/MatchCard';
+import { normalizeName } from '../../lib/text';
 
-// Copy Icon Component
-const CopyIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
-    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
-);
+type Tab = 'overview' | 'teams' | 'matches';
+const TABS: Array<{ id: Tab; label: string }> = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'teams', label: 'Teams' },
+  { id: 'matches', label: 'Matches' },
+];
 
-type LeaderStat = 'points' | 'rebounds' | 'assists' | 'blocks' | 'steals';
+const day = (iso?: string) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—');
 
-const LEADER_STAT_LABELS: Record<LeaderStat, string> = {
-  points: 'PTS',
-  rebounds: 'REB',
-  assists: 'AST',
-  blocks: 'BLK',
-  steals: 'STL',
-};
-
-const LEADER_COLORS = ['#FFCA69', '#80B7D5', '#7FD99A'];
-
-const GROUPS = ['A', 'B', 'C', 'D'] as const;
-
-interface DisplayTeam {
-  id: string;
-  name: string;
-  color: string;
-  group: string | null;
-  gp: number;
-  w: number;
-  l: number;
-  percent: number;
-  points: number;
-}
-
-interface DisplayMatch {
-  id: string;
-  teamA: string;
-  teamAColor: string;
-  teamB: string;
-  teamBColor: string;
-  venue: string;
-  time: string;
-  hasStarted: boolean;
-  homeScore?: number;
-  awayScore?: number;
-  matchCode?: string;
-}
-
-function formatMatchTime(scheduledDate?: string): string {
-  if (!scheduledDate) return 'TBA';
-  try {
-    const d = new Date(scheduledDate);
-    return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-  } catch {
-    return scheduledDate;
-  }
-}
-
-function formatDateOnly(date?: string): string {
-  if (!date) return '';
-  try {
-    return new Date(date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch {
-    return date;
-  }
-}
-
-const CompetitionDetailPage: React.FC = () => {
+/**
+ * One tournament: its details, its teams and standings, and its matches. Editing and deleting reuse the
+ * list's dialogs. Team management and standings are here; match scheduling and results come in Module 4.
+ */
+const Tournaments: React.FC = () => {
+  const { id } = useParams();
   const navigate = useNavigate();
-  const { id: tournamentId } = useParams<{ id: string }>();
-  const [activeGroup, setActiveGroup] = useState('A');
-  const [activeLeaderStat, setActiveLeaderStat] = useState<LeaderStat>('points');
-  const [showSchedules, setShowSchedules] = useState(true);
+  const [params, setParams] = useSearchParams();
+  const toast = useToast();
 
-  const tournamentQuery = useTournament(tournamentId);
-  const matchesQuery = useMatches(tournamentId);
-  const teamsQuery = useTeams();
+  const tab: Tab = TABS.some((t) => t.id === params.get('tab')) ? (params.get('tab') as Tab) : 'overview';
+  const setTab = (next: Tab) => {
+    const p = new URLSearchParams(params);
+    if (next === 'overview') p.delete('tab');
+    else p.set('tab', next);
+    setParams(p, { replace: true });
+  };
+
+  const tournamentQuery = useTournament(id);
+  const matchesQuery = useMatches(id);
   const updateTournament = useUpdateTournament();
   const deleteTournament = useDeleteTournament();
-  const { confirm, dialogProps } = useConfirmDialog();
-  const toast = useToast();
-  const addTeams = useTournamentAddTeams();
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [showAddTeamsModal, setShowAddTeamsModal] = useState(false);
-  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
-  const [addTeamsGroup, setAddTeamsGroup] = useState<string>('');
-  const [editForm, setEditForm] = useState({
-    name: '',
-    division: 'PREMIER' as TournamentDivision,
-    numberOfGames: 10,
-    numberOfQuarters: 4,
-    quarterDuration: 10,
-    overtimeDuration: 5,
-    startDate: '',
-    endDate: '',
-    venue: '',
-  });
 
-  const teamMap = useMemo(() => {
-    const map = new Map<string, { name: string; color: string }>();
-    (teamsQuery.data ?? []).forEach((t) => map.set(t.id, { name: t.name, color: t.color ?? '#gray' }));
-    return map;
-  }, [teamsQuery.data]);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [addTeamsOpen, setAddTeamsOpen] = useState(false);
+  const [leaderStat, setLeaderStat] = useState<LeaderStat>('points');
+  const [copied, setCopied] = useState(false);
 
-  const tournament = tournamentQuery.data;
-  const matchesRaw = matchesQuery.data ?? [];
-  const matches: DisplayMatch[] = useMemo(() => {
-    return matchesRaw.map((m: ApiMatch) => {
-      const home = teamMap.get(m.homeTeamId);
-      const away = teamMap.get(m.awayTeamId);
-      return {
-        id: m.id,
-        teamA: home?.name ?? 'TBD',
-        teamAColor: home?.color === 'yellow' || home?.color === 'blue' ? home.color : 'yellow',
-        teamB: away?.name ?? 'TBD',
-        teamBColor: away?.color === 'yellow' || away?.color === 'blue' ? away.color : 'blue',
-        venue: m.venue ?? '—',
-        time: formatMatchTime(m.scheduledDate),
-        hasStarted: m.status === 'LIVE' || m.status === 'COMPLETED',
-        homeScore: m.homeScore,
-        awayScore: m.awayScore,
-        matchCode: m.matchCode ?? m.id,
-      };
-    });
-  }, [matchesRaw, teamMap]);
+  // Teams come with the tournament, each with its group and full details.
+  const tournament = tournamentQuery.data as (Tournament & { teams?: Array<{ teamId: string; group?: string | null; team: StandingsTeam & { color?: string | null } }> }) | undefined;
+  const linkedTeams = tournament?.teams ?? [];
+  const matches: Match[] = matchesQuery.data ?? [];
 
-  const ongoingMatch = useMemo(() => matches.find((m) => m.hasStarted) ?? null, [matches]);
-
-  const existingTeamIds = useMemo<Set<string>>(() => {
-    const tournamentTeams = (tournament as Record<string, unknown> | undefined)?.teams as Array<{ teamId: string }> | undefined ?? [];
-    return new Set(tournamentTeams.map((tt) => tt.teamId));
-  }, [tournament]);
-
-  const serverTeams: DisplayTeam[] = useMemo(() => {
-    if (!tournament) return [];
-    const tournamentTeams = (tournament as Record<string, unknown>).teams as Array<{ teamId: string; group?: string | null; team: { id: string; name: string; color: string } }> ?? [];
-    const completedMatches = matchesRaw.filter(m => m.status === 'COMPLETED');
-
-    const statsMap: Record<string, { gp: number; w: number; l: number }> = {};
-    for (const tt of tournamentTeams) statsMap[tt.teamId] = { gp: 0, w: 0, l: 0 };
-
-    for (const m of completedMatches) {
-      const home = m.homeTeamId;
-      const away = m.awayTeamId;
-      if (!statsMap[home]) statsMap[home] = { gp: 0, w: 0, l: 0 };
-      if (!statsMap[away]) statsMap[away] = { gp: 0, w: 0, l: 0 };
-      statsMap[home].gp++;
-      statsMap[away].gp++;
-      const hs = m.homeScore ?? 0;
-      const as_ = m.awayScore ?? 0;
-      if (hs > as_) { statsMap[home].w++; statsMap[away].l++; }
-      else if (as_ > hs) { statsMap[away].w++; statsMap[home].l++; }
-    }
-
-    return tournamentTeams
-      .map((tt, i) => {
-        const s = statsMap[tt.teamId] ?? { gp: 0, w: 0, l: 0 };
-        const pct = s.gp > 0 ? Math.round((s.w / s.gp) * 1000) / 10 : 0;
-        return {
-          id: tt.team.id,
-          name: tt.team.name,
-          group: tt.group ?? null,
-          color: tt.team.color === 'yellow' || tt.team.color === 'blue' ? tt.team.color : (i % 2 === 0 ? 'yellow' : 'blue'),
-          gp: s.gp,
-          w: s.w,
-          l: s.l,
-          percent: pct,
-          points: s.w * 2,
-        };
-      })
-      .sort((a, b) => b.points - a.points || b.percent - a.percent);
-  }, [tournament, matchesRaw]);
-
-  // Optimistic group moves: teamId -> the group the admin just picked.
-  //  - While the save is in flight (`savingTeamIds`) the row stays where it is, showing the picked
-  //    group in its dropdown with a "Saving…" spinner, so it's obvious something is happening.
-  //  - As soon as the server accepts it, the team moves to its new group right away, without
-  //    waiting for the refetch round trip; the overlay is dropped once fresh data matches.
-  //  - If the save fails the overlay is removed and the dropdown snaps back.
-  const [pendingGroups, setPendingGroups] = useState<Record<string, string>>({});
-  const [savingTeamIds, setSavingTeamIds] = useState<string[]>([]);
-
-  const teams: DisplayTeam[] = useMemo(
-    () =>
-      serverTeams.map((t) =>
-        pendingGroups[t.id] !== undefined && !savingTeamIds.includes(t.id)
-          ? { ...t, group: pendingGroups[t.id] }
-          : t,
-      ),
-    [serverTeams, pendingGroups, savingTeamIds],
+  const standingTeams: StandingsTeam[] = useMemo(
+    () => linkedTeams.map((lt) => ({ id: lt.team.id, name: normalizeName(lt.team.name), group: lt.group ?? null, color: lt.team.color })),
+    [linkedTeams],
   );
+  const standings = useMemo(() => computeStandings(standingTeams, matches), [standingTeams, matches]);
+  const existingTeamIds = useMemo(() => new Set(linkedTeams.map((lt) => lt.teamId)), [linkedTeams]);
 
-  // Once the server data has caught up with a pending move, the overlay is no longer needed.
-  useEffect(() => {
-    setPendingGroups((prev) => {
-      const stale = serverTeams.filter((t) => prev[t.id] !== undefined && t.group === prev[t.id]);
-      if (stale.length === 0) return prev;
-      const next = { ...prev };
-      for (const t of stale) delete next[t.id];
-      return next;
-    });
-  }, [serverTeams]);
+  const teamNames = useMemo(() => new Map(standingTeams.map((t) => [t.id, t.name])), [standingTeams]);
+  const teamColors = useMemo(() => new Map(linkedTeams.map((lt) => [lt.team.id, lt.team.color])), [linkedTeams]);
+  const teamLogos = useMemo(() => new Map(linkedTeams.map((lt) => [lt.team.id, (lt.team as { logo?: string }).logo])), [linkedTeams]);
+  const leaders = useMemo(() => leadersFrom(matches, leaderStat, teamNames), [matches, leaderStat, teamNames]);
 
-  const tournamentLeaders = useMemo(() => {
-    const playerMap: Record<string, {
-      playerId: string; name: string; matchId: string;
-      points: number; rebounds: number; assists: number; blocks: number; steals: number; gp: number;
-    }> = {};
-
-    for (const m of matchesRaw) {
-      const stats = (m as Record<string, unknown>).stats as Array<{
-        playerId: string; points: number; rebounds: number; assists: number; blocks: number; steals: number;
-        player?: { firstName: string; lastName: string };
-      }> | undefined;
-      if (!stats) continue;
-      for (const s of stats) {
-        if (!playerMap[s.playerId]) {
-          playerMap[s.playerId] = {
-            playerId: s.playerId,
-            name: s.player ? `${s.player.firstName} ${s.player.lastName}` : '—',
-            matchId: m.id,
-            points: 0, rebounds: 0, assists: 0, blocks: 0, steals: 0, gp: 0,
-          };
-        }
-        playerMap[s.playerId].points += s.points ?? 0;
-        playerMap[s.playerId].rebounds += s.rebounds ?? 0;
-        playerMap[s.playerId].assists += s.assists ?? 0;
-        playerMap[s.playerId].blocks += s.blocks ?? 0;
-        playerMap[s.playerId].steals += s.steals ?? 0;
-        playerMap[s.playerId].gp++;
-      }
-    }
-
-    return Object.values(playerMap)
-      .sort((a, b) => b[activeLeaderStat] - a[activeLeaderStat])
-      .slice(0, 3);
-  }, [matchesRaw, activeLeaderStat]);
-
-  const openEditModal = () => {
-    const t = tournamentQuery.data;
-    if (!t) return;
-    setEditForm({
-      name: t.name,
-      division: t.division ?? 'PREMIER',
-      numberOfGames: (t.numberOfGames as number) ?? 10,
-      numberOfQuarters: (t.numberOfQuarters as number) ?? 4,
-      quarterDuration: (t.quarterDuration as number) ?? 10,
-      overtimeDuration: (t.overtimeDuration as number) ?? 5,
-      startDate: t.startDate ? t.startDate.slice(0, 10) : '',
-      endDate: t.endDate ? t.endDate.slice(0, 10) : '',
-      venue: t.venue ?? '',
-    });
-    setShowEditModal(true);
-  };
-
-  const handleSaveEdit = () => {
-    if (!tournamentId || !editForm.name.trim() || !editForm.venue.trim() || !editForm.startDate || !editForm.endDate) {
-      toast.error('Please fill name, venue, start and end date.');
-      return;
-    }
+  const saveEdit = (body: TournamentCreate) => {
+    if (!tournament) return;
+    setEditError(null);
     updateTournament.mutate(
-      {
-        id: tournamentId,
-        data: {
-          name: editForm.name.trim(),
-          division: editForm.division,
-          numberOfGames: editForm.numberOfGames,
-          numberOfQuarters: editForm.numberOfQuarters,
-          quarterDuration: editForm.quarterDuration,
-          overtimeDuration: editForm.overtimeDuration,
-          startDate: editForm.startDate,
-          endDate: editForm.endDate,
-          venue: editForm.venue.trim(),
-        },
-      },
-      { onSuccess: () => setShowEditModal(false), onError: (e) => toast.error(e.message) }
-    );
-  };
-
-  const handleDeleteTournament = async () => {
-    if (!tournamentId) return;
-    const ok = await confirm({
-      description: `Delete tournament "${tournament?.name}"? This cannot be undone.`,
-      confirmLabel: 'Delete',
-      tone: 'danger',
-    });
-    if (!ok) return;
-    deleteTournament.mutate(tournamentId, {
-      onSuccess: () => navigate('/tournaments'),
-      onError: (e) => toast.error(e.message),
-    });
-  };
-
-  const handleAddTeams = () => {
-    if (!tournamentId || selectedTeamIds.length === 0) {
-      toast.error('Please select at least one team.');
-      return;
-    }
-    addTeams.mutate(
-      { tournamentId, body: { teamIds: selectedTeamIds, ...(addTeamsGroup ? { group: addTeamsGroup } : {}) } },
+      { id: tournament.id, data: body },
       {
         onSuccess: () => {
-          setShowAddTeamsModal(false);
-          setSelectedTeamIds([]);
-          setAddTeamsGroup('');
+          toast.success(`${body.name} saved.`);
+          setEditOpen(false);
         },
-        onError: (e) => toast.error(e.message),
-      }
+        onError: (err) => setEditError(err.message),
+      },
     );
   };
 
-  if (tournamentQuery.isPending || !tournamentId) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 p-6">
-        <div className="max-w-7xl mx-auto text-gray-500 dark:text-gray-400">Loading tournament…</div>
-      </div>
-    );
-  }
-  if (tournamentQuery.error || !tournament) {
-    return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 p-6">
-        <div className="max-w-7xl mx-auto text-error-600 dark:text-error-500">
-          {tournamentQuery.error instanceof Error ? tournamentQuery.error.message : 'Tournament not found'}
-        </div>
-      </div>
-    );
-  }
+  const confirmDelete = () => {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    deleteTournament.mutate(target.id, {
+      onSuccess: () => {
+        toast.success(`${target.name} deleted.`);
+        navigate('/tournaments', { replace: true });
+      },
+      onError: (err) => {
+        toast.error(`Couldn’t delete ${target.name}: ${err.message}`);
+        setDeleteTarget(null);
+      },
+    });
+  };
 
-  // A tournament that hasn't assigned any team to a group yet keeps showing every team on every tab
-  // (as before). Once any team has a group, each tab shows only its own teams, and teams with no
-  // group yet are surfaced separately so they don't silently disappear.
-  const usesGroups = teams.some((t) => t.group);
-  const groupTeams = usesGroups ? teams.filter((t) => t.group === activeGroup) : teams;
-  const unassignedTeams = usesGroups ? teams.filter((t) => !t.group) : [];
-
-  const handleMoveTeamToGroup = async (teamId: string, group: string) => {
-    if (!tournamentId || !group) return;
-    const team = serverTeams.find((t) => t.id === teamId);
-    setPendingGroups((prev) => ({ ...prev, [teamId]: group }));
-    setSavingTeamIds((prev) => [...prev, teamId]);
+  const copyCode = async () => {
+    if (!tournament?.code) return;
     try {
-      // mutateAsync (not mutate): several teams can be saving at once, and per-call callbacks of
-      // mutate() only fire for the most recent call, which would swallow earlier failures.
-      await addTeams.mutateAsync({ tournamentId, body: { teamIds: [teamId], group } });
-      toast.success(`${team?.name ?? 'Team'} moved to Group ${group}.`);
-      // Pull the authoritative data; the effect above drops the overlay once it matches. If this
-      // refetch itself fails the overlay just stays until the next successful refresh.
-      await tournamentQuery.refetch().catch(() => undefined);
-    } catch (e) {
-      // Save failed: put the team back where the server says it is.
-      setPendingGroups((prev) => {
-        const next = { ...prev };
-        delete next[teamId];
-        return next;
-      });
-      toast.error(e instanceof Error ? e.message : `Could not move ${team?.name ?? 'the team'} to Group ${group}.`);
-    } finally {
-      setSavingTeamIds((prev) => prev.filter((id) => id !== teamId));
+      await navigator.clipboard.writeText(tournament.code);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error('Couldn’t copy the code. Select it and copy by hand.');
     }
   };
 
-  const groupSelect = (team: DisplayTeam) => {
-    const saving = savingTeamIds.includes(team.id);
+  if (tournamentQuery.isPending) {
+    return <ListSkeleton columns={3} rows={4} label="Loading tournament" />;
+  }
+  if (tournamentQuery.isError || !tournament) {
     return (
-      <span className="inline-flex items-center gap-2" aria-busy={saving}>
-        <select
-          value={pendingGroups[team.id] ?? team.group ?? ''}
-          disabled={saving}
-          onChange={(e) => void handleMoveTeamToGroup(team.id, e.target.value)}
-          aria-label={`Group for ${team.name}`}
-          className={`rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 transition-opacity dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 ${
-            saving ? 'opacity-60' : ''
-          }`}
-        >
-          <option value="" disabled>—</option>
-          {GROUPS.map((g) => (
-            <option key={g} value={g}>Group {g}</option>
-          ))}
-        </select>
-        {saving && (
-          <span className="inline-flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400" role="status">
-            <Spinner className="size-3.5" />
-            Saving…
-          </span>
-        )}
-      </span>
+      <div className="flex flex-col gap-4">
+        <Link to="/tournaments" className="w-fit text-sm font-semibold text-court-700 hover:underline dark:text-court-300">← Tournaments</Link>
+        <ErrorState message={(tournamentQuery.error as Error | null)?.message ?? 'This tournament couldn’t be found.'} onRetry={() => void tournamentQuery.refetch()} />
+      </div>
     );
-  };
-
-  const standingsColumns: ColumnDef<DisplayTeam>[] = [
-    {
-      accessorKey: 'name',
-      header: 'Team',
-      cell: ({ row }) => (
-        <div className="flex items-center gap-3">
-          <img
-            src={row.original.color === 'yellow' ? '/ball1.png' : '/ball2.png'}
-            alt="Basketball"
-            style={{ width: '28px', height: '28px' }}
-            className="object-contain"
-          />
-          <span className="text-sm text-gray-700 dark:text-gray-300">{row.original.name}</span>
-        </div>
-      ),
-    },
-    { accessorKey: 'gp', header: 'GP' },
-    { accessorKey: 'w', header: 'W' },
-    { accessorKey: 'l', header: 'L' },
-    { accessorKey: 'percent', header: '%' },
-    { accessorKey: 'points', header: 'Points' },
-    { id: 'group', header: 'Group', cell: ({ row }) => groupSelect(row.original) },
-  ];
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 p-6">
-      <div className="max-w-7xl mx-auto">
-        {tournament.flyer && (
-          <div className="mb-6 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-800" style={{ maxHeight: '220px' }}>
-            <img src={tournament.flyer} alt="Tournament flyer" className="w-full object-cover object-top" style={{ maxHeight: '220px' }} />
-          </div>
-        )}
+    <div className="flex flex-col gap-6">
+      <Link to="/tournaments" className="w-fit text-sm font-semibold text-court-700 hover:underline dark:text-court-300">← Tournaments</Link>
 
-        <button
-          onClick={() => navigate('/tournaments')}
-          className="mb-3 flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-        >
-          <FiChevronLeft className="size-4" />
-          Tournaments
-        </button>
-
-        <div className="mb-6 flex items-start justify-between gap-3 flex-wrap">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{tournament.name}</h1>
-            {(tournament.venue || tournament.startDate) && (
-              <div className="mt-1.5 flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-                {tournament.venue && (
-                  <span className="flex items-center gap-1.5">
-                    <FiMapPin className="size-3.5" />
-                    {tournament.venue}
-                  </span>
-                )}
-                {tournament.startDate && (
-                  <span className="flex items-center gap-1.5">
-                    <FiCalendar className="size-3.5" />
-                    {formatDateOnly(tournament.startDate)}
-                    {tournament.endDate && tournament.endDate !== tournament.startDate
-                      ? ` – ${formatDateOnly(tournament.endDate)}`
-                      : ''}
-                  </span>
-                )}
-              </div>
+      <PageHeader
+        title={normalizeName(tournament.name)}
+        description={`${day(tournament.startDate)}${tournament.endDate ? ` – ${day(tournament.endDate)}` : ''}${tournament.venue ? ` · ${tournament.venue}` : ''}`}
+        actions={
+          <>
+            <Badge variant="court">{divisionLabel(tournament.division)}</Badge>
+            {tournament.code && (
+              <Button variant="secondary" size="sm" onClick={() => void copyCode()} aria-label={`Copy tournament code ${tournament.code}`}>
+                {copied ? 'Copied' : `Code ${tournament.code}`}
+              </Button>
             )}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={openEditModal}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 transition-colors dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-white/5"
+            <Button variant="secondary" onClick={() => { setEditError(null); setEditOpen(true); }}>Edit</Button>
+            <Button
+              variant="destructive-ghost"
+              onClick={() => setDeleteTarget({ id: tournament.id, name: normalizeName(tournament.name), matches: matches.length, teams: linkedTeams.length })}
             >
-              <FiEdit2 className="size-4" />
-              Edit
-            </button>
-            <button
-              onClick={() => setShowAddTeamsModal(true)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 transition-colors dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-white/5"
-            >
-              <FiUserPlus className="size-4" />
-              Add Teams
-            </button>
-            <button
-              onClick={() => navigate(`/tournaments/${tournamentId}/fixtures`)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium bg-brand-500 text-white hover:bg-brand-600 transition-colors"
-            >
-              <FiCalendar className="size-4" />
-              View Fixtures
-            </button>
-            <button
-              onClick={handleDeleteTournament}
-              disabled={deleteTournament.isPending}
-              title="Delete tournament"
-              aria-busy={deleteTournament.isPending}
-              className="flex items-center justify-center size-9 rounded-lg text-error-500 hover:bg-error-50 transition-colors disabled:opacity-70 dark:hover:bg-error-500/10"
-            >
-              {deleteTournament.isPending ? <Spinner label="Deleting tournament" /> : <FiTrash2 className="size-4" />}
-            </button>
-          </div>
-        </div>
+              Delete
+            </Button>
+          </>
+        }
+      />
 
-        {/* Quick stats */}
-        <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {[
-            { label: 'Teams', value: teams.length },
-            { label: 'Games played', value: matchesRaw.filter((m) => m.status === 'COMPLETED').length },
-            { label: 'Total games', value: (tournament.numberOfGames as number) ?? matchesRaw.length },
-            { label: 'Division', value: (tournament.division as string)?.replace(/_/g, ' ') ?? '—' },
-          ].map((stat) => (
-            <div
-              key={stat.label}
-              className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900"
-            >
-              <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{stat.label}</p>
-              <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white capitalize">{stat.value}</p>
-            </div>
-          ))}
-        </div>
+      <div role="tablist" aria-label="Tournament sections" className="flex gap-1 overflow-x-auto border-b border-gray-200 dark:border-gray-800">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            role="tab"
+            type="button"
+            id={`tab-${t.id}`}
+            aria-selected={tab === t.id}
+            aria-controls={`panel-${t.id}`}
+            onClick={() => setTab(t.id)}
+            className={cn(
+              'relative h-11 shrink-0 px-4 text-sm font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-court-400/50',
+              tab === t.id ? 'text-court-900 dark:text-white' : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200',
+            )}
+          >
+            {t.label}
+            {t.id === 'teams' && <span className="ml-1.5 tabular-nums text-gray-400">{linkedTeams.length}</span>}
+            {t.id === 'matches' && <span className="ml-1.5 tabular-nums text-gray-400">{matches.length}</span>}
+            {tab === t.id && <span aria-hidden className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-signal-500" />}
+          </button>
+        ))}
+      </div>
 
-        {showAddTeamsModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto dark:bg-gray-900">
-              <div className="p-6 border-b border-gray-200 dark:border-gray-800">
-                <h2 className="text-xl font-semibold text-gray-800 dark:text-white">Add Teams to Tournament</h2>
-              </div>
-              <div className="p-6 space-y-2 max-h-64 overflow-y-auto">
-                {(teamsQuery.data ?? []).filter((team) => !existingTeamIds.has(team.id)).map((team) => (
-                  <label key={team.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 dark:hover:bg-white/5 rounded-lg cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={selectedTeamIds.includes(team.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedTeamIds((prev) => [...prev, team.id]);
-                        } else {
-                          setSelectedTeamIds((prev) => prev.filter((id) => id !== team.id));
-                        }
-                      }}
-                      className="w-4 h-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500 dark:border-gray-700"
-                    />
-                    <span className="text-sm font-medium text-gray-800 dark:text-white">{team.name}</span>
-                  </label>
-                ))}
-                {(teamsQuery.data ?? []).filter((team) => !existingTeamIds.has(team.id)).length === 0 && (
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {(teamsQuery.data ?? []).length === 0
-                      ? 'No teams available. Create teams first from Teams Management.'
-                      : 'All teams are already in this tournament.'}
-                  </p>
-                )}
-              </div>
-              <div className="flex items-center gap-3 px-6 pb-4">
-                <label htmlFor="add-teams-group" className="text-sm font-medium text-gray-700 dark:text-gray-300">Group</label>
-                <select
-                  id="add-teams-group"
-                  value={addTeamsGroup}
-                  onChange={(e) => setAddTeamsGroup(e.target.value)}
-                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+      {tab === 'overview' && (
+        <div id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" className="grid gap-6 lg:grid-cols-3">
+          <Card className="lg:col-span-2">
+            <CardTitle>Format</CardTitle>
+            <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+              <Detail label="Games" value={tournament.numberOfGames} />
+              <Detail label="Quarters" value={tournament.numberOfQuarters} />
+              <Detail label="Quarter length" value={`${tournament.quarterDuration} min`} />
+              <Detail label="Overtime" value={tournament.overtimeDuration ? `${tournament.overtimeDuration} min` : '—'} />
+            </dl>
+            <CardTitle className="mt-2">Officials</CardTitle>
+            <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+              <Detail label="Crew chief" value={tournament.crewChief} />
+              <Detail label="Umpire 1" value={tournament.umpire1} />
+              <Detail label="Umpire 2" value={tournament.umpire2} />
+              <Detail label="Commissioner" value={tournament.commissioner} />
+            </dl>
+          </Card>
+
+          <Card>
+            <CardTitle>Leaders</CardTitle>
+            <div role="group" aria-label="Leader category" className="flex flex-wrap gap-1.5">
+              {LEADER_STATS.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  aria-pressed={leaderStat === s}
+                  onClick={() => setLeaderStat(s)}
+                  className={cn('h-7 rounded-md px-2.5 text-xs font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-court-400/50', leaderStat === s ? 'bg-court-700 text-white dark:bg-court-400 dark:text-court-950' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300')}
                 >
-                  <option value="">No group</option>
-                  {GROUPS.map((g) => (
-                    <option key={g} value={g}>Group {g}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-800">
-                <button onClick={() => { setShowAddTeamsModal(false); setSelectedTeamIds([]); setAddTeamsGroup(''); }} className="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5">Cancel</button>
-                <button onClick={handleAddTeams} disabled={addTeams.isPending || selectedTeamIds.length === 0} className="px-4 py-2 bg-brand-500 text-white rounded-lg font-medium hover:bg-brand-600 disabled:opacity-70 disabled:cursor-not-allowed">{addTeams.isPending ? 'Adding…' : 'Add Teams'}</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showEditModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto dark:bg-gray-900">
-              <div className="p-6 border-b border-gray-200 dark:border-gray-800">
-                <h2 className="text-xl font-semibold text-gray-800 dark:text-white">Edit Tournament</h2>
-              </div>
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Name *</label>
-                  <input
-                    type="text"
-                    value={editForm.name}
-                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:[color-scheme:dark]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Venue *</label>
-                  <input
-                    type="text"
-                    value={editForm.venue}
-                    onChange={(e) => setEditForm({ ...editForm, venue: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:[color-scheme:dark]"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Start date *</label>
-                    <input
-                      type="date"
-                      value={editForm.startDate}
-                      onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:[color-scheme:dark]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">End date *</label>
-                    <input
-                      type="date"
-                      value={editForm.endDate}
-                      onChange={(e) => setEditForm({ ...editForm, endDate: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:[color-scheme:dark]"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Number of games</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={editForm.numberOfGames}
-                      onChange={(e) => setEditForm({ ...editForm, numberOfGames: parseInt(e.target.value, 10) || 0 })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:[color-scheme:dark]"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1 dark:text-gray-300">Quarters</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={editForm.numberOfQuarters}
-                      onChange={(e) => setEditForm({ ...editForm, numberOfQuarters: parseInt(e.target.value, 10) || 0 })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:[color-scheme:dark]"
-                    />
-                  </div>
-                </div>
-              </div>
-              <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-800">
-                <button onClick={() => setShowEditModal(false)} className="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5">Cancel</button>
-                <button onClick={handleSaveEdit} disabled={updateTournament.isPending} className="px-4 py-2 bg-brand-500 text-white rounded-lg font-medium hover:bg-brand-600 disabled:opacity-70">{updateTournament.isPending ? 'Saving…' : 'Save'}</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {matchesQuery.isPending && <div className="text-gray-500 dark:text-gray-400 mb-4">Loading matches…</div>}
-        {matchesQuery.error && (
-          <div className="mb-4 p-4 bg-error-50 border border-error-100 rounded-lg text-error-700 text-sm dark:bg-error-500/10 dark:border-error-500/30 dark:text-error-500">
-            {matchesQuery.error instanceof Error ? matchesQuery.error.message : 'Failed to load matches'}
-          </div>
-        )}
-
-        {ongoingMatch && (
-        <div
-          className="rounded-2xl p-6 mb-6 border border-gray-200 bg-white cursor-pointer transition-colors hover:border-gray-300 dark:bg-gray-900 dark:border-gray-800 dark:hover:border-gray-700"
-          onClick={() => navigate(`/tournaments/${tournamentId}/match/${ongoingMatch.id}`)}
-        >
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Ongoing Game</h2>
-            <button
-              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(ongoingMatch.matchCode ?? ongoingMatch.id); toast.success('Match code copied!'); }}
-              className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800 transition-colors dark:text-gray-400 dark:hover:text-gray-200"
-            >
-              <span>Copy Match Code</span>
-              <CopyIcon className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div className="flex items-center justify-center gap-8">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center justify-center">
-                <img src="/ball1.png" alt="Basketball" style={{ width: '35px', height: '35px' }} className="object-contain" />
-              </div>
-              <div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">{ongoingMatch.teamA}</div>
-                <div className="text-4xl font-bold text-gray-900 dark:text-white">{ongoingMatch.homeScore ?? 0}</div>
-              </div>
-            </div>
-
-            <div className="text-lg text-gray-400 dark:text-gray-500 font-medium">VS</div>
-
-            <div className="flex items-center gap-4">
-              <div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 text-right">{ongoingMatch.teamB}</div>
-                <div className="text-4xl font-bold text-gray-900 dark:text-white">{ongoingMatch.awayScore ?? 0}</div>
-              </div>
-              <div className="flex items-center justify-center">
-                <img src="/ball2.png" alt="Basketball" style={{ width: '35px', height: '35px' }} className="object-contain" />
-              </div>
-            </div>
-          </div>
-
-          <div className="text-center mt-4 text-xs text-gray-400 dark:text-gray-500">
-            {tournament.name} | {ongoingMatch.time}
-          </div>
-        </div>
-        )}
-
-        {/* Group Tabs */}
-        <div className="mb-6 inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-white p-1 dark:border-gray-800 dark:bg-gray-900">
-          {GROUPS.map((group) => (
-            <button
-              key={group}
-              onClick={() => setActiveGroup(group)}
-              className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
-                activeGroup === group
-                  ? 'bg-brand-500 text-white'
-                  : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/5'
-              }`}
-            >
-              Group {group}
-            </button>
-          ))}
-        </div>
-
-        {/* Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Standings Table */}
-          <div className="rounded-2xl border border-gray-200 bg-white dark:bg-gray-900 dark:border-gray-800">
-            <div className="border-b border-gray-100 p-5 dark:border-gray-800">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white">Group {activeGroup} Standings</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                {matchesRaw.filter(m => m.status === 'COMPLETED').length}/{tournament.numberOfGames as number ?? '—'} games played
-              </p>
-            </div>
-            <div className="p-5 pt-0">
-              <DataTable
-                columns={standingsColumns}
-                data={groupTeams}
-                pageSize={20}
-                emptyMessage={usesGroups ? `No teams in Group ${activeGroup} yet.` : 'No teams in this tournament yet.'}
-              />
-              {unassignedTeams.length > 0 && (
-                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
-                  <p className="mb-2 text-xs font-semibold text-amber-800 dark:text-amber-300">
-                    Not in a group yet
-                  </p>
-                  <ul className="space-y-1.5">
-                    {unassignedTeams.map((t) => (
-                      <li key={t.id} className="flex items-center justify-between gap-3 text-sm text-gray-700 dark:text-gray-300">
-                        <span>{t.name}</span>
-                        {groupSelect(t)}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Fixtures List */}
-          <div className="rounded-2xl border border-gray-200 bg-white dark:bg-gray-900 dark:border-gray-800">
-            <div className="flex justify-between items-center border-b border-gray-100 p-5 dark:border-gray-800">
-              <button
-                onClick={() => setShowSchedules(!showSchedules)}
-                className="flex items-center gap-2 text-lg font-bold text-gray-900 dark:text-white"
-              >
-                <FiChevronDown className={`size-4 text-gray-400 transition-transform ${showSchedules ? '' : '-rotate-90'}`} />
-                Schedules ({matches.length})
-              </button>
-              <button
-                onClick={() => navigate(`/tournaments/${tournamentId}/fixtures`)}
-                className="text-sm text-brand-600 dark:text-brand-400 hover:underline font-medium cursor-pointer"
-              >
-                View All
-              </button>
-            </div>
-            {showSchedules && (
-            <div className="space-y-3 p-5">
-            {matches.length === 0 && (
-              <p className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">No matches scheduled yet.</p>
-            )}
-            {matches.map((match) => (
-              <div
-                key={match.id}
-                className="rounded-xl border border-gray-200 bg-gray-50 p-4 cursor-pointer transition-colors hover:border-gray-300 dark:bg-white/[0.02] dark:border-gray-800 dark:hover:border-gray-700"
-                onClick={() => navigate(match.hasStarted ? `/tournaments/${tournamentId}/match/${match.id}` : `/tournaments/${tournamentId}/match/${match.id}/pending`)}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex flex-1 items-center justify-center gap-3 min-w-0">
-                    <div className="flex flex-1 items-center justify-end gap-2 min-w-0">
-                      <span className="truncate text-sm font-medium text-gray-800 dark:text-gray-200">{match.teamA}</span>
-                      <img
-                        src={match.teamAColor === 'yellow' ? '/ball1.png' : '/ball2.png'}
-                        alt=""
-                        className="size-6 shrink-0 object-contain"
-                      />
-                    </div>
-                    <span className="shrink-0 text-xs font-semibold text-gray-400 dark:text-gray-600">VS</span>
-                    <div className="flex flex-1 items-center gap-2 min-w-0">
-                      <img
-                        src={match.teamBColor === 'yellow' ? '/ball1.png' : '/ball2.png'}
-                        alt=""
-                        className="size-6 shrink-0 object-contain"
-                      />
-                      <span className="truncate text-sm font-medium text-gray-800 dark:text-gray-200">{match.teamB}</span>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(match.matchCode ?? match.id); toast.success('Match code copied!'); }}
-                    className="shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-white hover:text-gray-600 dark:hover:bg-white/5 dark:hover:text-gray-300"
-                    title="Copy match code"
-                  >
-                    <CopyIcon className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="mt-2.5 flex items-center justify-center gap-3 text-xs text-gray-500 dark:text-gray-400">
-                  <span>{match.venue}</span>
-                  <span className="text-gray-300 dark:text-gray-700">•</span>
-                  <span>{match.time}</span>
-                </div>
-              </div>
-            ))}
-            </div>
-            )}
-          </div>
-        </div>
-
-        {/* Tournament Leaders Section */}
-        <div className="mt-8">
-          <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Tournament Leaders</h2>
-
-          {/* Stats Tabs */}
-          <div className="mb-6 inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-white p-1 dark:border-gray-800 dark:bg-gray-900">
-            {(['points', 'rebounds', 'assists', 'blocks', 'steals'] as LeaderStat[]).map((stat) => (
-              <button
-                key={stat}
-                onClick={() => setActiveLeaderStat(stat)}
-                className={`px-5 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeLeaderStat === stat
-                    ? 'bg-brand-500 text-white'
-                    : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/5'
-                }`}
-              >
-                {stat.charAt(0).toUpperCase() + stat.slice(1)}
-              </button>
-            ))}
-          </div>
-
-          {/* Player Cards */}
-          {tournamentLeaders.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 text-center py-12 bg-gray-50 rounded-2xl border border-gray-200 dark:bg-white/[0.02] dark:border-gray-800">
-              <LuTrophy className="size-8 text-gray-300 dark:text-gray-700" />
-              <p className="text-gray-500 dark:text-gray-400 text-sm">No stats recorded yet for this tournament.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {tournamentLeaders.map((player, i) => (
-                <div
-                  key={player.playerId}
-                  className="flex items-center gap-4 rounded-2xl border border-gray-200 bg-white p-5 cursor-pointer transition-colors hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700"
-                  onClick={() => navigate(
-                    `/tournaments/${tournamentId}/match/${player.matchId}/player/${player.playerId}`,
-                    { state: { from: 'tournament-leaders', tournamentId } }
-                  )}
-                >
-                  <div
-                    className="flex size-11 shrink-0 items-center justify-center rounded-full text-base font-bold text-white"
-                    style={{ backgroundColor: LEADER_COLORS[i % LEADER_COLORS.length] }}
-                  >
-                    #{i + 1}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-bold text-gray-900 dark:text-white">{player.name}</div>
-                    <div className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                      <span className="font-semibold text-brand-600 dark:text-brand-400">{player[activeLeaderStat]}</span>{' '}
-                      {LEADER_STAT_LABELS[activeLeaderStat]}
-                    </div>
-                  </div>
-                </div>
+                  {LEADER_LABELS[s]}
+                </button>
               ))}
             </div>
+            {leaders.length === 0 ? (
+              <p className="text-sm text-gray-500">Leaders appear once a game is completed.</p>
+            ) : (
+              <ol className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
+                {leaders.map((l, i) => (
+                  <li key={l.playerId} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="w-5 text-right tabular-nums text-gray-400">{i + 1}</span>
+                      <span className="truncate font-medium text-gray-900 dark:text-white">{normalizeName(l.name)}</span>
+                    </span>
+                    <span className="shrink-0 tabular-nums text-gray-600 dark:text-gray-300">
+                      <span className="font-semibold text-gray-900 dark:text-white">{l.total}</span> · {l.avg} avg · {l.gp} GP
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {tab === 'teams' && (
+        <div id="panel-teams" role="tabpanel" aria-labelledby="tab-teams">
+          <TournamentTeamsPanel
+            tournamentId={tournament.id}
+            tournamentName={normalizeName(tournament.name)}
+            rows={standings}
+            onAddTeams={() => setAddTeamsOpen(true)}
+          />
+        </div>
+      )}
+
+      {tab === 'matches' && (
+        <div id="panel-matches" role="tabpanel" aria-labelledby="tab-matches" className="flex flex-col gap-4">
+          {matchesQuery.isPending && <ListSkeleton columns={4} rows={5} label="Loading matches" />}
+          {matchesQuery.isError && <ErrorState message={(matchesQuery.error as Error).message} onRetry={() => void matchesQuery.refetch()} />}
+          {!matchesQuery.isPending && !matchesQuery.isError && matches.length === 0 && (
+            <EmptyState title="No matches yet" description="Matches are scheduled from the fixtures view." action={{ label: 'Open fixtures', onClick: () => navigate(`/tournaments/${tournament.id}/fixtures`) }} />
+          )}
+          {!matchesQuery.isPending && !matchesQuery.isError && matches.length > 0 && (
+            <ul className={MATCH_GRID} aria-label="Matches in this tournament">
+              {matches.map((m) => (
+                <li key={m.id} className="min-w-0">
+                  <MatchCard
+                    match={{
+                      id: m.id,
+                      home: { name: teamNames.get(m.homeTeamId) ?? 'TBD', color: teamColors.get(m.homeTeamId), logo: teamLogos.get(m.homeTeamId) },
+                      away: { name: teamNames.get(m.awayTeamId) ?? 'TBD', color: teamColors.get(m.awayTeamId), logo: teamLogos.get(m.awayTeamId) },
+                      homeScore: m.homeScore,
+                      awayScore: m.awayScore,
+                      status: m.status,
+                      scheduledDate: m.scheduledDate,
+                      venue: m.venue,
+                    }}
+                    href={`/tournaments/${tournament.id}/match/${m.id}`}
+                  />
+                </li>
+              ))}
+            </ul>
           )}
         </div>
-      </div>
-      <ConfirmDialog {...dialogProps} />
+      )}
+
+      <TournamentFormDialog
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        initial={tournament}
+        isSaving={updateTournament.isPending}
+        serverError={editError}
+        onSubmit={saveEdit}
+      />
+      <DeleteTournamentDialog target={deleteTarget} isDeleting={deleteTournament.isPending} onCancel={() => setDeleteTarget(null)} onConfirm={confirmDelete} />
+      <AddTeamsDialog open={addTeamsOpen} onClose={() => setAddTeamsOpen(false)} tournamentId={tournament.id} existingTeamIds={existingTeamIds} />
     </div>
   );
 };
 
-export default CompetitionDetailPage;
+const Detail: React.FC<{ label: string; value?: string | number | null }> = ({ label, value }) => (
+  <div className="min-w-0">
+    <dt className="text-xs uppercase tracking-wide text-gray-500">{label}</dt>
+    <dd className="mt-0.5 truncate font-medium text-gray-900 dark:text-white">{value ?? '—'}</dd>
+  </div>
+);
+
+export default Tournaments;

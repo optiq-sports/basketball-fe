@@ -73,4 +73,15 @@ describe('decideGate', () => {
       expect(decideGate({ ...base, isError: true, error: { status: 403 } })).toBe('login');
     });
   });
+
+  describe('profile says forcePasswordChange (profile is exempt from the lock now, so this is the normal path)', () => {
+    it('shows the change-password screen once the profile loads with the flag set', () => {
+      expect(decideGate({ ...base, hasData: true, forcePasswordChange: true })).toBe('password-change');
+    });
+
+    it('lets through a profile with the flag clear or absent', () => {
+      expect(decideGate({ ...base, hasData: true, forcePasswordChange: false })).toBe('app');
+      expect(decideGate({ ...base, hasData: true })).toBe('app');
+    });
+  });
 });

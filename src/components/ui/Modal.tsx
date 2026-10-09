@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
 const SIZE_CLASSES: Record<'sm' | 'md' | 'lg' | 'xl' | 'full', string> = {
@@ -20,6 +20,29 @@ export interface ModalProps {
   footer?: React.ReactNode;
 }
 
+const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
+/** Keeps Tab and Shift+Tab cycling inside the dialog, so keyboard focus can't wander behind it. */
+export function keepFocusInside(e: KeyboardEvent, panel: HTMLElement | null): void {
+  if (!panel) return;
+  const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE));
+  if (items.length === 0) {
+    e.preventDefault();
+    panel.focus();
+    return;
+  }
+  const first = items[0];
+  const last = items[items.length - 1];
+  const active = document.activeElement;
+  if (e.shiftKey && (active === first || active === panel || !panel.contains(active))) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && (active === last || !panel.contains(active))) {
+    e.preventDefault();
+    first.focus();
+  }
+}
+
 const Modal: React.FC<ModalProps> = ({
   open,
   onClose,
@@ -32,6 +55,7 @@ const Modal: React.FC<ModalProps> = ({
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<Element | null>(null);
+  const titleId = useId();
 
   // Steals initial focus onto the panel and locks page scroll exactly once per
   // open/close transition. Deliberately depends on `open` alone — callers almost
@@ -58,6 +82,7 @@ const Modal: React.FC<ModalProps> = ({
     if (!open) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (closeOnEscape && e.key === 'Escape') onClose();
+      if (e.key === 'Tab') keepFocusInside(e, panelRef.current);
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
@@ -76,13 +101,13 @@ const Modal: React.FC<ModalProps> = ({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby={title ? 'modal-title' : undefined}
+        aria-labelledby={title ? titleId : undefined}
         tabIndex={-1}
         className={`w-full ${SIZE_CLASSES[size]} max-h-[90vh] overflow-y-auto rounded-2xl border border-gray-200 bg-white outline-none dark:border-gray-800 dark:bg-gray-900`}
       >
         {title && (
           <div className="flex items-center justify-between border-b border-gray-200 p-6 dark:border-gray-800">
-            <h2 id="modal-title" className="text-theme-xl font-semibold text-gray-800 dark:text-white/90">
+            <h2 id={titleId} className="text-theme-xl font-semibold text-gray-800 dark:text-white/90">
               {title}
             </h2>
             <button

@@ -24,6 +24,7 @@ vi.mock('./api/hooks', () => ({
 }));
 vi.mock('./pages/login/login', () => ({ default: () => <div>LOGIN PAGE</div> }));
 vi.mock('./pages/login/ForgotPassword', () => ({ default: () => <div>FORGOT PAGE</div> }));
+vi.mock('./pages/portal/ClientPortal', () => ({ default: () => <div>CLIENT PORTAL</div> }));
 vi.mock('./pages/login/ChangePasswordRequired', () => ({
   default: ({ onChanged }: { onChanged: () => void }) => (
     <button onClick={onChanged}>CHANGE PASSWORD SCREEN</button>
@@ -95,6 +96,18 @@ describe('AppGate when the profile check fails', () => {
     expect(screen.getByText('LOGIN PAGE')).toBeTruthy();
   });
 
+  it('a profile that reports forcePasswordChange shows the change-password screen, not the app', () => {
+    profileState.current = {
+      ...profileState.current,
+      data: { role: 'ADMIN', forcePasswordChange: true } as { role: string },
+      isError: false,
+      error: null,
+    };
+    renderAt('/tournaments');
+    expect(screen.getByText('CHANGE PASSWORD SCREEN')).toBeTruthy();
+    expect(screen.queryByText('ADMIN SHELL')).toBeNull();
+  });
+
   it('REGRESSION: a new account forced to change its password sees that screen, not login, and keeps its token', () => {
     profileState.current = {
       ...profileState.current,
@@ -106,5 +119,12 @@ describe('AppGate when the profile check fails', () => {
     expect(screen.getByText('CHANGE PASSWORD SCREEN')).toBeTruthy();
     expect(screen.queryByText('LOGIN PAGE')).toBeNull();
     expect(localStorage.getItem('access_token')).toBe('access');
+  });
+
+  it('a CLIENT user gets the client portal, never the admin shell', () => {
+    profileState.current = { ...profileState.current, data: { role: 'CLIENT' }, isError: false, error: null };
+    renderAt('/dashboard');
+    expect(screen.getByText('CLIENT PORTAL')).toBeTruthy();
+    expect(screen.queryByText('ADMIN SHELL')).toBeNull();
   });
 });

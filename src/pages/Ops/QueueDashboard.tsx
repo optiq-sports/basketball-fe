@@ -1,268 +1,255 @@
 import React, { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
-import {
-  useQueueHealth,
-  useQueueLag,
-  useRequeueDeadLetter,
-  useWarmSession,
-  queryKeys,
-} from '../../api/hooks';
+import { useQueueHealth, useQueueLag, useRequeueDeadLetter, useWarmSession, queryKeys } from '../../api/hooks';
+import { useToast } from '../../hooks/useToast';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { PageHeader, ErrorState } from '../../components/admin/page-states';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
 import DataTable from '../../components/ui/DataTable';
+import Spinner from '../../components/ui/Spinner';
+import Skeleton from '../../components/ui/Skeleton';
+import { Button } from '../../components/ui/primitives/button';
+import { Badge } from '../../components/ui/primitives/badge';
+import { Card, CardDescription, CardTitle } from '../../components/ui/primitives/card';
+import { cn } from '../../lib/utils';
+import { QUEUE_LABELS, REQUEUE_LIMIT, clampLimit, formatMs, lagTone } from './queue-format';
 
-const QUEUE_LABELS: Record<string, string> = {
-  'statdash-projections': 'Projection Rebuild',
-  'statdash-recompute': 'Session Recompute',
-  'statdash-matchstat-sync': 'Match Stat Sync',
-};
-
-function formatMs(ms: number): string {
-  if (ms === 0) return '—';
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ${Math.floor((ms % 60_000) / 1000)}s`;
-  return `${(ms / 3_600_000).toFixed(1)}h`;
-}
-
-function StatusBadge({ enabled }: { enabled: boolean }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${
-        enabled ? 'bg-success-50 text-success-700 dark:bg-success-500/15 dark:text-success-500' : 'bg-error-50 text-error-600 dark:bg-error-500/15 dark:text-error-500'
-      }`}
-    >
-      <span className={`w-1.5 h-1.5 rounded-full ${enabled ? 'bg-green-500' : 'bg-red-400'}`} />
-      {enabled ? 'Redis connected' : 'Redis disabled'}
-    </span>
-  );
-}
-
-const COUNT_LABELS: Array<[string, string, string]> = [
-  ['active', 'Active', 'text-blue-600 bg-blue-50'],
-  ['waiting', 'Waiting', 'text-yellow-700 bg-yellow-50'],
-  ['failed', 'Failed', 'text-red-600 bg-red-50'],
-  ['delayed', 'Delayed', 'text-purple-600 bg-purple-50'],
-  ['completed', 'Done', 'text-green-700 bg-green-50'],
+const COUNTS: Array<{ key: string; label: string; tone: 'live' | 'warning' | 'danger' | 'neutral' | 'success' }> = [
+  { key: 'active', label: 'Active', tone: 'live' },
+  { key: 'waiting', label: 'Waiting', tone: 'warning' },
+  { key: 'failed', label: 'Failed', tone: 'danger' },
+  { key: 'delayed', label: 'Delayed', tone: 'neutral' },
+  { key: 'completed', label: 'Done', tone: 'success' },
 ];
 
+const inputClass =
+  'rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-court-400 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-white';
+
+interface LagRow {
+  name: string;
+  label: string;
+  waiting: number;
+  oldestWaitingMs: number;
+}
+
+const lagColumns: ColumnDef<LagRow>[] = [
+  { accessorKey: 'label', header: 'Queue' },
+  { accessorKey: 'waiting', header: 'Waiting' },
+  {
+    accessorKey: 'oldestWaitingMs',
+    header: 'Oldest waiting',
+    cell: ({ row }) => {
+      const ms = row.original.oldestWaitingMs;
+      const tone = lagTone(ms);
+      return (
+        <span
+          className={cn(
+            'font-medium',
+            tone === 'stuck' && 'text-rose-600 dark:text-rose-400',
+            tone === 'slow' && 'text-amber-700 dark:text-amber-400',
+            tone === 'ok' && 'text-gray-600 dark:text-gray-400',
+          )}
+        >
+          {formatMs(ms)}
+        </span>
+      );
+    },
+  },
+];
+
+/**
+ * Health of the BullMQ / Redis queues behind StatDash, plus two operator actions. Both actions change
+ * server state, so they are disabled while Redis is off — the backend would answer "0 requeued" and
+ * "warmed" without having done anything — and requeueing asks first.
+ *
+ * The dead-letter queue itself isn't in the health response (Gap 44), so there is no count of what a
+ * requeue would pick up; the page says so rather than implying it.
+ */
 const QueueDashboard: React.FC = () => {
   const queryClient = useQueryClient();
+  const toast = useToast();
+  const { confirm, dialogProps } = useConfirmDialog();
   const health = useQueueHealth();
   const lag = useQueueLag();
   const requeue = useRequeueDeadLetter();
   const warm = useWarmSession();
 
-  const [requeueLimit, setRequeueLimit] = useState(25);
+  const [limit, setLimit] = useState<string>(String(REQUEUE_LIMIT.default));
   const [sessionId, setSessionId] = useState('');
-  const [warmResult, setWarmResult] = useState<string | null>(null);
-  const [requeueResult, setRequeueResult] = useState<string | null>(null);
 
+  const enabled = health.data?.enabled === true;
   const queues = health.data?.queues ?? {};
   const lagData = lag.data?.lag ?? {};
-  const queueNames = Object.keys(QUEUE_LABELS);
-
-  function handleRefresh() {
-    queryClient.invalidateQueries({ queryKey: queryKeys.ops.health });
-    queryClient.invalidateQueries({ queryKey: queryKeys.ops.lag });
-  }
-
-  async function handleRequeue() {
-    setRequeueResult(null);
-    try {
-      const res = await requeue.mutateAsync(requeueLimit);
-      setRequeueResult(`${res.requeued} job${res.requeued !== 1 ? 's' : ''} requeued`);
-    } catch (err) {
-      setRequeueResult(`Error: ${err instanceof Error ? err.message : 'Failed'}`);
-    }
-  }
-
-  async function handleWarm() {
-    if (!sessionId.trim()) return;
-    setWarmResult(null);
-    try {
-      await warm.mutateAsync(sessionId.trim());
-      setWarmResult('Cache warm enqueued');
-    } catch (err) {
-      setWarmResult(`Error: ${err instanceof Error ? err.message : 'Failed'}`);
-    }
-  }
-
-  const isLoading = health.isLoading || lag.isLoading;
-  const isError = health.isError || lag.isError;
-
-  interface LagRow {
-    name: string;
-    label: string;
-    waiting: number;
-    oldestWaitingMs: number;
-  }
+  const refreshing = health.isFetching || lag.isFetching;
+  const loading = health.isPending || lag.isPending;
+  const failed = health.isError || lag.isError;
 
   const lagRows = useMemo<LagRow[]>(
     () =>
-      queueNames.map((name) => {
+      Object.keys(QUEUE_LABELS).map((name) => {
         const entry = lagData[name] ?? { waiting: 0, oldestWaitingMs: 0 };
         return { name, label: QUEUE_LABELS[name], waiting: entry.waiting, oldestWaitingMs: entry.oldestWaitingMs };
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [lag.data],
+    [lagData],
   );
 
-  const lagColumns: ColumnDef<LagRow>[] = [
-    { accessorKey: 'label', header: 'Queue' },
-    { accessorKey: 'waiting', header: 'Waiting' },
-    {
-      accessorKey: 'oldestWaitingMs',
-      header: 'Oldest waiting',
-      cell: ({ row }) => {
-        const ms = row.original.oldestWaitingMs;
-        return (
-          <span
-            className={`font-medium ${
-              ms > 60_000 ? 'text-error-600 dark:text-error-500' : ms > 10_000 ? 'text-warning-700 dark:text-warning-500' : 'text-gray-600 dark:text-gray-400'
-            }`}
-          >
-            {formatMs(ms)}
-          </span>
-        );
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.ops.health });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.ops.lag });
+  };
+
+  const doRequeue = async () => {
+    const n = clampLimit(limit);
+    setLimit(String(n));
+    const ok = await confirm({
+      title: 'Requeue dead-letter jobs?',
+      description: `Up to ${n} failed job${n === 1 ? '' : 's'} will be moved out of the dead-letter queue and run again. Each one is removed from the dead-letter queue as it is requeued.`,
+      confirmLabel: 'Requeue',
+    });
+    if (!ok) return;
+    requeue.mutate(n, {
+      onSuccess: (res) =>
+        toast.success(res.requeued === 0 ? 'Nothing to requeue.' : `${res.requeued} job${res.requeued === 1 ? '' : 's'} requeued.`),
+      onError: (err) => toast.error(`Couldn’t requeue: ${err.message}`),
+    });
+  };
+
+  const doWarm = () => {
+    const id = sessionId.trim();
+    if (!id) return;
+    warm.mutate(id, {
+      onSuccess: () => {
+        toast.success('Cache warm queued for that session.');
+        setSessionId('');
       },
-    },
-  ];
+      onError: (err) => toast.error(`Couldn’t warm the cache: ${err.message}`),
+    });
+  };
+
+  const updated = Math.max(health.dataUpdatedAt, lag.dataUpdatedAt);
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6 dark:bg-gray-950 min-h-screen">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Queue Dashboard</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">BullMQ / Redis queue health and operations</p>
-        </div>
-        <div className="flex items-center gap-3">
-          {health.data !== undefined && <StatusBadge enabled={health.data.enabled} />}
-          <button
-            onClick={handleRefresh}
-            disabled={isLoading}
-            className="text-sm px-4 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 disabled:opacity-50 transition-colors"
-          >
-            {isLoading ? 'Loading…' : 'Refresh'}
-          </button>
-        </div>
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Queue ops"
+        description="Health of the queues behind live scoring. Updates every 30 seconds."
+        actions={
+          <>
+            {health.data !== undefined && (
+              <Badge variant={enabled ? 'success' : 'danger'}>{enabled ? 'Redis connected' : 'Redis disabled'}</Badge>
+            )}
+            <Button variant="secondary" onClick={refresh} disabled={refreshing}>
+              {refreshing && <Spinner />}
+              {refreshing ? 'Refreshing…' : 'Refresh'}
+            </Button>
+          </>
+        }
+      />
 
-      {isError && (
-        <div className="bg-error-50 border border-error-100 text-error-700 text-sm rounded-lg px-4 py-3 dark:bg-error-500/10 dark:border-error-500/30 dark:text-error-500">
-          Failed to load queue data. Check that the backend is reachable.
-        </div>
+      {updated > 0 && <p className="-mt-3 text-xs text-gray-500">Last updated {new Date(updated).toLocaleTimeString()}</p>}
+
+      {failed && <ErrorState message="Couldn’t load queue data. Check that the backend is reachable." onRetry={refresh} />}
+
+      {health.data && !enabled && (
+        <p role="note" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+          Redis is switched off on the backend, so nothing is queued and the actions below are unavailable.
+        </p>
       )}
 
-      {/* Queue Health */}
-      <section>
-        <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Queue Health</h2>
+      <section aria-labelledby="health-heading" className="flex flex-col gap-3">
+        <h2 id="health-heading" className="text-sm font-semibold uppercase tracking-wide text-gray-500">Queue health</h2>
         <div className="grid gap-4 md:grid-cols-3">
-          {queueNames.map((name) => {
-            const counts = queues[name] ?? {};
-            return (
-              <div key={name} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm dark:bg-gray-900 dark:border-gray-800">
-                <p className="text-sm font-semibold text-gray-800 dark:text-white mb-3">{QUEUE_LABELS[name]}</p>
-                <div className="space-y-1.5">
-                  {COUNT_LABELS.map(([key, label, cls]) => {
-                    const val = (counts as Record<string, number>)[key] ?? 0;
-                    return (
-                      <div key={key} className="flex items-center justify-between">
-                        <span className="text-xs text-gray-500 dark:text-gray-400">{label}</span>
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${cls}`}>
-                          {val}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
+          {loading
+            ? Object.keys(QUEUE_LABELS).map((name) => <Skeleton key={name} className="h-48 w-full rounded-xl" />)
+            : Object.entries(QUEUE_LABELS).map(([name, label]) => {
+                const counts = (queues[name] ?? {}) as Record<string, number>;
+                return (
+                  <Card key={name} className="gap-3 p-4" aria-label={label}>
+                    <CardTitle>{label}</CardTitle>
+                    <dl className="flex flex-col gap-1.5">
+                      {COUNTS.map((c) => (
+                        <div key={c.key} className="flex items-center justify-between">
+                          <dt className="text-xs text-gray-500">{c.label}</dt>
+                          <dd><Badge variant={c.tone}>{counts[c.key] ?? 0}</Badge></dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </Card>
+                );
+              })}
         </div>
       </section>
 
-      {/* Queue Lag */}
-      <section>
-        <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Queue Lag</h2>
-        <DataTable
-          columns={lagColumns}
-          data={lagRows}
-          isLoading={isLoading}
-          error={isError ? 'Failed to load queue lag data.' : null}
-          onRetry={handleRefresh}
-        />
+      <section aria-labelledby="lag-heading" className="flex flex-col gap-3">
+        <h2 id="lag-heading" className="text-sm font-semibold uppercase tracking-wide text-gray-500">Queue lag</h2>
+        <DataTable columns={lagColumns} data={lagRows} isLoading={loading} error={lag.isError ? 'Failed to load queue lag data.' : null} onRetry={refresh} />
       </section>
 
-      {/* Actions */}
-      <section>
-        <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Actions</h2>
+      <section aria-labelledby="actions-heading" className="flex flex-col gap-3">
+        <h2 id="actions-heading" className="text-sm font-semibold uppercase tracking-wide text-gray-500">Actions</h2>
         <div className="grid gap-4 md:grid-cols-2">
-          {/* Requeue dead-letter jobs */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm space-y-3 dark:bg-gray-900 dark:border-gray-800">
+          <Card className="gap-3 p-4">
             <div>
-              <p className="text-sm font-semibold text-gray-800 dark:text-white">Requeue Dead-Letter Jobs</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                Moves failed jobs from the DLQ back into their source queues for retry.
-              </p>
+              <CardTitle>Requeue dead-letter jobs</CardTitle>
+              <CardDescription>
+                Moves failed jobs from the dead-letter queue back into their source queues. The dead-letter queue isn’t in the counts above, so you can’t see how many are waiting.
+              </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">Limit</label>
+            <div className="flex flex-wrap items-center gap-2">
+              <label htmlFor="requeue-limit" className="text-xs text-gray-500">Up to</label>
               <input
+                id="requeue-limit"
                 type="number"
-                min={1}
-                max={200}
-                value={requeueLimit}
-                onChange={(e) => setRequeueLimit(Math.max(1, parseInt(e.target.value, 10) || 25))}
-                className="w-20 text-sm px-2 py-1.5 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                inputMode="numeric"
+                min={REQUEUE_LIMIT.min}
+                max={REQUEUE_LIMIT.max}
+                value={limit}
+                onChange={(e) => setLimit(e.target.value)}
+                onBlur={() => setLimit(String(clampLimit(limit)))}
+                disabled={!enabled || requeue.isPending}
+                className={cn(inputClass, 'w-24')}
               />
-              <button
-                onClick={handleRequeue}
-                disabled={requeue.isPending}
-                className="text-sm px-4 py-1.5 rounded-lg bg-warning-500 text-white hover:bg-warning-600 disabled:opacity-50 transition-colors"
-              >
+              <span className="text-xs text-gray-500">jobs</span>
+              <Button variant="secondary" onClick={() => void doRequeue()} disabled={!enabled || requeue.isPending}>
+                {requeue.isPending && <Spinner />}
                 {requeue.isPending ? 'Requeueing…' : 'Requeue'}
-              </button>
+              </Button>
             </div>
-            {requeueResult && (
-              <p className={`text-xs font-medium ${requeueResult.startsWith('Error') ? 'text-error-600 dark:text-error-500' : 'text-success-700 dark:text-success-500'}`}>
-                {requeueResult}
-              </p>
-            )}
-          </div>
+          </Card>
 
-          {/* Warm session cache */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm space-y-3 dark:bg-gray-900 dark:border-gray-800">
+          <Card className="gap-3 p-4">
             <div>
-              <p className="text-sm font-semibold text-gray-800 dark:text-white">Warm Session Cache</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                Enqueues a projection rebuild, replay backfill, and match stat sync for a given session.
-              </p>
+              <CardTitle>Warm a session’s cache</CardTitle>
+              <CardDescription>Queues a projection rebuild, a replay backfill and a match stat sync for one StatDash session.</CardDescription>
             </div>
-            <div className="flex items-center gap-2">
+            <form
+              className="flex flex-wrap items-center gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                doWarm();
+              }}
+            >
+              <label htmlFor="warm-session" className="sr-only">Session ID</label>
               <input
+                id="warm-session"
                 type="text"
                 placeholder="Session ID"
                 value={sessionId}
                 onChange={(e) => setSessionId(e.target.value)}
-                className="flex-1 text-sm px-3 py-1.5 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                disabled={!enabled || warm.isPending}
+                className={cn(inputClass, 'min-w-0 flex-1')}
               />
-              <button
-                onClick={handleWarm}
-                disabled={warm.isPending || !sessionId.trim()}
-                className="text-sm px-4 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
-              >
-                {warm.isPending ? 'Warming…' : 'Warm'}
-              </button>
-            </div>
-            {warmResult && (
-              <p className={`text-xs font-medium ${warmResult.startsWith('Error') ? 'text-error-600 dark:text-error-500' : 'text-success-700 dark:text-success-500'}`}>
-                {warmResult}
-              </p>
-            )}
-          </div>
+              <Button type="submit" variant="secondary" disabled={!enabled || warm.isPending || !sessionId.trim()}>
+                {warm.isPending && <Spinner />}
+                {warm.isPending ? 'Queueing…' : 'Warm'}
+              </Button>
+            </form>
+          </Card>
         </div>
       </section>
+
+      <ConfirmDialog {...dialogProps} />
     </div>
   );
 };

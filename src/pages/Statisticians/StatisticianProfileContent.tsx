@@ -1,258 +1,94 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import type { Statistician } from '../../types/api';
-import { resolvePlayerPhotoUrl, handlePhotoLoadError } from '../../utils/playerPhotoPlaceholder';
+import { Link } from 'react-router-dom';
+import type { GameOfficiated, Statistician } from '../../types/api';
+import { Badge } from '../../components/ui/primitives/badge';
+import { PlayerAvatar } from '../../components/players/PlayerAvatar';
+import { displayName, locationOf, splitFullName } from '../../components/statisticians/statistician-form';
+import { normalizeName } from '../../lib/text';
 
-interface Game {
-  id: string;
-  teamA: string;
-  teamAColor: string;
-  teamAScore?: number | string;
-  teamB: string;
-  teamBColor: string;
-  teamBScore?: number | string;
-  venue: string;
-  datetime?: string;
-  time?: string;
-  date?: string;
+const formatDate = (iso?: string | null) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? ''
+    : d.toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+};
+
+function dateOfBirth(profile: Statistician['profile']): string {
+  const { dobDay, dobMonth, dobYear } = (profile ?? {}) as { dobDay?: number | null; dobMonth?: number | null; dobYear?: number | null };
+  if (!dobDay || !dobMonth || !dobYear) return '';
+  const d = new Date(dobYear, dobMonth - 1, dobDay);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-/** One entry of `gamesOfficiated` on GET /statistician/:id (see StatisticianService.findOne). */
-interface GameOfficiated {
-  matchId: string;
-  homeTeam?: { name?: string } | null;
-  awayTeam?: { name?: string } | null;
-  scheduledDate?: string | null;
-  venue?: string | null;
+function Detail({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs uppercase tracking-wide text-gray-500">{label}</dt>
+      <dd className="truncate font-medium text-gray-900 dark:text-gray-100">{value || '—'}</dd>
+    </div>
+  );
 }
 
-function buildGames(stat: Statistician): Game[] {
-  const raw = (stat as { gamesOfficiated?: GameOfficiated[] }).gamesOfficiated;
-  if (!Array.isArray(raw)) return [];
-  return raw.map((g) => ({
-    id: g.matchId,
-    teamA: g.homeTeam?.name?.trim() || 'Home',
-    teamAColor: 'yellow',
-    teamB: g.awayTeam?.name?.trim() || 'Away',
-    teamBColor: 'blue',
-    venue: g.venue ?? '',
-    datetime: g.scheduledDate
-      ? new Date(g.scheduledDate).toLocaleString(undefined, {
-          hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short', year: 'numeric',
-        })
-      : undefined,
-  }));
-}
-
-function buildDisplayStatistician(stat: Statistician | undefined): {
-  fullName: string;
-  email: string;
-  phone: string;
-  location: string;
-  image: string;
-  gamesRecorded: string;
-  dob: string;
-  status: string;
-} {
-  if (!stat) {
-    return {
-      fullName: '—',
-      email: '—',
-      phone: '—',
-      location: '—',
-      image: resolvePlayerPhotoUrl(undefined, 'unknown'),
-      gamesRecorded: '—',
-      dob: '—',
-      status: '—',
-    };
-  }
-
-  const profile = stat.profile as
-    | {
-        photos?: string[];
-        phone?: string;
-        email?: string;
-        country?: string;
-        state?: string;
-        dobDay?: number;
-        dobMonth?: number;
-        dobYear?: number;
-      }
-    | undefined;
-
-  const firstName = stat.firstName ?? stat.name ?? '';
-  const lastName = stat.lastName ?? '';
-  const nameBase =
-    firstName && lastName
-      ? `${firstName} ${lastName}`
-      : (stat.name as string | undefined) ??
-        (profile?.email as string | undefined) ??
-        (stat.email as string | undefined) ??
-        '';
-  const fullName = nameBase || '—';
-
-  const loc =
-    [
-      (profile?.state as string | undefined) ?? (stat.state as string | undefined),
-      (profile?.country as string | undefined) ?? (stat.country as string | undefined),
-    ]
-      .filter(Boolean)
-      .join(', ') || '—';
-
-  const primaryPhoto =
-    profile?.photos?.[0] ??
-    (stat as { photo?: string }).photo ??
-    (stat.image as string | undefined);
-
-  const officiated = (stat as { gamesOfficiated?: unknown[] }).gamesOfficiated;
-  const gamesRecorded =
-    Array.isArray(officiated)
-      ? String(officiated.length)
-      : (stat as { gamesRecorded?: number }).gamesRecorded != null
-      ? String((stat as { gamesRecorded?: number }).gamesRecorded)
-      : (stat as { matchesCount?: number }).matchesCount != null
-      ? String((stat as { matchesCount?: number }).matchesCount)
-      : '—';
-
-  const dobDay = (profile?.dobDay as number | undefined) ?? (stat as { dobDay?: number }).dobDay;
-  const dobMonth = (profile?.dobMonth as number | undefined) ?? (stat as { dobMonth?: number }).dobMonth;
-  const dobYear = (profile?.dobYear as number | undefined) ?? (stat as { dobYear?: number }).dobYear;
-  let dob = '—';
-  if (dobDay && dobMonth && dobYear) {
-    const d = new Date(dobYear, dobMonth - 1, dobDay);
-    if (!Number.isNaN(d.getTime())) {
-      dob = d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-    }
-  }
-
-  const status = (stat.status as string | undefined) ?? '—';
-
-  return {
-    fullName,
-    email: (profile?.email as string | undefined) ?? stat.email ?? '—',
-    phone: (profile?.phone as string | undefined) ?? (stat.phone as string | undefined) ?? '—',
-    location: loc,
-    image: resolvePlayerPhotoUrl(primaryPhoto, stat.id),
-    gamesRecorded,
-    dob,
-    status,
-  };
-}
-
-interface StatisticianProfileContentProps {
-  stat: Statistician;
-}
-
-/** Presentational statistician-profile body, shared between the standalone route page and the inline modal. */
-const StatisticianProfileContent: React.FC<StatisticianProfileContentProps> = ({ stat }) => {
-  const navigate = useNavigate();
-  const display = buildDisplayStatistician(stat);
-  const games = buildGames(stat);
+/** The statistician's profile: who they are, and the games they have scored. */
+const StatisticianProfileContent: React.FC<{ stat: Statistician }> = ({ stat }) => {
+  const name = displayName(stat);
+  const { firstName, lastName } = splitFullName(name);
+  const games: GameOfficiated[] = stat.gamesOfficiated ?? [];
+  const inactive = stat.status === 'INACTIVE';
 
   return (
-    <div>
-      <div className="rounded-2xl shadow-theme-sm overflow-hidden mb-4 bg-white dark:bg-gray-900 relative">
-        <div className="p-8 flex justify-between items-start">
-          <div className="flex-1">
-            <span className="text-sm text-gray-500 dark:text-gray-400">Statistician</span>
-            <h2 className="text-4xl font-bold text-brand-900 dark:text-white mt-2">{display.fullName}</h2>
-          </div>
-          <div className="relative">
-            <div className="w-90 h-80 relative mr-20 top-[2.1rem]">
-              <img
-                src={display.image}
-                onError={handlePhotoLoadError(stat.id)}
-                alt={display.fullName}
-                className="relative z-10 w-full h-full object-cover rounded-2xl"
-              />
-            </div>
+    <div className="flex flex-col gap-6">
+      <section className="flex flex-col gap-6 rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+        <div className="flex items-center gap-4">
+          <PlayerAvatar firstName={firstName} lastName={lastName} photo={stat.profile?.photos?.[0]} size="lg" className="size-20 text-2xl" />
+          <div className="min-w-0">
+            <p className="text-xs uppercase tracking-wide text-gray-500">Statistician</p>
+            <h2 className="truncate text-2xl font-bold text-gray-900 dark:text-white">{name}</h2>
+            <Badge variant={inactive ? 'warning' : 'success'} className="mt-1.5">{inactive ? 'Inactive' : 'Active'}</Badge>
           </div>
         </div>
 
-        <div className="p-8 relative bg-brand-50 dark:bg-brand-500/10">
-          <div className="grid grid-cols-4 gap-6 text-center">
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Email</p>
-              <p className="text-lg font-semibold text-brand-900 dark:text-white">{display.email}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Phone</p>
-              <p className="text-lg font-semibold text-brand-900 dark:text-white">{display.phone}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Location</p>
-              <p className="text-lg font-semibold text-brand-900 dark:text-white">{display.location}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Games recorded</p>
-              <p className="text-lg font-semibold text-brand-900 dark:text-white">{display.gamesRecorded}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Date of birth</p>
-              <p className="text-lg font-semibold text-brand-900 dark:text-white">{display.dob}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Status</p>
-              <p className="text-lg font-semibold text-brand-900 dark:text-white">{display.status}</p>
-            </div>
-          </div>
-        </div>
-      </div>
+        <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Detail label="Email" value={stat.email} />
+          <Detail label="Phone" value={stat.profile?.phone} />
+          <Detail label="Location" value={locationOf(stat)} />
+          <Detail label="Home address" value={stat.profile?.homeAddress} />
+          <Detail label="Date of birth" value={dateOfBirth(stat.profile)} />
+          <Detail label="Games scored" value={String(games.length)} />
+        </dl>
 
-      <div className="py-4">
-        <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-4">Games Officiated</h2>
+        {stat.profile?.bio && <p className="text-sm text-gray-700 dark:text-gray-300">{stat.profile.bio}</p>}
+      </section>
 
-        {games.length === 0 && (
-          <div className="text-center py-12 bg-gray-50 dark:bg-white/[0.02] rounded-lg border border-gray-200 dark:border-gray-800">
-            <p className="text-gray-500 dark:text-gray-400 text-sm">No games officiated yet.</p>
-          </div>
+      <section aria-labelledby="games-heading" className="flex flex-col gap-3">
+        <h2 id="games-heading" className="text-lg font-bold text-gray-900 dark:text-white">Games scored</h2>
+
+        {games.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-gray-300 px-4 py-10 text-center text-sm text-gray-500 dark:border-gray-700">
+            No games scored yet. A game appears here once they have recorded something in it.
+          </p>
+        ) : (
+          <ul className="grid gap-3 md:grid-cols-2">
+            {games.map((g) => {
+              const home = normalizeName(g.homeTeam?.name?.trim()) || 'Home';
+              const away = normalizeName(g.awayTeam?.name?.trim()) || 'Away';
+              const when = formatDate(g.scheduledDate);
+              return (
+                <li key={g.matchId}>
+                  <Link
+                    to={`/matches/${g.matchId}`}
+                    className="flex flex-col gap-1 rounded-xl border border-gray-200 bg-white p-4 outline-none transition-shadow hover:shadow-md focus-visible:ring-[3px] focus-visible:ring-court-400/60 dark:border-gray-800 dark:bg-gray-900"
+                  >
+                    <span className="font-semibold text-gray-900 dark:text-white">{home} <span className="font-normal text-gray-500">vs</span> {away}</span>
+                    <span className="text-sm text-gray-500">{[when, g.venue].filter(Boolean).join(' · ') || 'No date or venue'}</span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
         )}
-
-        <div className="space-y-4">
-          {games.map((game) => (
-            <div
-              key={game.id}
-              className="bg-gray-50 dark:bg-white/[0.02] rounded-lg p-5 border border-gray-200 dark:border-gray-800 cursor-pointer hover:shadow-theme-sm transition-shadow"
-              onClick={() => navigate(`/tournaments/1/match/${game.id}`)}
-            >
-              <div className="flex justify-between items-center">
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center justify-center w-10 h-10 bg-yellow-100 rounded">
-                      <img
-                        src={game.teamAColor === 'yellow' ? '/ball1.png' : '/ball2.png'}
-                        alt="Basketball"
-                        className="w-7 h-7 object-contain"
-                      />
-                    </div>
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300 w-20">{game.teamA}</span>
-                    {game.teamAScore != null && (
-                      <span className="text-sm font-semibold text-gray-800 dark:text-white">- {game.teamAScore}</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center justify-center w-10 h-10 bg-blue-100 rounded">
-                      <img
-                        src={game.teamBColor === 'yellow' ? '/ball1.png' : '/ball2.png'}
-                        alt="Basketball"
-                        className="w-7 h-7 object-contain"
-                      />
-                    </div>
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300 w-20">{game.teamB}</span>
-                    {game.teamBScore != null && (
-                      <span className="text-sm font-semibold text-gray-800 dark:text-white">- {game.teamBScore}</span>
-                    )}
-                  </div>
-                </div>
-                <div className="text-right text-xs text-gray-500 dark:text-gray-400">
-                  <p>{game.venue}</p>
-                  <p>{game.datetime || `${game.time}, ${game.date}`}</p>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      </section>
     </div>
   );
 };

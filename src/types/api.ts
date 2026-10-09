@@ -118,17 +118,22 @@ export interface UserUpdateBody {
 export interface Admin {
   id: string;
   email: string;
-  name?: string;
+  name?: string | null;
   role?: string;
   status?: string;
+  createdAt?: string;
   [key: string]: unknown;
 }
 
+/** The only roles `/admin` manages — its list is filtered to these two. */
+export type AdminRole = 'SUPER_ADMIN' | 'ADMIN';
+
 export interface AdminCreateBody {
   email: string;
-  password: string;
+  /** Optional: left out, the backend generates one, emails it and forces a change on first sign-in. */
+  password?: string;
   name?: string;
-  role?: 'SUPER_ADMIN' | 'ADMIN' | 'STATISTICIAN';
+  role?: AdminRole;
   status?: 'ACTIVE' | 'INACTIVE';
 }
 
@@ -136,7 +141,20 @@ export interface AdminUpdateBody {
   name?: string;
   status?: 'ACTIVE' | 'INACTIVE';
   password?: string;
-  role?: 'SUPER_ADMIN' | 'ADMIN' | 'STATISTICIAN';
+  role?: AdminRole;
+}
+
+/**
+ * One entry of `gamesOfficiated` on `GET /statistician/:id`. The backend builds it from the game events
+ * the user recorded, so it lists matches they actually scored — one they were only assigned to, with no
+ * events yet, is absent — and it carries no tournament, score or status.
+ */
+export interface GameOfficiated {
+  matchId: string;
+  homeTeam?: { id?: string; name?: string } | null;
+  awayTeam?: { id?: string; name?: string } | null;
+  scheduledDate?: string | null;
+  venue?: string | null;
 }
 
 // Statistician (POST/GET/PATCH/DELETE /statistician)
@@ -153,10 +171,23 @@ export interface Statistician {
   homeAddress?: string;
   image?: string;
   photo?: string;
+  /**
+   * `UserProfile` as the backend sends it. There is no first/last name on it — only `fullName`, which
+   * the backend builds as "first last" — so the edit form splits that back apart.
+   */
   profile?: {
+    fullName?: string | null;
+    phone?: string | null;
+    country?: string | null;
+    state?: string | null;
+    homeAddress?: string | null;
+    bio?: string | null;
     photos?: string[];
     [key: string]: unknown;
-  };
+  } | null;
+  createdAt?: string;
+  /** Only on `GET /statistician/:id`, not on the list. */
+  gamesOfficiated?: GameOfficiated[];
   [key: string]: unknown;
 }
 
@@ -200,21 +231,40 @@ export type PlayerPosition =
   | 'POWER_FORWARD'
   | 'CENTER';
 
+/** One of a player's team assignments (`PlayerTeamResponseDto`). */
+export interface PlayerTeamAssignment {
+  id: string;
+  teamId: string;
+  jerseyNumber?: number | null;
+  isCaptain?: boolean | null;
+  isActive: boolean;
+  joinedAt: string;
+  leftAt?: string | null;
+  team?: { id: string; name: string; code: string };
+}
+
 export interface Player {
   id: string;
   firstName: string;
   lastName: string;
   email?: string;
-  position: PlayerPosition | string;
+  /** Optional in `CreatePlayerDto`, so it can come back null. */
+  position?: PlayerPosition | string | null;
   height?: string;
   phone?: string;
   dateOfBirth?: string;
-  jerseyNumber?: number;
-  teamId?: string;
-   /** Primary active team name (from API) */
+  /** The next four are derived from the first *active* assignment, and are `null` when there is none. */
+  jerseyNumber?: number | null;
+  teamId?: string | null;
   teamName?: string | null;
-  /** Captain status in primary team (from API) */
   isCaptain?: boolean | null;
+  /** `PlayerResponseDto.nationality` — was missing; a previous roster page read a non-existent `country` field instead. */
+  nationality?: string;
+  photo?: string;
+  /** Active assignments on the list response; every assignment, newest first, on `GET /players/:id`. */
+  playerTeams?: PlayerTeamAssignment[];
+  createdAt?: string;
+  updatedAt?: string;
   [key: string]: unknown;
 }
 
@@ -222,23 +272,31 @@ export interface PlayerCreateStandalone {
   firstName: string;
   lastName: string;
   email?: string;
-  position: PlayerPosition | string;
+  /** Optional in `CreatePlayerDto`. */
+  position?: PlayerPosition | string;
   height?: string;
   phone?: string;
   dateOfBirth?: string;
   nationality?: string;
+  photo?: string;
   confirmDuplicate?: boolean;
 }
 
+/**
+ * `CreatePlayerForTeamDto`. `jerseyNumber` is required and `position` is optional on the
+ * backend — the opposite of what this type said before. Fixed to match the DTO; `phone` was
+ * also missing even though the backend accepts it.
+ */
 export interface PlayerCreateForTeam {
   teamId: string;
   firstName: string;
   lastName: string;
-  jerseyNumber?: number;
+  jerseyNumber: number;
   email?: string;
-  position: PlayerPosition | string;
+  position?: PlayerPosition | string;
   height?: string;
   dateOfBirth?: string;
+  phone?: string;
   nationality?: string;
   confirmDuplicate?: boolean;
   photo?: string;
@@ -265,10 +323,14 @@ export interface PlayerUpdateBody {
   email?: string;
   position?: PlayerPosition | string;
   height?: string;
-  country?: string;
+  /** The field is `nationality`. `country` is NOT accepted — the backend's global
+   *  `forbidNonWhitelisted` pipe answers 400 "property country should not exist". */
+  nationality?: string;
+  gender?: string;
   phone?: string;
   dateOfBirth?: string;
   photo?: string;
+  /** `teamId` + `jerseyNumber` together re-number the player inside that team. */
   teamId?: string;
   jerseyNumber?: number;
 }
@@ -314,23 +376,35 @@ export interface PlayerUploadResult {
 }
 
 // Team
+/**
+ * `color`, `country` and `logo` are nullable on the backend (`prisma/schema.prisma`: `color String?`,
+ * `country String?`); an earlier version of this type marked `color`/`country` as required and had no
+ * `logo` field. That was stale.
+ */
 export interface Team {
   id: string;
   name: string;
   code: string;
-  color: string;
-  country: string;
+  color?: string;
+  logo?: string;
+  country?: string;
   state?: string;
   coach?: string;
   assistantCoach?: string;
   [key: string]: unknown;
 }
 
+/**
+ * `CreateTeamDto`. Only `name` and `code` are required on the backend — confirmed against
+ * `create-team.dto.ts` (every other field is `@IsOptional()`). An earlier version of this type
+ * marked `color` and `country` as required and had no `logo` field at all; that was stale.
+ */
 export interface TeamCreate {
   name: string;
   code: string;
-  color: string;
-  country: string;
+  color?: string;
+  logo?: string;
+  country?: string;
   state?: string;
   coach?: string;
   assistantCoach?: string;
@@ -376,6 +450,8 @@ export interface Tournament {
   umpire1?: string;
   umpire2?: string;
   commissioner?: string;
+  /** Relation counts, present on list responses. */
+  _count?: { teams: number; matches: number };
   [key: string]: unknown;
 }
 
@@ -450,7 +526,8 @@ export interface Match {
   scheduledDate: string;
   status: MatchStatus;
   venue?: string;
-  matchCode?: string;
+  /** Optional code a scorer can type to open the game. Nothing fills it in today, so the game's id is used instead (see `lib/match-code.ts`). */
+  matchKey?: string | null;
   /** Assigned statistician's user id; null/absent = unassigned. */
   statisticianId?: string | null;
   homeScore?: number;
@@ -502,3 +579,41 @@ export interface MatchUpdate {
   homeScore?: number;
   awayScore?: number;
 }
+
+// Clients & API keys (Internal Administration — `basketball-be` src/clients, Oct 2026)
+
+/** `ClientResponseDto`. */
+export interface Client {
+  id: string;
+  name: string;
+  websiteUrl?: string | null;
+  logo?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** `CreateClientDto` — also creates the client's primary CLIENT user, whom the server tries to email a temporary password (delivery is not confirmed, Gap 49), and who must change it on first login. */
+export interface ClientCreate {
+  name: string;
+  websiteUrl?: string;
+  logo?: string;
+  userEmail: string;
+  userFirstName: string;
+  userLastName: string;
+}
+
+/** `ClientApiKeyResponseDto` as listed. The secret is never returned after creation. */
+export interface ClientApiKey {
+  id: string;
+  name: string;
+  clientId: string;
+  createdAt: string;
+  lastUsed?: string | null;
+}
+
+/** Returned once by `POST /clients/api-keys`. `apiKey` is the only copy that will ever exist. */
+export interface ClientApiKeyCreated extends ClientApiKey {
+  apiKey: string;
+}
+

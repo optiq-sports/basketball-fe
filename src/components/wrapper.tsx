@@ -1,5 +1,5 @@
 import React, { Suspense, lazy } from 'react'
-import { Routes, Route, useNavigate, Navigate } from 'react-router-dom'
+import { Routes, Route, useNavigate, Navigate, useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { useProfile, queryKeys } from '../api/hooks'
 import { ThemeProvider } from '../contexts/ThemeContext'
@@ -8,22 +8,17 @@ import AdminTopbar from './admin/AdminTopbar'
 import AdminSidebar from './admin/AdminSidebar'
 import Backdrop from './admin/Backdrop'
 import { performLogout } from '../auth/authSession'
+import { LEGACY_REDIRECTS } from '../routes.legacy'
 
 const MatchPage = lazy(() => import('../pages/tournaments/Match'))
+const MatchLookup = lazy(() => import('../pages/tournaments/MatchLookup'))
 const PlayerDetails = lazy(() => import('../pages/tournaments/PlayerDetails'))
 const Dashboard = lazy(() => import('../pages/dashboard/dashboard'))
-const StartNew = lazy(() => import('../pages/StartNew/StartNew'))
-const Teams = lazy(() => import('../pages/StartNew/Teams'))
-const Players = lazy(() => import('../pages/StartNew/Players'))
-const TeamOverview = lazy(() => import('../pages/StartNew/TeamOverview'))
-const Complete = lazy(() => import('../pages/StartNew/Complete'))
 const TournamentsListing = lazy(() => import('../pages/tournaments/TournamentsListing'))
 const Tournaments = lazy(() => import('../pages/tournaments/Tournaments'))
 const Fixtures = lazy(() => import('../pages/tournaments/Fixtures'))
-const Schedules = lazy(() => import('../pages/tournaments/Schedules'))
-const PendingGames = lazy(() => import('../pages/tournaments/PendingGames'))
+const SchedulesRedirect = lazy(() => import('../pages/tournaments/SchedulesRedirect'))
 const Results = lazy(() => import('../pages/results/result'))
-const ShotChart = lazy(() => import('../pages/tournaments/ShotChart'))
 const Statisticians = lazy(() => import('../pages/Statisticians/Statisticians'))
 const ViewStat = lazy(() => import('../pages/Statisticians/viewStat'))
 const TeamsManagement = lazy(() => import('../pages/Teams/Teams'))
@@ -31,7 +26,24 @@ const TeamDetails = lazy(() => import('../pages/Teams/TeamDetails'))
 const PlayersManagement = lazy(() => import('../pages/Players/Players'))
 const PlayerProfile = lazy(() => import('../pages/Players/PlayerProfile'))
 const Users = lazy(() => import('../pages/Users/Users'))
+const Clients = lazy(() => import('../pages/Clients/Clients'))
 const QueueDashboard = lazy(() => import('../pages/Ops/QueueDashboard'))
+
+const ClientsRouteGuard: React.FC<{ rawRole?: string }> = ({ rawRole }) => {
+  if (rawRole === undefined) {
+    return <div className="p-6 flex items-center justify-center text-gray-500">Loading...</div>;
+  }
+  if (rawRole !== 'SUPER_ADMIN') {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <Clients />;
+};
+
+/** Old per-match sub-pages (statistician assignment, shot chart) now live on the match page. */
+const MatchRedirect: React.FC<{ tab: string }> = ({ tab }) => {
+  const { id, matchId } = useParams();
+  return <Navigate to={`/tournaments/${id}/match/${matchId}${tab ? `?tab=${tab}` : ''}`} replace />;
+};
 
 const UsersRouteGuard: React.FC<{ rawRole?: string }> = ({ rawRole }) => {
   if (rawRole === undefined) {
@@ -76,28 +88,27 @@ const WrapperContent: React.FC = () => {
   const mainContentMargin = isMobileOpen ? 'ml-0' : isExpanded || isHovered ? 'lg:ml-[290px]' : 'lg:ml-[90px]';
 
   return (
-    <div className="admin-shell min-h-screen xl:flex">
+    <div className="admin-shell min-h-screen bg-court-50 xl:flex dark:bg-court-950">
       <AdminSidebar userRole={rawRole} />
       <Backdrop />
-      <div className={`flex-1 transition-all duration-300 ease-in-out ${mainContentMargin}`}>
+      <div className={`min-w-0 flex-1 transition-all duration-300 ease-in-out ${mainContentMargin}`}>
         <AdminTopbar userName={userName} userRole={userRole} onLogout={handleLogout} />
         <div className="p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6">
           <Suspense fallback={<div className="p-6 flex items-center justify-center text-gray-500">Loading...</div>}>
             <Routes>
               <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/start-new" element={<StartNew />} />
-              <Route path="/teams" element={<Teams />} />
-              <Route path="/players" element={<Players />} />
-              <Route path="/team-overview" element={<TeamOverview />} />
-              <Route path="/complete" element={<Complete />} />
+              {LEGACY_REDIRECTS.map(([from, to]) => (
+                <Route key={from} path={from} element={<Navigate to={to} replace />} />
+              ))}
               <Route path="/tournaments" element={<TournamentsListing />} />
               <Route path="/tournaments/:id" element={<Tournaments />} />
               <Route path="/tournaments/:id/fixtures" element={<Fixtures />} />
-              <Route path="/tournaments/:id/schedules" element={<Schedules />} />
-              <Route path="/tournaments/:id/match/:matchId/pending" element={<PendingGames />} />
-              <Route path="/tournaments/:id/match/:matchId/shotchart" element={<ShotChart />} />
+              <Route path="/tournaments/:id/schedules" element={<SchedulesRedirect />} />
+              <Route path="/tournaments/:id/match/:matchId/pending" element={<MatchRedirect tab="" />} />
+              <Route path="/tournaments/:id/match/:matchId/shotchart" element={<MatchRedirect tab="shots" />} />
               <Route path="/tournaments/:id/match/:matchId" element={<MatchPage />} />
               <Route path="/tournaments/:id/match/:matchId/player/:playerId" element={<PlayerDetails />} />
+              <Route path="/matches/:matchId" element={<MatchLookup />} />
               <Route path="/results" element={<Results />} />
               <Route path="/statisticians" element={<Statisticians />} />
               <Route path="/statisticians/:id" element={<ViewStat />} />
@@ -106,6 +117,7 @@ const WrapperContent: React.FC = () => {
               <Route path="/players-management" element={<PlayersManagement />} />
               <Route path="/players-management/:playerId" element={<PlayerProfile />} />
               <Route path="/users" element={<UsersRouteGuard rawRole={rawRole} />} />
+              <Route path="/clients" element={<ClientsRouteGuard rawRole={rawRole} />} />
               <Route path="/ops/queues" element={<QueueDashboard />} />
               <Route path="/" element={<Dashboard />} />
             </Routes>

@@ -59,7 +59,7 @@ function DataTable<T>({
 
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
-      <div className="overflow-x-auto">
+      <div className="relative overflow-x-auto">
         <table className="w-full divide-y divide-gray-200 dark:divide-gray-800">
           <thead className="bg-gray-50 dark:bg-white/[0.02]">
             {table.getHeaderGroups().map((headerGroup) => (

@@ -85,7 +85,7 @@ describe('ApiClient pagination', () => {
     expect(url).toContain('sortOrder=asc');
   });
 
-  describe('teams: GET /teams?tournamentId= 400s on the backend (cuid id, @IsUUID() validator)', () => {
+  describe('teams: tournamentId filter is server-side again (backend validator fixed, 4a2d87c)', () => {
     it('getAll() with no tournamentId pages /teams normally', async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(envelope([{ id: 'team-1' }], 1, 100, 1)));
       const res = await apiClient.teams.getAll();
@@ -95,30 +95,19 @@ describe('ApiClient pagination', () => {
       expect(url).not.toContain('tournamentId');
     });
 
-    it('getAll({ tournamentId }) reads the tournament\'s own nested teams instead of filtering /teams', async () => {
-      fetchMock.mockResolvedValueOnce(
-        jsonResponse({
-          success: true,
-          data: {
-            id: 'tourn-1',
-            teams: [{ team: { id: 'team-1', name: 'A' } }, { team: { id: 'team-2', name: 'B' } }],
-          },
-          timestamp: new Date().toISOString(),
-        }),
-      );
-      const res = await apiClient.teams.getAll({ tournamentId: 'tourn-1' });
-      expect(res.ok).toBe(true);
-      expect(res.data).toEqual([{ id: 'team-1', name: 'A' }, { id: 'team-2', name: 'B' }]);
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+    it('getAll({ tournamentId }) sends the filter to GET /teams and walks its pages', async () => {
+      fetchMock
+        .mockResolvedValueOnce(jsonResponse(envelope([{ id: 'team-1' }], 1, 1, 2)))
+        .mockResolvedValueOnce(jsonResponse(envelope([{ id: 'team-2' }], 2, 1, 2)));
+      const res = await apiClient.teams.getAll({ tournamentId: 'cmuidecfq0001sba6ac62n35q' });
+      expect(res.data).toEqual([{ id: 'team-1' }, { id: 'team-2' }]);
       const url = fetchMock.mock.calls[0][0] as string;
-      expect(url).toContain('/tournaments/tourn-1');
-      expect(url).not.toContain('/teams?');
+      expect(url).toContain('/teams?');
+      expect(url).toContain('tournamentId=cmuidecfq0001sba6ac62n35q');
     });
 
-    it('getAll({ tournamentId }) on a tournament with no teams yet returns an empty list, not a crash', async () => {
-      fetchMock.mockResolvedValueOnce(
-        jsonResponse({ success: true, data: { id: 'tourn-1', teams: [] }, timestamp: new Date().toISOString() }),
-      );
+    it('getAll({ tournamentId }) for a tournament with no teams returns an empty list', async () => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(envelope([], 1, 100, 0)));
       const res = await apiClient.teams.getAll({ tournamentId: 'tourn-1' });
       expect(res.ok).toBe(true);
       expect(res.data).toEqual([]);

@@ -104,7 +104,7 @@ const BasketballDashboard: React.FC = () => {
   };
 
   const handleStartNew = () => {
-    navigate('/start-new');
+    navigate('/tournaments?new=1');
   };
 
   const ongoingMatch = liveList[0];
@@ -125,7 +125,7 @@ const BasketballDashboard: React.FC = () => {
           </h1>
           <button
             onClick={handleStartNew}
-            className="flex items-center gap-2 px-5 py-2.5 bg-brand-500 hover:bg-brand-600 text-white font-medium rounded-lg transition-colors"
+            className="flex items-center gap-2 px-5 py-2.5 bg-court-700 hover:bg-court-800 text-white font-medium rounded-lg transition-colors dark:bg-court-400 dark:text-court-950 dark:hover:bg-court-300"
           >
             <PlusCircleIcon className="w-5 h-5" />
             <span>Start New</span>
@@ -146,20 +146,21 @@ const BasketballDashboard: React.FC = () => {
         {/* Quick stats */}
         <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
           {[
-            { label: 'Live now', value: liveList.length, icon: LuRadio },
-            { label: 'Upcoming matches', value: scheduledList.length, icon: LuCalendarClock },
-            { label: 'Tournaments', value: tournamentsList.length, icon: LuTrophy },
-            { label: 'Teams', value: teamsQuery.data?.length ?? 0, icon: LuUsers },
+            { label: 'Live now', value: liveList.length, loading: liveMatches.isPending, icon: LuRadio },
+            { label: 'Upcoming matches', value: scheduledList.length, loading: scheduledMatches.isPending, icon: LuCalendarClock },
+            { label: 'Tournaments', value: tournamentsList.length, loading: tournamentsQuery.isPending, icon: LuTrophy },
+            { label: 'Teams', value: teamsQuery.data?.length ?? 0, loading: teamsQuery.isPending, icon: LuUsers },
           ].map((stat) => (
             <div
               key={stat.label}
               className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900"
             >
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-court-100 text-court-700 dark:bg-court-400/10 dark:text-court-300">
                 <stat.icon className="size-5" />
               </div>
               <div>
-                <p className="text-xl font-bold text-gray-900 dark:text-white">{stat.value}</p>
+                {/* A dash until the count arrives: a 0 here reads as a real zero. */}
+                <p className="text-xl font-bold text-gray-900 dark:text-white" aria-busy={stat.loading}>{stat.loading ? '—' : stat.value}</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">{stat.label}</p>
               </div>
             </div>
@@ -226,7 +227,7 @@ const BasketballDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => navigate('/tournaments')}
-                  className="text-xs text-brand-600 dark:text-brand-400 hover:underline font-medium"
+                  className="text-xs text-court-700 dark:text-court-300 hover:underline font-medium"
                 >
                   View all
                 </button>
@@ -288,7 +289,7 @@ const BasketballDashboard: React.FC = () => {
                         type="button"
                         onClick={() => setCurrentSlide(idx)}
                         className={`w-1.5 h-1.5 rounded-full transition-colors ${
-                          idx === currentSlideIndex ? 'bg-brand-500' : 'bg-gray-300 dark:bg-gray-700'
+                          idx === currentSlideIndex ? 'bg-court-700 dark:bg-court-300' : 'bg-gray-300 dark:bg-gray-700'
                         }`}
                       />
                     ))}
@@ -306,7 +307,7 @@ const BasketballDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => navigate('/tournaments')}
-                  className="text-xs text-brand-600 dark:text-brand-400 hover:underline font-medium"
+                  className="text-xs text-court-700 dark:text-court-300 hover:underline font-medium"
                 >
                   View All
                 </button>
@@ -364,12 +365,10 @@ const BasketballDashboard: React.FC = () => {
                   'linear-gradient(90deg, #9BD9E6 -102.62%, #93D0E1 -73.81%, #80B7D5 -23.41%, #608FC1 36.59%, #3559A6 108.59%, #21409A 137.39%)',
               }}
             >
-              <div className="relative z-10">
+              <div className="relative z-10 max-w-[15rem] sm:max-w-[55%]">
                 <div className="text-xs text-white/80 font-medium mb-2">New Game setup</div>
                 <h3 className="text-lg text-white font-semibold mb-4">
-                  Start a new tournament, league, or
-                  <br />
-                  friendly competition
+                  Start a new tournament, league, or friendly competition
                 </h3>
                 <button
                   type="button"
@@ -379,7 +378,7 @@ const BasketballDashboard: React.FC = () => {
                   Game Setup
                 </button>
               </div>
-              <div className="absolute right-4 top-1/2 transform -translate-y-1/2 w-[262px] h-[262px]">
+              <div className="absolute right-[-3rem] top-1/2 -translate-y-1/2 w-[262px] h-[262px] opacity-30 sm:right-4 sm:opacity-100">
                 <div className="relative w-full h-full">
                   <div className="absolute inset-0 flex items-center justify-center">
                     <img src="/champ.png" alt="Trophy" className="w-[262px] h-[262px] object-contain" />
@@ -395,7 +394,7 @@ const BasketballDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => navigate('/tournaments')}
-                  className="text-xs text-brand-600 dark:text-brand-400 hover:underline font-medium"
+                  className="text-xs text-court-700 dark:text-court-300 hover:underline font-medium"
                 >
                   View All
                 </button>

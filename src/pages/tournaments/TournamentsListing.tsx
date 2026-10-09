@@ -1,430 +1,254 @@
-import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { FaMapMarkerAlt, FaCalendar } from 'react-icons/fa';
-import { FiEdit2, FiTrash } from 'react-icons/fi';
-import { LuTrophy } from 'react-icons/lu';
-import { useTournaments, useCreateTournament, useUpdateTournament, useDeleteTournament } from '../../api/hooks';
-import type { Tournament, TournamentDivision } from '../../types/api';
-import ConfirmDialog from '../../components/ui/ConfirmDialog';
-import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useCreateTournament, useDeleteTournament, useTournamentsPage, useUpdateTournament } from '../../api/hooks';
 import { useToast } from '../../hooks/useToast';
+import type { Tournament, TournamentCreate } from '../../types/api';
+import { PageHeader, ListSkeleton, EmptyState, ErrorState, NoResultsState } from '../../components/admin/page-states';
+import Pagination from '../../components/ui/Pagination';
+import { Button } from '../../components/ui/primitives/button';
+import TournamentFormDialog from '../../components/tournaments/TournamentFormDialog';
+import { TournamentCard, TOURNAMENT_GRID } from '../../components/tournaments/TournamentCard';
+import DeleteTournamentDialog, { type DeleteTarget } from '../../components/tournaments/DeleteTournamentDialog';
+import { cn } from '../../lib/utils';
+import { normalizeName } from '../../lib/text';
 
-function formatDateRange(start?: string, end?: string): string {
-  if (!start && !end) return 'TBA';
-  if (!end || start === end) {
-    if (!start) return 'TBA';
-    try {
-      return new Date(start).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-    } catch {
-      return start;
-    }
-  }
-  if (!start) {
-    try {
-      return new Date(end).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-    } catch {
-      return end;
-    }
-  }
-  try {
-    const s = new Date(start).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    const e = new Date(end).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-    return `${s} – ${e}`;
-  } catch {
-    return `${start} – ${end}`;
-  }
-}
+const PAGE_SIZE = 10;
 
-const DEFAULT_NUM_GAMES = 10;
-const DEFAULT_QUARTERS = 4;
-const DEFAULT_QUARTER_DURATION = 10;
-const DEFAULT_OVERTIME_DURATION = 5;
+/** Sort fields the list offers. The backend accepts any column name, so the URL can't pick anything else. */
+const SORTS = {
+  name: 'name',
+  division: 'division',
+  startDate: 'startDate',
+  createdAt: 'createdAt',
+} as const;
+type SortKey = keyof typeof SORTS;
+const isSortKey = (v: string | null): v is SortKey => v !== null && v in SORTS;
 
+/**
+ * Every tournament, one page at a time from the server. Search, sort and page are in the URL, so a
+ * refresh or a shared link shows the same list. Creating, editing and deleting each report progress on
+ * the control that started them, and deletes remove the row at once, putting it back if the server says no.
+ */
 const TournamentsListing: React.FC = () => {
+  const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
-  const { data: tournamentsRaw, isPending, error } = useTournaments();
+  const toast = useToast();
+
+  const sortParam = params.get('sort');
+  const sort: SortKey = isSortKey(sortParam) ? sortParam : 'createdAt';
+  const dir: 'asc' | 'desc' = params.get('dir') === 'asc' ? 'asc' : params.get('dir') === 'desc' ? 'desc' : sort === 'name' || sort === 'division' ? 'asc' : 'desc';
+  const q = params.get('q') ?? '';
+  const pageParam = Number(params.get('page'));
+  const page = Number.isInteger(pageParam) && pageParam >= 1 ? pageParam : 1;
+
+  // Search types locally and writes to the URL after a pause, so each keystroke doesn't fire a request.
+  const [draft, setDraft] = useState(q);
+  useEffect(() => setDraft(q), [q]);
+  useEffect(() => {
+    if (draft === q) return;
+    const id = window.setTimeout(() => setParam({ q: draft.trim() || null, page: null }), 300);
+    return () => window.clearTimeout(id);
+    // setParam is stable enough for this debounce; q and draft are the real inputs
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft]);
+
+  const setParam = (changes: Record<string, string | null>) => {
+    const p = new URLSearchParams(params);
+    for (const [k, v] of Object.entries(changes)) {
+      if (v === null || v === '') p.delete(k);
+      else p.set(k, v);
+    }
+    setParams(p, { replace: true });
+  };
+
+  const query = useTournamentsPage({
+    search: q || undefined,
+    sortBy: SORTS[sort],
+    sortOrder: dir,
+    page,
+    limit: PAGE_SIZE,
+  });
+
   const createTournament = useCreateTournament();
   const updateTournament = useUpdateTournament();
   const deleteTournament = useDeleteTournament();
-  const { confirm, dialogProps } = useConfirmDialog();
-  const toast = useToast();
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [seasonFilter, setSeasonFilter] = useState<string>('All');
-  const [brokenFlyerIds, setBrokenFlyerIds] = useState<Set<string>>(new Set());
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingTournament, setEditingTournament] = useState<Tournament | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    division: 'PREMIER' as TournamentDivision,
-    numberOfGames: DEFAULT_NUM_GAMES,
-    numberOfQuarters: DEFAULT_QUARTERS,
-    quarterDuration: DEFAULT_QUARTER_DURATION,
-    overtimeDuration: DEFAULT_OVERTIME_DURATION,
-    startDate: '',
-    endDate: '',
-    venue: '',
-    crewChief: '',
-    umpire1: '',
-    umpire2: '',
-    commissioner: '',
-  });
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<Tournament | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
 
-  const seasons = useMemo(() => ['2023-2024', '2024-2025'], []);
+  const rows: Tournament[] = query.data?.items ?? [];
+  const meta = query.data?.meta;
+  const hasFilter = q.length > 0;
 
-  const filteredTournaments = useMemo(() => {
-    let list = tournamentsRaw ?? [];
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      list = list.filter((t) =>
-        t.name.toLowerCase().includes(q) ||
-        (t.venue && t.venue.toLowerCase().includes(q)) ||
-        formatDateRange(t.startDate, t.endDate).toLowerCase().includes(q)
-      );
-    }
-    return list;
-  }, [tournamentsRaw, searchQuery, seasonFilter]);
-
-  const handleTournamentClick = (tournamentId: string) => {
-    navigate(`/tournaments/${tournamentId}`);
+  const openCreate = () => {
+    setEditing(null);
+    setFormError(null);
+    setFormOpen(true);
   };
 
-  const handleAddTournament = () => {
-    setEditingTournament(null);
-    setFormData({
-      name: '',
-      division: 'PREMIER',
-      numberOfGames: DEFAULT_NUM_GAMES,
-      numberOfQuarters: DEFAULT_QUARTERS,
-      quarterDuration: DEFAULT_QUARTER_DURATION,
-      overtimeDuration: DEFAULT_OVERTIME_DURATION,
-      startDate: '',
-      endDate: '',
-      venue: '',
-      crewChief: '',
-      umpire1: '',
-      umpire2: '',
-      commissioner: '',
-    });
-    setIsModalOpen(true);
+  // "Start New" (the sidebar and the dashboard) arrives here as `?new=1`. Open the form once and drop the
+  // flag, so a refresh or the back button doesn't open it again.
+  const asked = params.get('new') === '1';
+  useEffect(() => {
+    if (!asked) return;
+    setEditing(null);
+    setFormError(null);
+    setFormOpen(true);
+    const next = new URLSearchParams(params);
+    next.delete('new');
+    setParams(next, { replace: true });
+    // only the arrival matters; the params object is rebuilt on every render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asked]);
+  const openEdit = (t: Tournament) => {
+    setEditing(t);
+    setFormError(null);
+    setFormOpen(true);
+  };
+  const closeForm = () => {
+    setFormOpen(false);
+    setEditing(null);
   };
 
-  const handleEditTournament = (t: Tournament, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditingTournament(t);
-    setFormData({
-      name: t.name,
-      division: t.division ?? 'PREMIER',
-      numberOfGames: (t.numberOfGames as number) ?? DEFAULT_NUM_GAMES,
-      numberOfQuarters: (t.numberOfQuarters as number) ?? DEFAULT_QUARTERS,
-      quarterDuration: (t.quarterDuration as number) ?? DEFAULT_QUARTER_DURATION,
-      overtimeDuration: (t.overtimeDuration as number) ?? DEFAULT_OVERTIME_DURATION,
-      startDate: t.startDate ? t.startDate.slice(0, 10) : '',
-      endDate: t.endDate ? t.endDate.slice(0, 10) : '',
-      venue: t.venue ?? '',
-      crewChief: (t.crewChief as string) ?? '',
-      umpire1: (t.umpire1 as string) ?? '',
-      umpire2: (t.umpire2 as string) ?? '',
-      commissioner: (t.commissioner as string) ?? '',
-    });
-    setIsModalOpen(true);
-  };
-
-  const handleDeleteTournament = async (t: Tournament, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const ok = await confirm({
-      description: `Delete tournament "${t.name}"? This cannot be undone.`,
-      confirmLabel: 'Delete',
-      tone: 'danger',
-    });
-    if (!ok) return;
-    deleteTournament.mutate(t.id, {
-      onSuccess: () => {},
-      onError: (err) => toast.error(err.message),
-    });
-  };
-
-  const handleSaveTournament = () => {
-    if (!formData.name.trim() || !formData.venue.trim() || !formData.startDate || !formData.endDate) {
-      toast.error('Please fill in name, venue, start date and end date.');
-      return;
-    }
-    const startDate = new Date(formData.startDate).toISOString().slice(0, 10);
-    const endDate = new Date(formData.endDate).toISOString().slice(0, 10);
-    const payload = {
-      name: formData.name.trim(),
-      division: formData.division,
-      numberOfGames: formData.numberOfGames,
-      numberOfQuarters: formData.numberOfQuarters,
-      quarterDuration: formData.quarterDuration,
-      overtimeDuration: formData.overtimeDuration,
-      startDate,
-      endDate,
-      venue: formData.venue.trim(),
-      ...(formData.crewChief && { crewChief: formData.crewChief }),
-      ...(formData.umpire1 && { umpire1: formData.umpire1 }),
-      ...(formData.umpire2 && { umpire2: formData.umpire2 }),
-      ...(formData.commissioner && { commissioner: formData.commissioner }),
-    };
-    if (editingTournament) {
+  const saveForm = (body: TournamentCreate) => {
+    setFormError(null);
+    if (editing) {
       updateTournament.mutate(
-        { id: editingTournament.id, data: payload },
+        { id: editing.id, data: body },
         {
-          onSuccess: () => { setIsModalOpen(false); setEditingTournament(null); },
-          onError: (err) => toast.error(err.message),
-        }
+          onSuccess: () => {
+            toast.success(`${body.name} saved.`);
+            closeForm();
+          },
+          onError: (err) => setFormError(err.message),
+        },
       );
     } else {
-      createTournament.mutate(payload as Parameters<typeof createTournament.mutate>[0], {
-        onSuccess: () => { setIsModalOpen(false); setEditingTournament(null); },
-        onError: (err) => toast.error(err.message),
+      createTournament.mutate(body, {
+        onSuccess: (created) => {
+          toast.success(`${created.name} created. Add its teams next.`);
+          closeForm();
+          // The next step of setting up a tournament is its teams, so land on that tab.
+          if (created.id) navigate(`/tournaments/${created.id}?tab=teams`);
+        },
+        onError: (err) => setFormError(err.message),
       });
     }
   };
 
+  const confirmDelete = () => {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    deleteTournament.mutate(target.id, {
+      onSuccess: () => {
+        toast.success(`${target.name} deleted.`);
+        setDeleteTarget(null);
+      },
+      onError: (err) => {
+        toast.error(`Couldn’t delete ${target.name}: ${err.message}`);
+        setDeleteTarget(null);
+      },
+    });
+  };
+
+  const toggleSort = (key: SortKey) => {
+    const nextDir = sort === key && dir === 'asc' ? 'desc' : sort === key && dir === 'desc' ? 'asc' : key === 'name' || key === 'division' ? 'asc' : 'desc';
+    setParam({ sort: key, dir: nextDir, page: null });
+  };
+
+
+  const sortable: Array<{ key: SortKey; label: string }> = [
+    { key: 'name', label: 'Name' },
+    { key: 'division', label: 'Division' },
+    { key: 'startDate', label: 'Dates' },
+  ];
+
+  const showEmpty = !query.isPending && !query.isError && rows.length === 0 && !hasFilter;
+  const showNoResults = !query.isPending && !query.isError && rows.length === 0 && hasFilter;
+
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-950 p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-6 flex items-center justify-between gap-3">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Tournaments</h1>
-          <button
-            onClick={handleAddTournament}
-            className="px-4 py-2.5 bg-brand-500 text-white rounded-lg font-medium hover:bg-brand-600 transition-colors"
-          >
-            Add Tournament
-          </button>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Tournaments"
+        description="Competitions your organisation runs. Open one to manage its teams and fixtures."
+        actions={<Button onClick={openCreate}>New tournament</Button>}
+      />
+
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative w-full md:max-w-sm">
+          <label htmlFor="tournament-search" className="sr-only">Search tournaments by name</label>
+          <input
+            id="tournament-search"
+            type="search"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Search by name"
+            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-court-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+          />
         </div>
-
-        {/* Action Bar */}
-        <div className="flex flex-wrap items-center gap-3 mb-8">
-          <div className="relative" style={{ width: '260px', minWidth: '200px' }}>
-            <input
-              type="text"
-              placeholder="Search tournaments"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-4 pr-4 py-3 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500"
-            />
-          </div>
-          <div className="relative">
-            <select
-              value={seasonFilter}
-              onChange={(e) => setSeasonFilter(e.target.value)}
-              className="appearance-none pl-3 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent bg-white text-gray-900 cursor-pointer text-sm min-w-[160px] dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-            >
-              <option value="All">All Seasons</option>
-              {seasons.map((season) => (
-                <option key={season} value={season}>{season}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {error && (
-          <div className="mb-6 p-4 bg-error-50 border border-error-100 rounded-lg text-error-700 dark:bg-error-500/10 dark:border-error-500/30 dark:text-error-500">
-            {error instanceof Error ? error.message : 'Failed to load tournaments'}
-          </div>
-        )}
-
-        {isPending && (
-          <div className="text-gray-500 dark:text-gray-400 py-8">Loading tournaments…</div>
-        )}
-
-        {!isPending && !error && (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
-          {filteredTournaments.map((tournament) => {
-            const showFlyer = !!tournament.flyer && !brokenFlyerIds.has(tournament.id);
+        <div role="group" aria-label="Sort by" className="flex flex-wrap items-center gap-1.5">
+          {sortable.map((s) => {
+            const active = sort === s.key;
             return (
-            <div
-              key={tournament.id}
-              onClick={() => handleTournamentClick(tournament.id)}
-              className="group cursor-pointer overflow-hidden rounded-2xl border border-gray-200 bg-white transition-colors hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700"
-            >
-              <div className="relative aspect-square overflow-hidden bg-gray-50 dark:bg-white/[0.03]">
-                <div className="absolute right-2 top-2 z-10 flex gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
-                  <button
-                    onClick={(e) => handleEditTournament(tournament, e)}
-                    className="rounded-lg bg-white/90 p-1.5 text-gray-700 hover:bg-white"
-                    title="Edit"
-                  >
-                    <FiEdit2 size={14} />
-                  </button>
-                  <button
-                    onClick={(e) => handleDeleteTournament(tournament, e)}
-                    className="rounded-lg bg-white/90 p-1.5 text-error-600 hover:bg-white"
-                    title="Delete"
-                  >
-                    <FiTrash size={14} />
-                  </button>
-                </div>
-                {showFlyer ? (
-                  <img
-                    src={tournament.flyer}
-                    alt={`${tournament.name} flyer`}
-                    onError={() =>
-                      setBrokenFlyerIds((prev) => new Set(prev).add(tournament.id))
-                    }
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-gray-300 dark:text-gray-700">
-                    <LuTrophy className="size-10" />
-                    <span className="text-xs font-medium text-gray-400 dark:text-gray-600">No flyer</span>
-                  </div>
+              <button
+                key={s.key}
+                type="button"
+                onClick={() => toggleSort(s.key)}
+                aria-label={`Sort by ${s.label}${active ? `, ${dir === 'asc' ? 'ascending' : 'descending'}` : ''}`}
+                className={cn(
+                  'h-9 rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-court-400/50',
+                  active ? 'bg-court-700 text-white dark:bg-court-400 dark:text-court-950' : 'bg-white text-gray-700 hover:bg-gray-100 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800',
                 )}
-              </div>
-              <div className="p-4">
-                <h3 className="text-base font-bold text-gray-900 dark:text-white mb-2 truncate">{tournament.name}</h3>
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-                    <FaMapMarkerAlt className="size-3.5 shrink-0" />
-                    <span className="text-sm truncate">{tournament.venue}</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400">
-                    <FaCalendar className="size-3.5 shrink-0" />
-                    <span className="text-sm truncate">{formatDateRange(tournament.startDate, tournament.endDate)}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+              >
+                {s.label}{active ? (dir === 'asc' ? ' ↑' : ' ↓') : ''}
+              </button>
             );
           })}
         </div>
-        )}
-
-        {!isPending && !error && filteredTournaments.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-gray-500 dark:text-gray-400 text-lg">No tournaments found</p>
-            <p className="text-gray-400 dark:text-gray-500 text-sm mt-2">Try adjusting your search or filter</p>
-          </div>
-        )}
-
-        {isModalOpen && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-gray-900 rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-              <div className="p-6 border-b border-gray-200 dark:border-gray-800">
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">{editingTournament ? 'Edit Tournament' : 'Add Tournament'}</h2>
-              </div>
-              <div className="p-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name *</label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                    placeholder="Tournament name"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Division</label>
-                  <select
-                    value={formData.division}
-                    onChange={(e) => setFormData({ ...formData, division: e.target.value as TournamentDivision })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                  >
-                    <option value="PREMIER">Premier</option>
-                    <option value="DIVISION_1">Division 1</option>
-                    <option value="DIVISION_2">Division 2</option>
-                    <option value="DIVISION_3">Division 3</option>
-                    <option value="JUNIOR">Junior</option>
-                  </select>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start date *</label>
-                    <input
-                      type="date"
-                      value={formData.startDate}
-                      onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">End date *</label>
-                    <input
-                      type="date"
-                      value={formData.endDate}
-                      onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Venue *</label>
-                  <input
-                    type="text"
-                    value={formData.venue}
-                    onChange={(e) => setFormData({ ...formData, venue: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                    placeholder="Venue"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Number of games</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={formData.numberOfGames}
-                      onChange={(e) => setFormData({ ...formData, numberOfGames: parseInt(e.target.value, 10) || 0 })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Quarters</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={formData.numberOfQuarters}
-                      onChange={(e) => setFormData({ ...formData, numberOfQuarters: parseInt(e.target.value, 10) || 0 })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Quarter duration (min)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={formData.quarterDuration}
-                      onChange={(e) => setFormData({ ...formData, quarterDuration: parseInt(e.target.value, 10) || 0 })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Overtime duration (min)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={formData.overtimeDuration}
-                      onChange={(e) => setFormData({ ...formData, overtimeDuration: parseInt(e.target.value, 10) || 0 })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                    />
-                  </div>
-                </div>
-              </div>
-              <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-800">
-                <button
-                  onClick={() => { setIsModalOpen(false); setEditingTournament(null); }}
-                  className="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSaveTournament}
-                  disabled={createTournament.isPending || updateTournament.isPending}
-                  className="px-4 py-2 bg-brand-500 text-white rounded-lg font-medium hover:bg-brand-600 disabled:opacity-70"
-                >
-                  {createTournament.isPending || updateTournament.isPending ? 'Saving…' : editingTournament ? 'Update' : 'Create'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
-      <ConfirmDialog {...dialogProps} />
+
+      {query.isPending && <ListSkeleton columns={7} rows={PAGE_SIZE} label="Loading tournaments" />}
+      {query.isError && <ErrorState message={(query.error as Error).message} onRetry={() => void query.refetch()} />}
+      {showEmpty && <EmptyState title="No tournaments yet" description="Create your first tournament to add teams and schedule fixtures." action={{ label: 'New tournament', onClick: openCreate }} />}
+      {showNoResults && <NoResultsState query={q} onClear={() => setParams(new URLSearchParams(), { replace: true })} />}
+
+      {!query.isPending && !query.isError && rows.length > 0 && (
+        <>
+          <ul className={cn(TOURNAMENT_GRID, query.isFetching && 'opacity-70 transition-opacity')} aria-label="Tournaments">
+            {rows.map((t) => (
+              <li key={t.id} className="min-w-0">
+                <TournamentCard
+                  tournament={t}
+                  onEdit={() => openEdit(t)}
+                  onDelete={() => setDeleteTarget({ id: t.id, name: normalizeName(t.name), matches: t._count?.matches ?? 0, teams: t._count?.teams ?? 0 })}
+                />
+              </li>
+            ))}
+          </ul>
+
+          {meta && meta.pageCount > 1 && (
+            <Pagination currentPage={meta.page} totalPages={meta.pageCount} totalItems={meta.itemCount} pageSize={PAGE_SIZE} onPageChange={(p) => setParam({ page: p <= 1 ? null : String(p) })} />
+          )}
+        </>
+      )}
+
+      <TournamentFormDialog
+        open={formOpen}
+        onClose={closeForm}
+        initial={editing}
+        isSaving={createTournament.isPending || updateTournament.isPending}
+        serverError={formError}
+        onSubmit={saveForm}
+      />
+
+      <DeleteTournamentDialog
+        target={deleteTarget}
+        isDeleting={deleteTournament.isPending}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 };

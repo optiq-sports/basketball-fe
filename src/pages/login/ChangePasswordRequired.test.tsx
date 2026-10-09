@@ -28,10 +28,10 @@ function setup() {
 }
 
 const fillAndSubmit = (old: string, next: string, confirm: string) => {
-  fireEvent.change(screen.getByLabelText(/current \(temporary\) password/i), { target: { value: old } });
+  fireEvent.change(screen.getByLabelText(/current password/i), { target: { value: old } });
   fireEvent.change(screen.getByLabelText(/^new password$/i), { target: { value: next } });
   fireEvent.change(screen.getByLabelText(/confirm new password/i), { target: { value: confirm } });
-  fireEvent.click(screen.getByRole('button', { name: /change password & continue/i }));
+  fireEvent.click(screen.getByRole('button', { name: /^change password$/i }));
 };
 
 describe('ChangePasswordRequired', () => {
@@ -41,24 +41,24 @@ describe('ChangePasswordRequired', () => {
     api.auth.logout.mockReset();
   });
 
-  it('rejects an empty or too-short new password, and a mismatched confirmation, without calling the server', () => {
+  it('rejects an empty or too-short new password, and a mismatched confirmation, without calling the server', async () => {
     setup();
     fillAndSubmit('temp123', '12345', '12345');
-    expect(screen.getByText(/at least 6 characters/i)).toBeTruthy();
+    expect(await screen.findByText(/at least 6 characters/i)).toBeTruthy();
     expect(api.auth.changePassword).not.toHaveBeenCalled();
   });
 
-  it('rejects a confirmation that does not match the new password', () => {
+  it('rejects a confirmation that does not match the new password', async () => {
     setup();
     fillAndSubmit('temp123', 'newpass1', 'newpass2');
-    expect(screen.getByText(/doesn.t match the new password/i)).toBeTruthy();
+    expect(await screen.findByText(/doesn.t match the new password/i)).toBeTruthy();
     expect(api.auth.changePassword).not.toHaveBeenCalled();
   });
 
-  it('rejects a new password identical to the current one', () => {
+  it('rejects a new password identical to the current one', async () => {
     setup();
     fillAndSubmit('temp123', 'temp123', 'temp123');
-    expect(screen.getByText(/different from your current one/i)).toBeTruthy();
+    expect(await screen.findByText(/different from your current one/i)).toBeTruthy();
     expect(api.auth.changePassword).not.toHaveBeenCalled();
   });
 
@@ -89,7 +89,7 @@ describe('ChangePasswordRequired', () => {
 
   it('"Show passwords" reveals the fields as plain text', () => {
     setup();
-    const field = screen.getByLabelText(/current \(temporary\) password/i) as HTMLInputElement;
+    const field = screen.getByLabelText(/current password/i) as HTMLInputElement;
     expect(field.type).toBe('password');
     fireEvent.click(screen.getByRole('button', { name: /show passwords/i }));
     expect(field.type).toBe('text');

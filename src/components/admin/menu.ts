@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import { LuTrophy, LuShieldCheck } from 'react-icons/lu';
+import { LuTrophy, LuShieldCheck, LuBuilding } from 'react-icons/lu';
 import { GridIcon, PlusIcon, PieChartIcon, TaskIcon, GroupIcon, UserCircleIcon, BoxCubeIcon } from './icons';
 
 export interface MenuItem {
@@ -13,12 +13,13 @@ export interface MenuItem {
 
 export const menuItems: MenuItem[] = [
   { key: 'dashboard', label: 'Dashboard', href: '/dashboard', icon: GridIcon },
-  { key: 'start-new', label: 'Start New', href: '/start-new', icon: PlusIcon },
+  { key: 'start-new', label: 'Start New', href: '/tournaments?new=1', icon: PlusIcon },
   { key: 'tournaments', label: 'Tournaments', href: '/tournaments', icon: LuTrophy },
   { key: 'results', label: 'Results', href: '/results', icon: PieChartIcon },
   { key: 'statisticians', label: 'Statisticians', href: '/statisticians', icon: TaskIcon },
   { key: 'teams', label: 'Teams', href: '/teams-management', icon: GroupIcon },
   { key: 'players', label: 'Players', href: '/players-management', icon: UserCircleIcon },
-  { key: 'users', label: 'Users', href: '/users', icon: LuShieldCheck, roles: ['SUPER_ADMIN'] },
+  { key: 'users', label: 'Admins', href: '/users', icon: LuShieldCheck, roles: ['SUPER_ADMIN'] },
+  { key: 'clients', label: 'Clients', href: '/clients', icon: LuBuilding, roles: ['SUPER_ADMIN'] },
   { key: 'ops', label: 'Queue Ops', href: '/ops/queues', icon: BoxCubeIcon, roles: ['SUPER_ADMIN'] },
 ];

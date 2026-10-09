@@ -1,5 +1,8 @@
 import React from 'react';
-import { resolvePlayerPhotoUrl, handlePhotoLoadError } from '../../utils/playerPhotoPlaceholder';
+import { normalizeName } from '../../lib/text';
+import { positionLabel as formatPosition } from '../../components/players/player-form';
+import { PlayerAvatar } from '../../components/players/PlayerAvatar';
+import { Badge } from '../../components/ui/primitives/badge';
 import type { Player, Team } from '../../types/api';
 
 /** One entry of `recentMatches` on GET /players/:id (see PlayersService.findOne). */
@@ -45,9 +48,12 @@ interface PlayerProfileContentProps {
 
 /** Presentational player-profile body, shared between the standalone route page and the inline modal. */
 const PlayerProfileContent: React.FC<PlayerProfileContentProps> = ({ player, team }) => {
-  const teamName = team?.name ?? (player as { teamName?: string }).teamName ?? (player.teamId ? '—' : 'No team');
+  const rawTeamName = team?.name ?? player.teamName ?? undefined;
+  const teamName = rawTeamName ? normalizeName(rawTeamName) : player.teamId ? '—' : 'No team';
   const dobDisplay = formatDateOfBirth(player.dateOfBirth);
-  const positionLabel = typeof player.position === 'string' ? player.position.replace(/_/g, ' ') : '—';
+  const positionLabel = formatPosition(player.position) || '—';
+  const firstName = normalizeName(player.firstName);
+  const lastName = normalizeName(player.lastName);
 
   const recentRaw = (player as { recentMatches?: RecentMatch[] }).recentMatches;
   const recentMatches: RecentMatch[] = Array.isArray(recentRaw) ? recentRaw : [];
@@ -72,95 +78,70 @@ const PlayerProfileContent: React.FC<PlayerProfileContentProps> = ({ player, tea
     { label: 'FG%', value: '—' },
   ];
 
+  const details: Array<[string, string]> = [
+    ['Team', teamName],
+    ['Position', positionLabel],
+    ['Height', player.height || '—'],
+    ['Date of birth', dobDisplay],
+    ['Nationality', (player.nationality as string | undefined) || '—'],
+  ];
+
   return (
-    <div>
-      <div
-        className="rounded-2xl shadow-theme-sm overflow-hidden mb-4 bg-white dark:bg-gray-900 relative"
-        style={{
-          backgroundImage: "url('/player-bg.png')",
-          backgroundPosition: 'right center',
-          backgroundRepeat: 'no-repeat',
-          backgroundSize: '600px 300px',
-        }}
-      >
-        <div className="p-8 flex justify-between items-start">
-          <div className="flex-1">
-            <span className="text-sm text-gray-500 dark:text-gray-400">
-              #{player.jerseyNumber != null ? player.jerseyNumber : '—'}
-            </span>
-            <h2 className="text-4xl font-bold text-brand-900 dark:text-white mt-2">{player.firstName}</h2>
-            <h2 className="text-4xl font-bold text-brand-900 dark:text-white">{player.lastName}</h2>
-          </div>
-          <div className="relative">
-            <div className="w-90 h-80 relative mr-20 top-[2.1rem]">
-              <img
-                src={resolvePlayerPhotoUrl(
-                  (player as { photo?: string }).photo ?? (player as { image?: string }).image,
-                  player.id,
-                )}
-                onError={handlePhotoLoadError(player.id)}
-                alt={`${player.firstName} ${player.lastName}`}
-                className="relative z-10 w-full h-full object-cover rounded-2xl"
-              />
-            </div>
+    <div className="flex flex-col gap-4">
+      <section className="flex flex-col gap-6 rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+        <div className="flex items-center gap-4">
+          <PlayerAvatar firstName={player.firstName} lastName={player.lastName} photo={player.photo} size="lg" className="size-24 text-3xl" />
+          <div className="min-w-0">
+            <p className="text-xs uppercase tracking-wide text-gray-500">
+              Player{player.jerseyNumber != null ? <span className="ml-2 font-bold tabular-nums text-signal-600 dark:text-signal-400">#{player.jerseyNumber}</span> : null}
+            </p>
+            <h2 className="truncate text-2xl font-bold text-court-900 dark:text-white">{firstName} {lastName}</h2>
+            {player.isCaptain && <Badge variant="court" className="mt-1.5">Captain</Badge>}
           </div>
         </div>
+        <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          {details.map(([label, value]) => (
+            <div key={label} className="min-w-0">
+              <dt className="text-xs uppercase tracking-wide text-gray-500">{label}</dt>
+              <dd className="truncate font-medium text-gray-900 dark:text-gray-100">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
 
-        <div className="p-8 relative bg-brand-50 dark:bg-brand-500/10">
-          <div className="grid grid-cols-4 gap-6 text-center">
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Date of birth</p>
-              <p className="text-lg font-semibold text-brand-900 dark:text-white">{dobDisplay}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Height</p>
-              <p className="text-lg font-semibold text-brand-900 dark:text-white">{player.height ?? '—'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Club</p>
-              <p className="text-lg font-semibold text-brand-900 dark:text-white">{teamName}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Position</p>
-              <p className="text-lg font-semibold text-brand-900 dark:text-white">{positionLabel}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-theme-sm p-8 mb-8">
-        <div className="grid grid-cols-6 gap-6">
+      <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900 sm:p-6">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-6">
           {statSummary.map((stat, i) => (
-            <div key={i} className="bg-brand-500 rounded-xl p-6 text-center text-white">
-              <div className="text-3xl font-bold mb-2">{stat.value}</div>
-              <div className="text-sm text-brand-100">{stat.label}</div>
+            <div key={i} className="rounded-xl bg-court-800 p-4 text-center text-white">
+              <div className="mb-1 text-2xl font-bold">{stat.value}</div>
+              <div className="text-sm text-court-200">{stat.label}</div>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="w-full bg-gray-50 dark:bg-white/[0.02] p-6 rounded-2xl shadow-theme-sm">
-        <div className="bg-white dark:bg-gray-900 rounded-lg shadow-theme-xs overflow-hidden">
-          <div className="overflow-x-auto">
+      <div className="w-full rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-white/[0.02] sm:p-6">
+        <div className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
+          <div className="relative overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="bg-brand-50 dark:bg-brand-500/10">
-                  <th className="px-4 py-3 text-left text-sm font-semibold text-brand-900 dark:text-brand-300">Games(s)</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-brand-900 dark:text-brand-300">PTS</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-brand-900 dark:text-brand-300">FG</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-brand-900 dark:text-brand-300">2PT FG</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-brand-900 dark:text-brand-300">3PT FG</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-brand-900 dark:text-brand-300">FT</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-brand-900 dark:text-brand-300">REB</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-brand-900 dark:text-brand-300">OREB</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-brand-900 dark:text-brand-300">DREB</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-brand-900 dark:text-brand-300">AST</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-brand-900 dark:text-brand-300">STL</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-brand-900 dark:text-brand-300">BLK</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-brand-900 dark:text-brand-300">PF</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-brand-900 dark:text-brand-300">TO</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-brand-900 dark:text-brand-300">+/-</th>
-                  <th className="px-4 py-3 text-center text-sm font-semibold text-brand-900 dark:text-brand-300">EFF</th>
+                <tr className="bg-court-50 dark:bg-court-400/10">
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-court-900 dark:text-court-200">Games(s)</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-court-900 dark:text-court-200">PTS</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-court-900 dark:text-court-200">FG</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-court-900 dark:text-court-200">2PT FG</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-court-900 dark:text-court-200">3PT FG</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-court-900 dark:text-court-200">FT</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-court-900 dark:text-court-200">REB</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-court-900 dark:text-court-200">OREB</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-court-900 dark:text-court-200">DREB</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-court-900 dark:text-court-200">AST</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-court-900 dark:text-court-200">STL</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-court-900 dark:text-court-200">BLK</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-court-900 dark:text-court-200">PF</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-court-900 dark:text-court-200">TO</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-court-900 dark:text-court-200">+/-</th>
+                  <th className="px-4 py-3 text-center text-sm font-semibold text-court-900 dark:text-court-200">EFF</th>
                 </tr>
               </thead>
               <tbody>
@@ -174,8 +155,8 @@ const PlayerProfileContent: React.FC<PlayerProfileContentProps> = ({ player, tea
                 {recentMatches.map((game) => (
                   <tr key={game.matchId} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-white/[0.02]">
                     <td className="px-4 py-4">
-                      <div className="text-sm font-medium text-brand-700 dark:text-brand-400">
-                        {game.opponent ? `vs ${game.opponent}` : 'Game'}
+                      <div className="text-sm font-medium text-court-700 dark:text-court-300">
+                        {game.opponent ? `vs ${normalizeName(game.opponent)}` : 'Game'}
                       </div>
                       <div className="text-xs text-gray-600 dark:text-gray-400">{formatGameDate(game.scheduledDate)}</div>
                     </td>
@@ -184,14 +165,14 @@ const PlayerProfileContent: React.FC<PlayerProfileContentProps> = ({ player, tea
                     ))}
                   </tr>
                 ))}
-                <tr className="bg-brand-50 dark:bg-brand-500/10 border-b border-gray-200 dark:border-gray-800">
-                  <td className="px-4 py-4 text-sm font-semibold text-brand-900 dark:text-brand-300">Cumulative</td>
+                <tr className="bg-court-50 dark:bg-court-400/10 border-b border-gray-200 dark:border-gray-800">
+                  <td className="px-4 py-4 text-sm font-semibold text-court-900 dark:text-court-200">Cumulative</td>
                   {(n > 0 ? statCells(totals) : STAT_COLUMNS.map(() => '—')).map((cell, i) => (
                     <td key={i} className="px-4 py-4 text-center text-sm font-medium text-gray-800 dark:text-gray-300">{cell}</td>
                   ))}
                 </tr>
-                <tr className="bg-brand-50 dark:bg-brand-500/10">
-                  <td className="px-4 py-4 text-sm font-semibold text-brand-900 dark:text-brand-300">Average</td>
+                <tr className="bg-court-50 dark:bg-court-400/10">
+                  <td className="px-4 py-4 text-sm font-semibold text-court-900 dark:text-court-200">Average</td>
                   {(averages ? statCells(averages, 1) : STAT_COLUMNS.map(() => '—')).map((cell, i) => (
                     <td key={i} className="px-4 py-4 text-center text-sm font-medium text-gray-800 dark:text-gray-300">{cell}</td>
                   ))}

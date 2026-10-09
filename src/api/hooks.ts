@@ -28,6 +28,7 @@ import type {
   MatchCreate,
   MatchUpdate,
   ChangePasswordRequest,
+  ClientCreate,
 } from '../types/api';
 
 const TOKEN_KEY = 'access_token';
@@ -38,13 +39,20 @@ export const queryKeys = {
   auth: {
     profile: ['auth', 'profile'] as const,
   },
+  clients: ['clients'] as const,
+  clientApiKeys: (clientId: string) => ['clientApiKeys', clientId] as const,
+  myApiKeys: ['myApiKeys'] as const,
+  matchesPage: (params: Record<string, unknown>) => ['matches', 'page', params] as const,
   players: (teamId?: string, unassigned?: boolean) =>
     (unassigned ? (['players', 'unassigned'] as readonly string[]) : teamId ? (['players', teamId] as readonly string[]) : ['players']) as readonly string[],
   player: (id: string) => ['player', id] as const,
+  playersPage: (params: Record<string, unknown>) => ['players', 'page', params] as const,
   teams: (tournamentId?: string) =>
     (tournamentId ? (['teams', tournamentId] as readonly string[]) : ['teams']) as readonly string[],
   team: (id: string) => ['team', id] as const,
   tournaments: () => ['tournaments'] as const,
+  tournamentsPage: (params: Record<string, unknown>) => ['tournaments', 'page', params] as const,
+  teamsPage: (params: Record<string, unknown>) => ['teams', 'page', params] as const,
   tournament: (id: string) => ['tournament', id] as const,
   tournamentByCode: (code: string) => ['tournament', 'code', code] as const,
   matches: (tournamentId?: string, status?: string) =>
@@ -100,18 +108,35 @@ function rollbackOptimisticEdits(queryClient: QueryClient, context: CacheSnapsho
 const idOf = (item: unknown): unknown => (item as { id?: unknown } | null)?.id;
 
 /** Drops the item with this id from a cached list (leaves anything that isn't a list alone). */
-export const removeById = (id: string) => (data: unknown): unknown =>
-  Array.isArray(data) ? data.filter((item) => idOf(item) !== id) : data;
+export const removeById = (id: string) => (data: unknown): unknown => {
+  if (Array.isArray(data)) return data.filter((item) => idOf(item) !== id);
+  if (isPagedList(data)) {
+    const items = data.items.filter((item) => idOf(item) !== id);
+    const removed = items.length < data.items.length;
+    return { ...data, items, meta: { ...data.meta, itemCount: Math.max(0, data.meta.itemCount - (removed ? 1 : 0)) } };
+  }
+  return data;
+};
+
+/** A page from a paginated list: `{ items, meta }` as the backend returns it. */
+export interface PagedList {
+  items: unknown[];
+  meta: { itemCount: number };
+}
+export const isPagedList = (data: unknown): data is PagedList =>
+  !!data && typeof data === 'object' && Array.isArray((data as PagedList).items);
 
 const definedOnly = (patch: object): Record<string, unknown> =>
   Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
 
 /** Merges a patch into the item with this id in a cached list. Undefined fields are skipped: they
  * mean "leave as is" when sent, so they must not blank the optimistic copy either. */
-export const patchById = (id: string, patch: object) => (data: unknown): unknown =>
-  Array.isArray(data)
-    ? data.map((item) => (idOf(item) === id ? { ...(item as object), ...definedOnly(patch) } : item))
-    : data;
+export const patchById = (id: string, patch: object) => (data: unknown): unknown => {
+  const apply = (item: unknown) => (idOf(item) === id ? { ...(item as object), ...definedOnly(patch) } : item);
+  if (Array.isArray(data)) return data.map(apply);
+  if (isPagedList(data)) return { ...data, items: data.items.map(apply) };
+  return data;
+};
 
 /** Merges a patch into a single cached record. */
 export const patchRecord = (patch: object) => (data: unknown): unknown =>
@@ -155,8 +180,17 @@ export function useLogin() {
         if (res.data?.refresh_token) {
           localStorage.setItem(REFRESH_TOKEN_KEY, res.data.refresh_token);
         }
-        queryClient.setQueryData(queryKeys.auth.profile, res.data?.user ?? null);
-        const user = res.data?.user as { name?: string } | undefined;
+        const user = res.data?.user as { name?: string; forcePasswordChange?: boolean } | undefined;
+        // The login response is only a safe stand-in for the profile if it says whether the account must
+        // change its password. It doesn't today (the field is missing), and a profile without the flag
+        // reads as "no change needed", so a user with a temporary password saw the whole app until the
+        // real profile arrived and swapped the screen. Without the flag, drop the cache instead, so the
+        // gate waits for the real profile, which does carry it.
+        if (user && typeof user.forcePasswordChange === 'boolean') {
+          queryClient.setQueryData(queryKeys.auth.profile, user);
+        } else {
+          queryClient.removeQueries({ queryKey: queryKeys.auth.profile });
+        }
         if (user?.name != null && String(user.name).trim()) {
           localStorage.setItem('user_name', String(user.name).trim());
         }
@@ -224,6 +258,32 @@ export function useUploadFile() {
 // User management hooks have been removed. Use auth/profile for current user only.
 
 // Player hooks
+/**
+ * One page of players, server-side. `search` matches first/last name only, and the only filters the
+ * backend accepts are `teamId` and `unassigned` — anything else (a position, say) is rejected with a
+ * 400 by its global `forbidNonWhitelisted` pipe. `sortBy` must be a column on the player table, so
+ * jersey number and team name can't be sorted on (they live on the join table).
+ */
+export function usePlayersPage(params: {
+  search?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  page?: number;
+  limit?: number;
+  teamId?: string;
+  unassigned?: boolean;
+}) {
+  return useQuery({
+    queryKey: queryKeys.playersPage(params as Record<string, unknown>),
+    queryFn: async () => {
+      const res = await apiClient.players.getPage(params);
+      if (!res.ok) throw new Error(res.message ?? 'Failed to load players');
+      return res.data!;
+    },
+    placeholderData: (previous) => previous,
+  });
+}
+
 export function usePlayers(teamId?: string, options?: { unassigned?: boolean }) {
   const unassigned = options?.unassigned === true;
   return useQuery({
@@ -452,6 +512,19 @@ export function useMergePlayers() {
 }
 
 // Team hooks
+/** One page of teams, server-side (search/sortBy/sortOrder/page). `params` belong in the URL. */
+export function useTeamsPage(params: { search?: string; sortBy?: string; sortOrder?: 'asc' | 'desc'; page?: number; limit?: number }) {
+  return useQuery({
+    queryKey: queryKeys.teamsPage(params as Record<string, unknown>),
+    queryFn: async () => {
+      const res = await apiClient.teams.getPage(params);
+      if (!res.ok) throw new Error(res.message ?? 'Failed to load teams');
+      return res.data!;
+    },
+    placeholderData: (previous) => previous,
+  });
+}
+
 export function useTeams(tournamentId?: string) {
   return useQuery({
     queryKey: queryKeys.teams(tournamentId),
@@ -560,6 +633,19 @@ export function useSetTeamCaptain() {
 }
 
 // Tournament hooks
+/** One page of tournaments, server-side (search / sortBy / sortOrder / page). `params` belong in the URL. */
+export function useTournamentsPage(params: { search?: string; sortBy?: string; sortOrder?: 'asc' | 'desc'; page?: number; limit?: number }) {
+  return useQuery({
+    queryKey: queryKeys.tournamentsPage(params as Record<string, unknown>),
+    queryFn: async () => {
+      const res = await apiClient.tournaments.getPage(params);
+      if (!res.ok) throw new Error(res.message ?? 'Failed to load tournaments');
+      return res.data!;
+    },
+    placeholderData: (previous) => previous,
+  });
+}
+
 export function useTournaments() {
   return useQuery({
     queryKey: queryKeys.tournaments(),
@@ -666,6 +752,34 @@ export function useTournamentAddTeams() {
   });
 }
 
+/**
+ * Moves a team to another group. The backend upserts the team's link with the new group, so this is the
+ * add endpoint again. The group shows at once on the tournament, and goes back if the server refuses.
+ */
+export function useSetTournamentTeamGroup() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ tournamentId, teamId, group }: { tournamentId: string; teamId: string; group: string }) => {
+      await apiClient.tournaments.addTeams(tournamentId, { teamIds: [teamId], group });
+    },
+    onMutate: ({ tournamentId, teamId, group }) =>
+      applyOptimisticEdits(queryClient, [
+        {
+          key: queryKeys.tournament(tournamentId),
+          update: (data) => {
+            const t = data as { teams?: Array<{ teamId?: string; group?: string | null }> };
+            return Array.isArray(t?.teams)
+              ? { ...t, teams: t.teams.map((x) => (x.teamId === teamId ? { ...x, group } : x)) }
+              : data;
+          },
+        },
+      ]),
+    onError: (_err, _vars, context) => rollbackOptimisticEdits(queryClient, context),
+    onSettled: (_d, _e, variables) =>
+      refreshAll(queryClient, [queryKeys.tournament(variables.tournamentId)]),
+  });
+}
+
 export function useTournamentRemoveTeam() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -723,10 +837,13 @@ export function useMatch(id: string | undefined | null, enabled = true) {
     queryKey: queryKeys.match(id ?? ''),
     queryFn: async () => {
       const res = await apiClient.matches.getById(id!);
-      if (!res.ok) throw new Error(res.message ?? 'Failed to load match');
+      if (!res.ok) throw Object.assign(new Error(res.message ?? 'Failed to load match'), { status: res.status });
       return res.data!;
     },
     enabled: enabled && !!id,
+    // A match that isn't found (or isn't yours to see) won't appear on a retry; waiting out the default
+    // retries left the page on a spinner for about seven seconds before showing the error.
+    retry: (failureCount, error) => (error as { status?: number }).status !== 404 && failureCount < 2,
   });
 }
 
@@ -832,45 +949,44 @@ export function useUpdateAdmin() {
       if (!res.ok) throw new Error(res.message ?? 'Failed to update admin');
       return res.data!;
     },
-    onSuccess: (data) =>
-      refreshAll(queryClient, [
-        queryKeys.admins(),
-        queryKeys.admin(data.id),
-      ]),
+    // The password is write-only and never part of a row, so it's left out of the optimistic patch.
+    onMutate: ({ id, data }) => {
+      const { password: _password, ...visible } = data;
+      return applyOptimisticEdits(queryClient, [{ key: queryKeys.admins(), update: patchById(id, visible) }]);
+    },
+    onError: (_err, _vars, context) => rollbackOptimisticEdits(queryClient, context),
+    onSettled: (_data, _err, { id }) => refreshAll(queryClient, [queryKeys.admins(), queryKeys.admin(id)]),
   });
 }
 
+/**
+ * Deactivates an admin. `DELETE /admin/:id` only sets the status to INACTIVE and the admins list shows
+ * inactive accounts too, so the row stays and flips to Inactive rather than disappearing.
+ */
 export function useDeleteAdmin() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
       await apiClient.admin.delete(id);
     },
-    // Optimistic UI — same pattern as useDeletePlayer above.
-    onMutate: async (id: string) => {
-      await queryClient.cancelQueries({ queryKey: queryKeys.admins() });
-      const previous = queryClient.getQueryData<Array<{ id: string }>>(queryKeys.admins());
-      queryClient.setQueryData<Array<{ id: string }>>(queryKeys.admins(), (old) =>
-        old ? old.filter((a) => a.id !== id) : old,
-      );
-      return { previous };
-    },
-    onError: (_err, _id, context) => {
-      if (context?.previous) queryClient.setQueryData(queryKeys.admins(), context.previous);
-    },
-    onSettled: (_data, _err, id) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.admins() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.admin(id) });
-    },
+    onMutate: (id: string) =>
+      applyOptimisticEdits(queryClient, [{ key: queryKeys.admins(), update: patchById(id, { status: 'INACTIVE' }) }]),
+    onError: (_err, _id, context) => rollbackOptimisticEdits(queryClient, context),
+    onSettled: (_data, _err, id) => refreshAll(queryClient, [queryKeys.admins(), queryKeys.admin(id)]),
   });
 }
 
 // Statistician hooks
-export function useStatisticians() {
+/**
+ * Every statistician with this status. `GET /statistician` answers ACTIVE only when no status is
+ * sent, so a deactivated statistician is invisible unless INACTIVE is asked for by name. The backend
+ * also computes `search` and then never applies it, so the page filters this full list itself.
+ */
+export function useStatisticians(status: 'ACTIVE' | 'INACTIVE' = 'ACTIVE') {
   return useQuery({
-    queryKey: queryKeys.statisticians(),
+    queryKey: [...queryKeys.statisticians(), { status }] as const,
     queryFn: async () => {
-      const res = await apiClient.statistician.getAll();
+      const res = await apiClient.statistician.getAll(status);
       if (!res.ok) throw new Error(res.message ?? 'Failed to load statisticians');
       return res.data ?? [];
     },
@@ -985,3 +1101,168 @@ export function useWarmSession() {
     mutationFn: (sessionId: string) => apiClient.ops.warmSession(sessionId),
   });
 }
+
+// Clients & API keys (Internal Administration)
+
+export function useClients() {
+  return useQuery({
+    queryKey: queryKeys.clients,
+    queryFn: async () => {
+      const res = await apiClient.clients.getAll();
+      if (!res.ok) throw new Error(res.message ?? 'Failed to load clients');
+      return res.data ?? [];
+    },
+  });
+}
+
+export function useCreateClient() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: ClientCreate) => {
+      const res = await apiClient.clients.create(data);
+      if (!res.ok) throw new Error(res.message ?? 'Failed to create client');
+      return res.data!;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.clients });
+    },
+  });
+}
+
+export function useAssignClientUser() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ clientId, userId }: { clientId: string; userId: string }) => {
+      const res = await apiClient.clients.assignUser(clientId, userId);
+      if (!res.ok) throw new Error(res.message ?? 'Failed to assign user');
+      return res;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.clients });
+    },
+  });
+}
+
+export function useClientApiKeys(clientId: string | undefined | null) {
+  return useQuery({
+    queryKey: queryKeys.clientApiKeys(clientId ?? ''),
+    queryFn: async () => {
+      const res = await apiClient.clients.listApiKeys(clientId!);
+      if (!res.ok) throw new Error(res.message ?? 'Failed to load API keys');
+      return res.data ?? [];
+    },
+    enabled: !!clientId,
+  });
+}
+
+export function useCreateClientApiKey() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ clientId, name }: { clientId: string; name: string }) => {
+      const res = await apiClient.clients.createApiKey(clientId, name);
+      if (!res.ok) throw new Error(res.message ?? 'Failed to create API key');
+      return res.data!;
+    },
+    onSuccess: (_data, { clientId }) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.clientApiKeys(clientId) });
+    },
+  });
+}
+
+export function useRevokeClientApiKey() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id }: { id: string; clientId: string }) => {
+      const res = await apiClient.clients.revokeApiKey(id);
+      if (!res.ok) throw new Error(res.message ?? 'Failed to revoke API key');
+      return res;
+    },
+    // Optimistic: the key leaves the list at once, and comes back with the server's reason if refused.
+    onMutate: async ({ id, clientId }) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.clientApiKeys(clientId) });
+      const previous = queryClient.getQueryData<Array<{ id: string }>>(queryKeys.clientApiKeys(clientId));
+      queryClient.setQueryData(queryKeys.clientApiKeys(clientId), (old?: Array<{ id: string }>) =>
+        old?.filter((k) => k.id !== id),
+      );
+      return { previous, clientId };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(queryKeys.clientApiKeys(ctx.clientId), ctx.previous);
+    },
+    onSettled: (_d, _e, { clientId }) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.clientApiKeys(clientId) });
+    },
+  });
+}
+
+// Client portal: the signed-in CLIENT user's own data
+
+/** One page of matches, scoped by the backend to the caller's client. `params` belong in the URL. */
+export function useMatchesPage(params: {
+  tournamentId?: string;
+  status?: string;
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}) {
+  return useQuery({
+    queryKey: queryKeys.matchesPage(params as Record<string, unknown>),
+    queryFn: async () => {
+      const res = await apiClient.matches.getPage(params);
+      if (!res.ok) throw new Error(res.message ?? 'Failed to load matches');
+      return res.data!;
+    },
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useMyApiKeys() {
+  return useQuery({
+    queryKey: queryKeys.myApiKeys,
+    queryFn: async () => {
+      const res = await apiClient.clients.listMyApiKeys();
+      if (!res.ok) throw new Error(res.message ?? 'Failed to load API keys');
+      return res.data ?? [];
+    },
+  });
+}
+
+export function useCreateMyApiKey() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiClient.clients.createMyApiKey(name);
+      if (!res.ok) throw new Error(res.message ?? 'Failed to create API key');
+      return res.data!;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.myApiKeys });
+    },
+  });
+}
+
+/** Revokes one of the caller's keys. Optimistic, with rollback and the server's reason on failure. */
+export function useRevokeMyApiKey() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiClient.clients.revokeApiKey(id);
+      if (!res.ok) throw new Error(res.message ?? 'Failed to revoke API key');
+      return res;
+    },
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.myApiKeys });
+      const previous = queryClient.getQueryData<Array<{ id: string }>>(queryKeys.myApiKeys);
+      queryClient.setQueryData(queryKeys.myApiKeys, (old?: Array<{ id: string }>) => old?.filter((k) => k.id !== id));
+      return { previous };
+    },
+    onError: (_err, _id, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(queryKeys.myApiKeys, ctx.previous);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.myApiKeys });
+    },
+  });
+}
+

@@ -1,1617 +1,265 @@
 import React, { useMemo, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useMatch, useTeams, useUpdateMatch, useDeleteMatch } from '../../api/hooks';
-import type { MatchStatus } from '../../types/api';
-import { useBoxScoreProjection, useShotChartProjection, useSummaryProjection, useRebuildProjection } from '../../services/statdash';
-import ConfirmDialog from '../../components/ui/ConfirmDialog';
-import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useDeleteMatch, useMatch, useStatisticians, useUpdateMatch } from '../../api/hooks';
+import { useBoxScoreProjection, useRebuildProjection, useShotChartProjection } from '../../services/statdash/hooks';
 import { useToast } from '../../hooks/useToast';
+import type { Match } from '../../types/api';
+import { ErrorState, EmptyState, ListSkeleton } from '../../components/admin/page-states';
+import { Badge } from '../../components/ui/primitives/badge';
+import { Button } from '../../components/ui/primitives/button';
+import { Card, CardTitle, CardDescription } from '../../components/ui/primitives/card';
+import { BoxScoreTable } from '../../components/client/BoxScoreTable';
+import { CopyMatchCodeButton } from '../../components/matches/CopyMatchCodeButton';
+import { matchCodeOf } from '../../lib/match-code';
+import { ShotChartCourt } from '../../components/client/ShotChartCourt';
+import DeleteFixtureDialog, { type FixtureDeleteTarget } from '../../components/fixtures/DeleteFixtureDialog';
+import { dataErrorMessage, splitBoxScore } from '../../lib/box-score';
+import { formatMatchDate, statusLabel } from '../../lib/match-format';
+import { cn } from '../../lib/utils';
+import { normalizeName } from '../../lib/text';
 
-interface QuarterScore {
-  q1: number;
-  q2: number;
-  q3: number;
-  q4: number;
-}
+type Tab = 'box' | 'shots';
+const STATUS_VARIANT: Record<string, 'live' | 'court' | 'neutral' | 'danger' | 'warning'> = {
+  LIVE: 'live',
+  SCHEDULED: 'court',
+  COMPLETED: 'neutral',
+  CANCELLED: 'danger',
+  POSTPONED: 'warning',
+};
 
-interface Player {
-  id: number;
-  name: string;
-  surname: string;
-  number: string;
-  image: string;
-  points: number;
-  team: string;
-}
+type StatisticianOption = { id: string; name?: string | null; email: string };
 
-type LeaderCategory = 'points' | 'rebounds' | 'assists' | 'block' | 'steals';
-
-function formatMatchTime(scheduledDate?: string): string {
-  if (!scheduledDate) return '—';
-  try {
-    return new Date(scheduledDate).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-  } catch {
-    return scheduledDate;
-  }
-}
-
+/**
+ * One match, for admins: the scoreboard by quarter, who is scoring it, its box score and shot chart, and
+ * deleting it. Scores come from the scorer's events, so they aren't edited here. Status and time are edited
+ * on the fixture.
+ */
 const GameScorePage: React.FC = () => {
-  const { id: tournamentId, matchId } = useParams<{ id: string; matchId: string }>();
+  const { id: tournamentId, matchId } = useParams();
   const navigate = useNavigate();
-  const [activeCategory, setActiveCategory] = useState<LeaderCategory>('points');
-  const [showBoxScore, setShowBoxScore] = useState(false);
-  const [activeTeam, setActiveTeam] = useState<'A' | 'B'>('A');
-  const [activeTab, setActiveTab] = useState<'stats' | 'boxscore' | 'shotchart'>('stats');
-  const [teamAAllPlayers, setTeamAAllPlayers] = useState(true);
-  const [teamASelectedPlayers, setTeamASelectedPlayers] = useState<number[]>([]);
-  const [teamBAllPlayers, setTeamBAllPlayers] = useState(true);
-  const [teamBSelectedPlayers, setTeamBSelectedPlayers] = useState<number[]>([]);
-  const [showMade, setShowMade] = useState(true);
-  const [showMissed, setShowMissed] = useState(true);
-  const [activeChartQuarter, setActiveChartQuarter] = useState<'all' | 'q1' | 'q2' | 'q3' | 'q4'>('all');
+  const [params, setParams] = useSearchParams();
+  const toast = useToast();
+  const tab: Tab = params.get('tab') === 'shots' ? 'shots' : 'box';
 
   const matchQuery = useMatch(matchId);
-  const teamsQuery = useTeams();
+  const match = matchQuery.data as (Match & { statistician?: { name?: string | null; email?: string } | null }) | undefined;
+  const sessionId = match?.gameSessions?.[0]?.id;
+  const playerHref = (playerId: string) => `/tournaments/${tournamentId}/match/${matchId}/player/${playerId}`;
+
+  const statisticiansQuery = useStatisticians();
   const updateMatch = useUpdateMatch();
   const deleteMatch = useDeleteMatch();
-  const { confirm, dialogProps } = useConfirmDialog();
-  const toast = useToast();
-  const rebuildProjection = useRebuildProjection();
+  const rebuild = useRebuildProjection();
+  const boxQuery = useBoxScoreProjection(sessionId, tab === 'box' && !!sessionId);
+  const shotQuery = useShotChartProjection(sessionId, tab === 'shots' && !!sessionId);
 
-  const match = matchQuery.data;
-  // Projection endpoints require GameSession.id, not Match.id (Backend Gap #5)
-  const sessionId = match?.gameSessions?.[0]?.id;
-  const boxScoreQuery = useBoxScoreProjection(sessionId, !!sessionId);
-  const summaryQuery = useSummaryProjection(sessionId, !!sessionId);
-  const shotChartQuery = useShotChartProjection(sessionId, !!sessionId);
+  const [assignee, setAssignee] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<FixtureDeleteTarget | null>(null);
+  const statisticians = (statisticiansQuery.data ?? []) as StatisticianOption[];
+  const currentAssignee = (match as { statisticianId?: string | null } | undefined)?.statisticianId ?? '';
+  const selectedAssignee = assignee ?? currentAssignee;
+  const assignmentChanged = selectedAssignee !== currentAssignee;
 
-  const teamMap = useMemo(() => {
-    const map = new Map<string, string>();
-    (teamsQuery.data ?? []).forEach((t) => map.set(t.id, t.name));
-    return map;
-  }, [teamsQuery.data]);
-  const homeTeamName = match ? (teamMap.get(match.homeTeamId) ?? 'Home') : 'Home';
-  const awayTeamName = match ? (teamMap.get(match.awayTeamId) ?? 'Away') : 'Away';
+  const split = useMemo(() => (match && boxQuery.data ? splitBoxScore(boxQuery.data, match) : null), [match, boxQuery.data]);
 
-  const teamAScore: QuarterScore = useMemo(() => ({
-    q1: match?.quarter1Home ?? 0,
-    q2: match?.quarter2Home ?? 0,
-    q3: match?.quarter3Home ?? 0,
-    q4: match?.quarter4Home ?? 0,
-  }), [match]);
-  const teamBScore: QuarterScore = useMemo(() => ({
-    q1: match?.quarter1Away ?? 0,
-    q2: match?.quarter2Away ?? 0,
-    q3: match?.quarter3Away ?? 0,
-    q4: match?.quarter4Away ?? 0,
-  }), [match]);
+  const setTab = (next: Tab) => {
+    const p = new URLSearchParams(params);
+    if (next === 'box') p.delete('tab');
+    else p.set('tab', next);
+    setParams(p, { replace: true });
+  };
 
-  const totalScoreA = match?.totalHome ?? (teamAScore.q1 + teamAScore.q2 + teamAScore.q3 + teamAScore.q4);
-  const totalScoreB = match?.totalAway ?? (teamBScore.q1 + teamBScore.q2 + teamBScore.q3 + teamBScore.q4);
-
-  const players: Player[] = [
-    { id: 1, name: 'Name', surname: 'Surname', number: '11', image: '/player1.png', points: 25, team: 'yellow' },
-    { id: 2, name: 'Name', surname: 'Surname', number: '23', image: '/player2.png', points: 22, team: 'blue' },
-  ];
-
-  const handleUpdateStatus = (status: MatchStatus) => {
-    if (!matchId || !match) return;
+  const saveAssignee = () => {
+    if (!match) return;
     updateMatch.mutate(
-      { id: matchId, data: { status } },
-      { onError: (e) => toast.error(e.message) }
+      { id: match.id, data: { statisticianId: selectedAssignee || null } },
+      {
+        onSuccess: () => {
+          toast.success(selectedAssignee ? 'Statistician assigned.' : 'Statistician unassigned.');
+          setAssignee(null);
+        },
+        onError: (err) => toast.error(`Couldn’t save the statistician: ${err.message}`),
+      },
     );
   };
 
-  const handleUpdateQuarterScore = (quarter: 1 | 2 | 3 | 4, home: number, away: number) => {
-    if (!matchId) return;
-    const data = {
-      [`quarter${quarter}Home`]: home,
-      [`quarter${quarter}Away`]: away,
-    } as { quarter1Home?: number; quarter1Away?: number; quarter2Home?: number; quarter2Away?: number; quarter3Home?: number; quarter3Away?: number; quarter4Home?: number; quarter4Away?: number };
-    updateMatch.mutate(
-      { id: matchId, data },
-      { onError: (e) => toast.error(e.message) }
-    );
-  };
-
-  const handleDeleteMatch = async () => {
-    if (!matchId || !tournamentId) return;
-    const ok = await confirm({
-      description: 'Delete this match? This cannot be undone.',
-      confirmLabel: 'Delete',
-      tone: 'danger',
-    });
-    if (!ok) return;
-    deleteMatch.mutate(matchId, {
-      onSuccess: () => navigate(`/tournaments/${tournamentId}/fixtures`),
-      onError: (e) => toast.error(e.message),
+  const confirmDelete = () => {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    deleteMatch.mutate(target.id, {
+      onSuccess: () => {
+        toast.success(`${target.label} deleted.`);
+        navigate(`/tournaments/${tournamentId}/fixtures`, { replace: true });
+      },
+      onError: (err) => {
+        toast.error(`Couldn’t delete ${target.label}: ${err.message}`);
+        setDeleteTarget(null);
+      },
     });
   };
 
-  if (matchQuery.isPending || !matchId) {
+  if (matchQuery.isPending) return <ListSkeleton columns={3} rows={4} label="Loading match" />;
+  if (matchQuery.isError || !match) {
     return (
-      <div className="min-h-screen bg-white p-6">
-        <div className="max-w-7xl mx-auto text-gray-500">Loading match…</div>
-      </div>
-    );
-  }
-  if (matchQuery.error || !matchQuery.data) {
-    return (
-      <div className="min-h-screen bg-white p-6">
-        <div className="max-w-7xl mx-auto text-red-600">
-          {matchQuery.error instanceof Error ? matchQuery.error.message : 'Match not found'}
-        </div>
+      <div className="flex flex-col gap-4">
+        <Link to={`/tournaments/${tournamentId}/fixtures`} className="w-fit text-sm font-semibold text-court-700 hover:underline dark:text-court-300">← Fixtures</Link>
+        <ErrorState message={dataErrorMessage(matchQuery.error, 'match')} onRetry={() => void matchQuery.refetch()} />
       </div>
     );
   }
 
-  const handleViewBoxScore = () => {
-    setShowBoxScore(true);
-  };
-
-  const handlePlayerClick = (playerId: number) => {
-    navigate(`/tournaments/${tournamentId}/match/${matchId}/player/${playerId}`);
-  };
-
-  // Team A handlers
-  const handleTeamAAllPlayersChange = (checked: boolean) => {
-    setTeamAAllPlayers(checked);
-    if (checked) {
-      setTeamASelectedPlayers([]);
-    }
-  };
-
-  const handleTeamAPlayerChange = (playerIndex: number, checked: boolean) => {
-    if (checked) {
-      setTeamASelectedPlayers([...teamASelectedPlayers, playerIndex]);
-      setTeamAAllPlayers(false);
-    } else {
-      const updated = teamASelectedPlayers.filter(idx => idx !== playerIndex);
-      setTeamASelectedPlayers(updated);
-      if (updated.length === 0) {
-        setTeamAAllPlayers(true);
-      }
-    }
-  };
-
-  // Team B handlers
-  const handleTeamBAllPlayersChange = (checked: boolean) => {
-    setTeamBAllPlayers(checked);
-    if (checked) {
-      setTeamBSelectedPlayers([]);
-    }
-  };
-
-  const handleTeamBPlayerChange = (playerIndex: number, checked: boolean) => {
-    if (checked) {
-      setTeamBSelectedPlayers([...teamBSelectedPlayers, playerIndex]);
-      setTeamBAllPlayers(false);
-    } else {
-      const updated = teamBSelectedPlayers.filter(idx => idx !== playerIndex);
-      setTeamBSelectedPlayers(updated);
-      if (updated.length === 0) {
-        setTeamBAllPlayers(true);
-      }
-    }
-  };
-
-  // Determine if player image should be shown
-  const shouldShowTeamAImage = !teamAAllPlayers && teamASelectedPlayers.length > 0;
-  const shouldShowTeamBImage = !teamBAllPlayers && teamBSelectedPlayers.length > 0;
+  const home = normalizeName(match.homeTeam?.name) || 'Home';
+  const away = normalizeName(match.awayTeam?.name) || 'Away';
+  const label = `${home} vs ${away}`;
+  const started = match.status !== 'SCHEDULED';
+  const quarters = [1, 2, 3, 4]
+    .map((q) => ({ q, h: match[`quarter${q}Home`] as number | undefined, a: match[`quarter${q}Away`] as number | undefined }))
+    .filter((x) => x.h !== undefined && x.a !== undefined);
+  const statisticianName = match.statistician ? match.statistician.name || match.statistician.email || 'Assigned' : null;
 
   return (
-    <div className="min-h-screen bg-white p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-gray-800">{homeTeamName} vs {awayTeamName}</h1>
-          <p className="text-sm text-gray-600 mt-3">{formatMatchTime(match?.scheduledDate)}</p>
-          {match && (
-            <div className="mt-2 flex items-center gap-3 flex-wrap">
-              <span className="text-xs text-gray-500">Status:</span>
-              <select
-                value={match.status}
-                onChange={(e) => handleUpdateStatus(e.target.value as MatchStatus)}
-                disabled={updateMatch.isPending}
-                className="text-sm border border-gray-300 rounded px-2 py-1 bg-white"
-              >
-                <option value="SCHEDULED">Scheduled</option>
-                <option value="LIVE">Live</option>
-                <option value="COMPLETED">Completed</option>
-                <option value="CANCELLED">Cancelled</option>
-                <option value="POSTPONED">Postponed</option>
-              </select>
-              <button
-                type="button"
-                onClick={handleDeleteMatch}
-                disabled={deleteMatch.isPending}
-                className="text-sm px-3 py-1.5 rounded border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-70"
-              >
-                {deleteMatch.isPending ? 'Deleting…' : 'Delete match'}
-              </button>
-              <button
-                type="button"
-                onClick={() => sessionId && rebuildProjection.mutate(sessionId)}
-                disabled={!sessionId || rebuildProjection.isPending}
-                title={!sessionId ? 'Requires session ID (Backend Gap #5)' : 'Rebuild live projection from all game events'}
-                className="text-sm px-3 py-1.5 rounded border border-blue-200 text-blue-700 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {rebuildProjection.isPending ? 'Rebuilding…' : 'Rebuild projection'}
-              </button>
-            </div>
-          )}
-        </div>
+    <div className="flex flex-col gap-6">
+      <Link to={`/tournaments/${tournamentId}/fixtures`} className="w-fit text-sm font-semibold text-court-700 hover:underline dark:text-court-300">← Fixtures</Link>
 
-        <div className="rounded-lg shadow-sm p-20 mb-6 border" style={{ background: '#FCFEFF', border: '1px solid #A9A9A91A' }}>
-          <div className="flex items-center justify-evenly gap-12 mb-6">
-            <div className="flex items-center gap-3">
-              <div className="w-14 h-14 bg-[#FFCA69] rounded-xl flex items-center justify-evenly p-2">
-                <img className="w-32" src="/ball1.png" alt="Home" />
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="text-4xl text-gray-400">{homeTeamName}</div>
-                <div className="text-5xl font-bold text-gray-900">{totalScoreA}</div>
-              </div>
-            </div>
-            <div className="flex flex-col items-center gap-2">
-              <div className="px-10 py-2 bg-[#6AE36F] rounded-lg">
-                <div className="text-sm font-medium text-[#126A16]">Q1</div>
-              </div>
-              <div className="text-sm font-medium text-gray-500">{match?.status === 'LIVE' ? 'Live' : match?.status ?? '—'}</div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-3">
-                <div className="text-5xl font-bold text-gray-900">{totalScoreB}</div>
-                <div className="text-4xl text-gray-400">{awayTeamName}</div>
-              </div>
-              <div className="w-14 h-14 bg-[#80B7D5] rounded-xl flex items-center justify-evenly p-2">
-                <img className="w-32" src="/ball2.png" alt="Away" />
-              </div>
-            </div>
+      <h1 className="sr-only">{label}</h1>
+
+      <Card className="overflow-hidden p-0">
+        <div className="bg-court-950 px-5 py-6 text-white md:px-8">
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-court-200">
+            <span>{match.tournament?.name ?? 'Tournament'}</span>
+            <Badge variant={STATUS_VARIANT[match.status] ?? 'neutral'} className={match.status === 'SCHEDULED' ? 'bg-white/10 text-white' : undefined}>{statusLabel(match.status)}</Badge>
           </div>
-          <div className="text-center text-xs text-gray-400">
-            {match?.venue ?? '—'} | {formatMatchTime(match?.scheduledDate)}
-          </div>
-        </div>
-
-        {/* Quarter Scores Table - Hidden when Box Score is shown */}
-        {!showBoxScore && (
-          <div className="max-w-4xl mx-auto rounded-2xl shadow-sm mb-8 border" style={{ background: '#FCFEFF', border: '1px solid #A9A9A91A' }}>
-          <p className="text-xs text-gray-500 px-4 pt-3">Edit quarter scores below and blur to save.</p>
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-4 text-sm font-bold text-gray-700" style={{ background: '#EEF3FF' }}>Team</th>
-                <th className="text-center py-3 px-4 text-sm font-bold text-gray-700" style={{ background: '#EEF3FF' }}>Q1</th>
-                <th className="text-center py-3 px-4 text-sm font-bold text-gray-700" style={{ background: '#EEF3FF' }}></th>
-                <th className="text-center py-3 px-4 text-sm font-bold text-gray-700" style={{ background: '#EEF3FF' }}>Q2</th>
-                <th className="text-center py-3 px-4 text-sm font-bold text-gray-700" style={{ background: '#EEF3FF' }}></th>
-                <th className="text-center py-3 px-4 text-sm font-bold text-gray-700" style={{ background: '#EEF3FF' }}>Q3</th>
-                <th className="text-center py-3 px-4 text-sm font-bold text-gray-700" style={{ background: '#EEF3FF' }}></th>
-                <th className="text-center py-3 px-4 text-sm font-bold text-gray-700" style={{ background: '#EEF3FF' }}>Q4</th>
-                </tr>
-            </thead>
-            <tbody>
-               <tr>
-                 <td className="py-4 px-4">
-                   <div className="flex items-center gap-3">
-                     <div className="w-10 h-10 bg-[#FFCA69] rounded-lg flex items-center justify-center">
-                       <img src="/ball1.png" alt="Team A" className="w-5 h-5" />
-                     </div>
-                     <span className="text-sm font-medium text-gray-700">{homeTeamName}</span>
-                   </div>
-                 </td>
-                 <td className="text-center py-2 px-2">
-                   <input type="number" min={0} className="w-12 text-center py-1 border border-gray-300 rounded text-sm font-semibold" value={teamAScore.q1} onBlur={(e) => handleUpdateQuarterScore(1, parseInt(e.target.value, 10) || 0, teamBScore.q1)} />
-                 </td>
-                 <td className="text-center py-4 px-2 text-sm font-semibold text-[#A9A9A9]">|</td>
-                 <td className="text-center py-2 px-2">
-                   <input type="number" min={0} className="w-12 text-center py-1 border border-gray-300 rounded text-sm font-semibold" value={teamAScore.q2} onBlur={(e) => handleUpdateQuarterScore(2, parseInt(e.target.value, 10) || 0, teamBScore.q2)} />
-                 </td>
-                 <td className="text-center py-4 px-2 text-sm font-semibold text-[#A9A9A9]">|</td>
-                 <td className="text-center py-2 px-2">
-                   <input type="number" min={0} className="w-12 text-center py-1 border border-gray-300 rounded text-sm font-semibold" value={teamAScore.q3} onBlur={(e) => handleUpdateQuarterScore(3, parseInt(e.target.value, 10) || 0, teamBScore.q3)} />
-                 </td>
-                 <td className="text-center py-4 px-2 text-sm font-semibold text-[#A9A9A9]">|</td>
-                 <td className="text-center py-2 px-2">
-                   <input type="number" min={0} className="w-12 text-center py-1 border border-gray-300 rounded text-sm font-semibold" value={teamAScore.q4} onBlur={(e) => handleUpdateQuarterScore(4, parseInt(e.target.value, 10) || 0, teamBScore.q4)} />
-                 </td>
-               </tr>
-               <tr>
-                <td className="py-4 px-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-[#80B7D5] rounded-lg flex items-center justify-center">
-                      <img src="/ball2.png" alt="Team B" className="w-5 h-5" />
-                    </div>
-                    <span className="text-sm font-medium text-gray-700">{awayTeamName}</span>
-                  </div>
-                </td>
-                 <td className="text-center py-2 px-2">
-                   <input type="number" min={0} className="w-12 text-center py-1 border border-gray-300 rounded text-sm font-semibold" value={teamBScore.q1} onBlur={(e) => handleUpdateQuarterScore(1, teamAScore.q1, parseInt(e.target.value, 10) || 0)} />
-                 </td>
-                 <td className="text-center py-4 px-2 text-sm font-semibold text-[#A9A9A9]">|</td>
-                 <td className="text-center py-2 px-2">
-                   <input type="number" min={0} className="w-12 text-center py-1 border border-gray-300 rounded text-sm font-semibold" value={teamBScore.q2} onBlur={(e) => handleUpdateQuarterScore(2, teamAScore.q2, parseInt(e.target.value, 10) || 0)} />
-                 </td>
-                 <td className="text-center py-4 px-2 text-sm font-semibold text-[#A9A9A9]">|</td>
-                 <td className="text-center py-2 px-2">
-                   <input type="number" min={0} className="w-12 text-center py-1 border border-gray-300 rounded text-sm font-semibold" value={teamBScore.q3} onBlur={(e) => handleUpdateQuarterScore(3, teamAScore.q3, parseInt(e.target.value, 10) || 0)} />
-                 </td>
-                 <td className="text-center py-4 px-2 text-sm font-semibold text-[#A9A9A9]">|</td>
-                 <td className="text-center py-2 px-2">
-                   <input type="number" min={0} className="w-12 text-center py-1 border border-gray-300 rounded text-sm font-semibold" value={teamBScore.q4} onBlur={(e) => handleUpdateQuarterScore(4, teamAScore.q4, parseInt(e.target.value, 10) || 0)} />
-                 </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        )}
-
-        {/* Main Tabs */}
-        <div className="flex gap-3 mb-6 justify-center">
-          <button
-            onClick={() => {
-              setActiveTab('stats');
-              setShowBoxScore(false);
-            }}
-            className={`px-6 py-2.5 rounded-lg font-medium transition-all ${
-              activeTab === 'stats'
-                ? 'bg-[#21409A] text-white shadow-md'
-                : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'
-            }`}
-          >
-            Game Stats
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab('boxscore');
-              setShowBoxScore(true);
-            }}
-            className={`px-6 py-2.5 rounded-lg font-medium transition-all ${
-              activeTab === 'boxscore'
-                ? 'bg-[#21409A] text-white shadow-md'
-                : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'
-            }`}
-          >
-            Box Score
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab('shotchart');
-              setShowBoxScore(false);
-            }}
-            className={`px-6 py-2.5 rounded-lg font-medium transition-all ${
-              activeTab === 'shotchart'
-                ? 'bg-[#21409A] text-white shadow-md'
-                : 'bg-white text-gray-600 border border-gray-300 hover:bg-gray-50'
-            }`}
-          >
-            Shot Chart
-          </button>
-        </div>
-        {(boxScoreQuery.error instanceof Error || summaryQuery.error instanceof Error || shotChartQuery.error instanceof Error) && (
-          <div className="mb-4 text-sm text-red-600">
-            {boxScoreQuery.error instanceof Error
-              ? boxScoreQuery.error.message
-              : summaryQuery.error instanceof Error
-                ? summaryQuery.error.message
-                : shotChartQuery.error instanceof Error
-                  ? shotChartQuery.error.message
-                  : 'Failed to load projections'}
-          </div>
-        )}
-
-        {/* Shot Chart Section - Only show when shotchart tab is active */}
-        {activeTab === 'shotchart' && (
-          <div className="max-w-7xl mx-auto">
-            {shotChartQuery.isPending && (
-              <p className="mb-3 text-sm text-gray-600">Loading shot chart projection...</p>
-            )}
-            {/* Quarter Filters */}
-            <div className="flex justify-center gap-3 mb-6">
-              {(['all', 'q1', 'q2', 'q3', 'q4'] as const).map((q) => (
-                <button
-                  key={q}
-                  onClick={() => setActiveChartQuarter(q)}
-                  className={`px-6 py-2.5 rounded-lg font-medium cursor-pointer transition-all ${
-                    activeChartQuarter === q
-                      ? 'bg-[#21409A] text-white shadow-md'
-                      : 'text-gray-600 bg-white border border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  {q === 'all' ? 'All' : q.toUpperCase()}
-                </button>
-              ))}
-            </div>
-
-            {/* Basketball Court with Shot Chart */}
-            {!sessionId && !matchQuery.isPending && (
-              <p className="mb-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 text-center">
-                Shot chart requires a session ID from the match record (Backend Gap #5).
-              </p>
-            )}
-            <div className="bg-gradient-to-b from-blue-100 to-blue-50 rounded-lg p-8 mb-6 border border-gray-200 flex flex-col items-center">
-              {(() => {
-                const allShots = shotChartQuery.data ?? [];
-                const filteredShots = allShots.filter((shot) => {
-                  if (activeChartQuarter !== 'all') {
-                    const q = Number(activeChartQuarter.replace('q', ''));
-                    if (shot.period !== q) return false;
-                  }
-                  if (!showMade && shot.result === 'made') return false;
-                  if (!showMissed && shot.result !== 'made') return false;
-                  return true;
-                });
-                return (
-                  <div className="relative w-full max-w-2xl mb-6" style={{ aspectRatio: '16/10' }}>
-                    <img src="/court.png" alt="Basketball Court" className="w-full h-full object-cover rounded" />
-                    <svg
-                      className="absolute inset-0 w-full h-full pointer-events-none"
-                      viewBox="0 0 100 100"
-                      preserveAspectRatio="none"
-                    >
-                      {filteredShots.map((shot) => {
-                        if (shot.x === null || shot.y === null) return null;
-                        const isHome = shot.teamId === match?.homeTeamId;
-                        const color = isHome ? '#FFCA69' : '#80B7D5';
-                        const x = shot.x * 100;
-                        const y = shot.y * 100;
-                        return shot.result === 'made' ? (
-                          <circle key={shot.eventId} cx={x} cy={y} r={2.5} fill={color} stroke="#1e3a8a" strokeWidth={0.5} />
-                        ) : (
-                          <g key={shot.eventId}>
-                            <line x1={x - 2} y1={y - 2} x2={x + 2} y2={y + 2} stroke={color} strokeWidth={1.5} />
-                            <line x1={x + 2} y1={y - 2} x2={x - 2} y2={y + 2} stroke={color} strokeWidth={1.5} />
-                          </g>
-                        );
-                      })}
-                    </svg>
-                  </div>
-                );
-              })()}
-              <p className="text-sm text-gray-600">
-                Total projected shots: {shotChartQuery.data?.length ?? 0}
-              </p>
-              
-              {/* Legend */}
-              <div className="flex items-center gap-6">
-                {/* Made */}
-                <button
-                  onClick={() => setShowMade(!showMade)}
-                  className={`flex items-center gap-2 cursor-pointer transition-opacity ${
-                    showMade ? 'opacity-100' : 'opacity-40'
-                  } hover:opacity-80`}
-                >
-                  <div className={`w-5 h-5 ${showMade ? 'bg-blue-900' : 'bg-gray-400'} rounded flex items-center justify-center`}>
-                    {showMade && (
-                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                      </svg>
-                    )}
-                  </div>
-                  <div className={`w-2 h-2 ${showMade ? 'bg-blue-900' : 'bg-gray-400'} rounded-full`}></div>
-                  <span className="text-sm font-medium text-gray-700">Made</span>
-                </button>
-
-                {/* Missed */}
-                <button
-                  onClick={() => setShowMissed(!showMissed)}
-                  className={`flex items-center gap-2 cursor-pointer transition-opacity ${
-                    showMissed ? 'opacity-100' : 'opacity-40'
-                  } hover:opacity-80`}
-                >
-                  <div className={`w-5 h-5 ${showMissed ? 'bg-blue-200' : 'bg-gray-300'} rounded flex items-center justify-center`}>
-                    {showMissed && (
-                      <svg className="w-3.5 h-3.5 text-blue-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    )}
-                  </div>
-                  <div className="w-2 h-2 flex items-center justify-center">
-                    {showMissed ? (
-                      <svg className="w-2.5 h-2.5 text-blue-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    ) : (
-                      <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-                    )}
-                  </div>
-                  <span className="text-sm font-medium text-gray-700">Missed</span>
-                </button>
-              </div>
-            </div>
-
-
-            {/* Player Cards and Selection Lists Container */}
-            <div className="flex gap-[23px] justify-center" style={{ marginTop: '42px' }}>
-              {/* Team A Section */}
-              <div className="flex flex-col">
-                {/* Player 1 - Yellow */}
-                {shouldShowTeamAImage && (
-                  <>
-                    <div
-                      className="rounded-2xl overflow-hidden bg-[#FFCA69] relative mb-6"
-                      style={{ width: '335px', height: '374px' }}
-                    >
-                      <div className="absolute left-4 top-4 z-10">
-                        <div className="text-white font-medium mb-1">Name</div>
-                        <div className="text-white font-bold text-lg mb-1">Surname</div>
-                        <div className="bg-white text-gray-900 font-bold text-sm w-8 h-8 flex items-center justify-center rounded-md mb-4">
-                          11
-                        </div>
-                        <div className="mb-2">
-                          <div className="relative w-16 h-16">
-                            <svg className="w-16 h-16 transform -rotate-90" viewBox="0 0 100 100">
-                              {/* Background circle */}
-                              <circle
-                                cx="50"
-                                cy="50"
-                                r="40"
-                                stroke="#E5E7EB"
-                                strokeWidth="8"
-                                fill="none"
-                              />
-                              {/* Progress circle */}
-                              <circle
-                                cx="50"
-                                cy="50"
-                                r="40"
-                                stroke="#80B7D5"
-                                strokeWidth="8"
-                                fill="none"
-                                strokeDasharray="251.2"
-                                strokeDashoffset="125.6"
-                                strokeLinecap="round"
-                              />
-                            </svg>
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <div className="text-center">
-                                <div className="text-[10px] font-bold text-gray-800">FG%</div>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="text-white font-bold text-sm mt-1">50%</div>
-                          <div className="text-white text-xs">(10/20)</div>
-                        </div>
-                      </div>
-                      <div className="relative" style={{ height: '374px' }}>
-                        <img
-                          src="/player1.png"
-                          alt="Player"
-                          className="w-[21rem] ml-0 mx-auto absolute mt-[4.7rem]"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Divider */}
-                    <div className="border-t-2 border-dashed border-gray-300 mb-6" style={{ width: '335px' }}></div>
-                  </>
-                )}
-
-                {/* Home Team Players Selection List */}
-                <div className="space-y-3" style={{ width: '335px' }}>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{homeTeamName}</p>
-                  <label className="flex items-center gap-3 p-3 bg-yellow-50 rounded-lg cursor-pointer hover:bg-yellow-100">
-                    <input
-                      type="checkbox"
-                      checked={teamAAllPlayers}
-                      onChange={(e) => handleTeamAAllPlayersChange(e.target.checked)}
-                      className="w-4 h-4 rounded border-gray-300 text-yellow-500 focus:ring-yellow-500"
-                    />
-                    <span className="text-sm font-medium text-gray-700">All Players</span>
-                  </label>
-                  {(match?.homeTeam?.playerTeams ?? []).map((pt, i) => (
-                    <label key={pt.playerId ?? i} className="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
-                      <input
-                        type="checkbox"
-                        checked={teamASelectedPlayers.includes(i)}
-                        onChange={(e) => handleTeamAPlayerChange(i, e.target.checked)}
-                        className="w-4 h-4 rounded border-gray-300 text-yellow-500 focus:ring-yellow-500"
-                      />
-                      <span className="text-sm text-gray-700">
-                        {pt.jerseyNumber != null ? `#${pt.jerseyNumber} ` : ''}
-                        {pt.player ? `${pt.player.firstName} ${pt.player.lastName}` : 'Player'}
-                      </span>
-                    </label>
-                  ))}
-                  {(match?.homeTeam?.playerTeams ?? []).length === 0 && (
-                    <p className="text-sm text-gray-400 px-3">No roster data</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Team B Section */}
-              <div className="flex flex-col">
-                {/* Player 2 - Blue */}
-                {shouldShowTeamBImage && (
-                  <>
-                    <div
-                      className="rounded-2xl overflow-hidden bg-[#80B7D5] relative mb-6"
-                      style={{ width: '335px', height: '374px' }}
-                    >
-                      <div className="absolute left-4 top-4 z-10">
-                        <div className="text-white font-medium mb-1">Name</div>
-                        <div className="text-white font-bold text-lg mb-1">Surname</div>
-                        <div className="bg-white text-gray-900 font-bold text-sm w-8 h-8 flex items-center justify-center rounded-md mb-4">
-                          23
-                        </div>
-                        <div className="mb-2">
-                          <div className="relative w-16 h-16">
-                            <svg className="w-16 h-16 transform -rotate-90" viewBox="0 0 100 100">
-                              {/* Background circle */}
-                              <circle
-                                cx="50"
-                                cy="50"
-                                r="40"
-                                stroke="#E5E7EB"
-                                strokeWidth="8"
-                                fill="none"
-                              />
-                              {/* Progress circle */}
-                              <circle
-                                cx="50"
-                                cy="50"
-                                r="40"
-                                stroke="#FFCA69"
-                                strokeWidth="8"
-                                fill="none"
-                                strokeDasharray="251.2"
-                                strokeDashoffset="125.6"
-                                strokeLinecap="round"
-                              />
-                            </svg>
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <div className="text-center">
-                                <div className="text-[10px] font-bold text-gray-800">FG%</div>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="text-white font-bold text-sm mt-1">50%</div>
-                          <div className="text-white text-xs">(10/20)</div>
-                        </div>
-                      </div>
-                      <div className="relative" style={{ height: '374px' }}>
-                        <img
-                          src="/player2.png"
-                          alt="Player"
-                          className="w-[21rem] ml-0 mx-auto absolute mt-[4.7rem]"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Divider */}
-                    <div className="border-t-2 border-dashed border-gray-300 mb-6" style={{ width: '335px' }}></div>
-                  </>
-                )}
-
-                {/* Away Team Players Selection List */}
-                <div className="space-y-3" style={{ width: '335px' }}>
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 text-right">{awayTeamName}</p>
-                  <label className="flex items-center justify-end gap-3 p-3 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100">
-                    <span className="text-sm font-medium text-gray-700">All Players</span>
-                    <input
-                      type="checkbox"
-                      checked={teamBAllPlayers}
-                      onChange={(e) => handleTeamBAllPlayersChange(e.target.checked)}
-                      className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500"
-                    />
-                  </label>
-                  {(match?.awayTeam?.playerTeams ?? []).map((pt, i) => (
-                    <label key={pt.playerId ?? i} className="flex items-center justify-end gap-3 p-3 bg-white rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
-                      <span className="text-sm text-gray-700">
-                        {pt.player ? `${pt.player.firstName} ${pt.player.lastName}` : 'Player'}
-                        {pt.jerseyNumber != null ? ` #${pt.jerseyNumber}` : ''}
-                      </span>
-                      <input
-                        type="checkbox"
-                        checked={teamBSelectedPlayers.includes(i)}
-                        onChange={(e) => handleTeamBPlayerChange(i, e.target.checked)}
-                        className="w-4 h-4 rounded border-gray-300 text-blue-500 focus:ring-blue-500"
-                      />
-                    </label>
-                  ))}
-                  {(match?.awayTeam?.playerTeams ?? []).length === 0 && (
-                    <p className="text-sm text-gray-400 px-3 text-right">No roster data</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Game Leaders Section - Hidden when Box Score or Shot Chart is shown */}
-        {!showBoxScore && activeTab !== 'shotchart' && (
-          <div className="max-w-4xl mx-auto rounded-lg shadow-sm p-6 border" style={{ background: '#FCFEFF', border: '1px solid #A9A9A91A' }}>
-            <h2 className="text-lg font-semibold text-gray-800 mb-4">Game Leaders</h2>
-
-            {/* Category Tabs */}
-            <div className="flex gap-2 mb-6 justify-center">
-              <button
-                onClick={() => setActiveCategory('points')}
-                className={`px-5 py-2 rounded-lg font-medium transition-all text-sm ${
-                  activeCategory === 'points'
-                    ? 'bg-[#21409A] text-[#F8F8F8]'
-                    : 'bg-[#F8F8F8] text-gray-600 border border-gray-200'
-                }`}
-              >
-                Points
-              </button>
-              <button
-                onClick={() => setActiveCategory('rebounds')}
-                className={`px-5 py-2 rounded-lg font-medium transition-all text-sm ${
-                  activeCategory === 'rebounds'
-                    ? 'bg-[#21409A] text-[#F8F8F8]'
-                    : 'bg-[#F8F8F8] text-gray-600 border border-gray-200'
-                }`}
-              >
-                Rebounds
-              </button>
-              <button
-                onClick={() => setActiveCategory('assists')}
-                className={`px-5 py-2 rounded-lg font-medium transition-all text-sm ${
-                  activeCategory === 'assists'
-                    ? 'bg-[#21409A] text-[#F8F8F8]'
-                    : 'bg-[#F8F8F8] text-gray-600 border border-gray-200'
-                }`}
-              >
-                Assists
-              </button>
-              <button
-                onClick={() => setActiveCategory('block')}
-                className={`px-5 py-2 rounded-lg font-medium transition-all text-sm ${
-                  activeCategory === 'block'
-                    ? 'bg-[#21409A] text-[#F8F8F8]'
-                    : 'bg-[#F8F8F8] text-gray-600 border border-gray-200'
-                }`}
-              >
-                Block
-              </button>
-              <button
-                onClick={() => setActiveCategory('steals')}
-                className={`px-5 py-2 rounded-lg font-medium transition-all text-sm ${
-                  activeCategory === 'steals'
-                    ? 'bg-[#21409A] text-[#F8F8F8]'
-                    : 'bg-[#F8F8F8] text-gray-600 border border-gray-200'
-                }`}
-              >
-                Steals
-              </button>
-            </div>
-
-            {/* Player Cards */}
-            <div className="flex gap-[23px] mb-6" style={{ marginTop: '42px', marginLeft: '80px' }}>
-              {players.map((player) => (
-                <div
-                  key={player.id}
-                  className={`rounded-2xl overflow-hidden ${
-                    player.team === 'yellow' ? 'bg-[#FFCA69]' : 'bg-[#80B7D5]'
-                  }`}
-                  style={{ width: '335px', height: '374px' }}
-                >
-                  <div className="p-4">
-                    <div className="text-white font-medium mb-1">{player.name}</div>
-                    <div className="text-white font-bold text-lg mb-1">{player.surname}</div>
-                    <div className="bg-white text-gray-900 font-bold text-sm px-3 py-1 rounded-md inline-block">
-                      {player.number}
-                    </div>
-                  </div>
-                   <div className="relative" style={{ height: '400px' }}>
-                     <img
-                       src={player.image}
-                       alt={`${player.name} ${player.surname}`}
-                       className="w-[21rem] ml-0 mx-auto absolute mt-[-3.5rem]"
-                     />
-                   </div>
-                </div>
-              ))}
-            </div>
-
-            {/* View Box Score Button */}
-            <div className="text-center">
-              <button
-                onClick={handleViewBoxScore}
-                className="px-10 py-3 bg-[#21409A] hover:opacity-90 text-white font-medium rounded-lg transition-colors"
-              >
-                View Box Score
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Box Score Section - Only shown when Box Score is active */}
-        {showBoxScore && (
-          <div className="rounded-lg shadow-sm p-6 border" style={{ background: '#FCFEFF', border: '1px solid #A9A9A91A' }}>
-            {boxScoreQuery.isPending && <p className="mb-3 text-sm text-gray-600">Loading box score projection...</p>}
-            {/* Box Score Header */}
-            <div className="mb-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold text-gray-800">Box Score</h2>
-                <button
-                  onClick={() => setShowBoxScore(false)}
-                  className="text-gray-500 hover:text-gray-700 text-2xl"
-                >
-                  ×
-                </button>
-              </div>
-              
-              {/* Team Tabs */}
-              <div className="flex justify-center">
-                <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-full max-w-7xl">
-                  <button
-                    onClick={() => setActiveTeam('A')}
-                    className={`flex-1 py-2 rounded-md font-medium text-sm transition-all duration-200 ${
-                      activeTeam === 'A'
-                        ? 'bg-[#21409A] text-white shadow-sm'
-                        : 'bg-transparent text-gray-600 hover:text-gray-800'
-                    }`}
-                  >
-                    {homeTeamName}
-                  </button>
-                  <button
-                    onClick={() => setActiveTeam('B')}
-                    className={`flex-1 py-2 rounded-md font-medium text-sm transition-all duration-200 ${
-                      activeTeam === 'B'
-                        ? 'bg-[#21409A] text-white shadow-sm'
-                        : 'bg-transparent text-gray-600 hover:text-gray-800'
-                    }`}
-                  >
-                    {awayTeamName}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Box Score Table */}
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
-              <table className="w-full">
-                <thead>
-                  <tr style={{ background: '#EEF3FF' }}>
-                    <th className="text-left py-3 px-3 text-xs font-bold text-blue-900">#</th>
-                    <th className="text-left py-3 px-3 text-xs font-bold text-blue-900">PLAYER</th>
-                    <th className="text-center py-3 px-3 text-xs font-bold text-blue-900">PTS</th>
-                    <th className="text-center py-3 px-3 text-xs font-bold text-blue-900">FG</th>
-                    <th className="text-center py-3 px-3 text-xs font-bold text-blue-900">2PT FG</th>
-                    <th className="text-center py-3 px-3 text-xs font-bold text-blue-900">3PT FG</th>
-                    <th className="text-center py-3 px-3 text-xs font-bold text-blue-900">FT</th>
-                    <th className="text-center py-3 px-3 text-xs font-bold text-blue-900">REB</th>
-                    <th className="text-center py-3 px-3 text-xs font-bold text-blue-900">OREB</th>
-                    <th className="text-center py-3 px-3 text-xs font-bold text-blue-900">DREB</th>
-                    <th className="text-center py-3 px-3 text-xs font-bold text-blue-900">AST</th>
-                    <th className="text-center py-3 px-3 text-xs font-bold text-blue-900">STL</th>
-                    <th className="text-center py-3 px-3 text-xs font-bold text-blue-900">BLK</th>
-                    <th className="text-center py-3 px-3 text-xs font-bold text-blue-900">PF</th>
-                    <th className="text-center py-3 px-3 text-xs font-bold text-blue-900">TO</th>
-                    <th className="text-center py-3 px-3 text-xs font-bold text-blue-900">+/-</th>
-                    <th className="text-center py-3 px-3 text-xs font-bold text-blue-900">EFF</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(() => {
-                    if (!match) return null;
-                    const teamId = activeTeam === 'A' ? match.homeTeamId : match.awayTeamId;
-                    const teamRoster = activeTeam === 'A'
-                      ? (match.homeTeam?.playerTeams ?? [])
-                      : (match.awayTeam?.playerTeams ?? []);
-                    const teamStats = (match.stats ?? []).filter((s) => s.teamId === teamId);
-                    if (teamStats.length === 0) {
-                      return (
-                        <tr>
-                          <td colSpan={17} className="py-6 text-center text-sm text-gray-500">
-                            No recorded stats for this team yet.
-                          </td>
-                        </tr>
-                      );
-                    }
-                    return teamStats.map((stat, idx) => {
-                      const rosterEntry = teamRoster.find((pt) => (pt.playerId ?? pt.player?.id) === stat.playerId);
-                      const name = stat.player
-                        ? `${stat.player.firstName} ${stat.player.lastName}`
-                        : (rosterEntry?.player ? `${rosterEntry.player.firstName} ${rosterEntry.player.lastName}` : stat.playerId);
-                      const jersey = rosterEntry?.jerseyNumber ?? '—';
-                      const D = '—';
-                      return (
-                        <tr
-                          key={stat.id}
-                          className={`${idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'} hover:bg-blue-50 cursor-pointer transition-colors`}
-                          onClick={() => navigate(`/tournaments/${tournamentId}/match/${matchId}/player/${stat.playerId}`)}
-                        >
-                          <td className="py-3 px-3 text-sm font-bold text-blue-900">{jersey}</td>
-                          <td className="py-3 px-3">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center">
-                                <span className="text-xs text-gray-500">{typeof jersey === 'number' ? jersey : '?'}</span>
-                              </div>
-                              <span className="text-sm font-bold text-blue-900">{name}</span>
-                            </div>
-                          </td>
-                          <td className="text-center py-3 px-3 text-sm text-gray-700">{stat.points}</td>
-                          <td className="text-center py-3 px-3 text-sm text-gray-400">{D}</td>
-                          <td className="text-center py-3 px-3 text-sm text-gray-400">{D}</td>
-                          <td className="text-center py-3 px-3 text-sm text-gray-400">{D}</td>
-                          <td className="text-center py-3 px-3 text-sm text-gray-400">{D}</td>
-                          <td className="text-center py-3 px-3 text-sm text-gray-700">{stat.rebounds}</td>
-                          <td className="text-center py-3 px-3 text-sm text-gray-400">{D}</td>
-                          <td className="text-center py-3 px-3 text-sm text-gray-400">{D}</td>
-                          <td className="text-center py-3 px-3 text-sm text-gray-700">{stat.assists}</td>
-                          <td className="text-center py-3 px-3 text-sm text-gray-700">{stat.steals}</td>
-                          <td className="text-center py-3 px-3 text-sm text-gray-700">{stat.blocks}</td>
-                          <td className="text-center py-3 px-3 text-sm text-gray-700">{stat.fouls}</td>
-                          <td className="text-center py-3 px-3 text-sm text-gray-700">{stat.turnovers}</td>
-                          <td className="text-center py-3 px-3 text-sm text-gray-400">{D}</td>
-                          <td className="text-center py-3 px-3 text-sm text-gray-400">{D}</td>
-                        </tr>
-                      );
-                    });
-                  })()}
-                  {/* Total Row */}
-                  <tr style={{ background: '#F5F8FF' }}>
-                    <td className="py-3 px-3 text-sm font-bold text-blue-900"></td>
-                    <td className="py-3 px-3 text-sm font-bold text-blue-900">Total</td>
-                    <td className="text-center py-3 px-3 text-sm text-gray-700">{boxScoreQuery.data?.totals.points ?? 0}</td>
-                    <td className="text-center py-3 px-3 text-sm text-gray-700">
-                      <div>3/6</div>
-                      <div>(50%)</div>
-                    </td>
-                    <td className="text-center py-3 px-3 text-sm text-gray-700">
-                      <div>3/6</div>
-                      <div>(50%)</div>
-                    </td>
-                    <td className="text-center py-3 px-3 text-sm text-gray-700">
-                      <div>3/6</div>
-                      <div>(50%)</div>
-                    </td>
-                    <td className="text-center py-3 px-3 text-sm text-gray-700">
-                      <div>3/6</div>
-                      <div>(50%)</div>
-                    </td>
-                    <td className="text-center py-3 px-3 text-sm text-gray-700">{boxScoreQuery.data?.totals.fouls ?? 0}</td>
-                    <td className="text-center py-3 px-3 text-sm text-gray-700">{boxScoreQuery.data?.totals.turnovers ?? 0}</td>
-                    <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
-                    <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
-                    <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
-                    <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
-                    <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
-                    <td className="text-center py-3 px-3 text-sm text-gray-700">8</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {/* Coaching Staff Section */}
-            <div className="mt-6 overflow-x-auto rounded-lg border border-gray-200">
-              <div className="grid grid-cols-2 gap-8 p-4" style={{ background: '#F8F8F8' }}>
-                <div>
-                  <div className="text-sm font-bold text-blue-900 mb-2">Coach</div>
-                  <div className="text-sm text-gray-700">Name Surname</div>
-                </div>
-                <div>
-                  <div className="text-sm font-bold text-blue-900 mb-2">Assistant(s)</div>
-                  <div className="text-sm text-gray-700">Name Surname</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Game Stats Section - Hidden when Box Score or Shot Chart is shown */}
-        {!showBoxScore && activeTab !== 'shotchart' && (
-          <div className="max-w-4xl mx-auto rounded-lg shadow-sm p-6 border mt-8" style={{ background: '#FCFEFF', border: '1px solid #A9A9A91A' }}>
-          {summaryQuery.isPending && <p className="mb-3 text-sm text-gray-600">Loading game summary projection...</p>}
-          {summaryQuery.data && (
-            <p className="mb-3 text-xs text-gray-500">
-              Events recorded: {summaryQuery.data.totalEvents}
+          <div className="mt-5 grid grid-cols-[1fr_auto_1fr] items-center gap-4">
+            <p className="truncate text-base font-semibold md:text-xl">{home}</p>
+            <p className="tabular-nums text-4xl font-bold md:text-5xl" aria-label={started ? `${home} ${match.homeScore ?? 0}, ${away} ${match.awayScore ?? 0}` : 'Not started'}>
+              {started ? `${match.homeScore ?? 0} – ${match.awayScore ?? 0}` : 'vs'}
             </p>
-          )}
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">Game Stats</h2>
-
-          {/* Tab Navigation */}
-          <div className="flex gap-2 mb-8">
-            <button className="px-10 py-2 rounded-lg font-medium text-sm bg-[#21409A] text-white">
-              Final
-            </button>
-            <button className="px-10 py-2 rounded-lg font-medium text-sm bg-[#F8F8F8] text-gray-600 border border-gray-200">
-              Q1
-            </button>
-            <button className="px-10 py-2 rounded-lg font-medium text-sm bg-[#F8F8F8] text-gray-600 border border-gray-200">
-              Q2
-            </button>
-            <button className="px-10 py-2 rounded-lg font-medium text-sm bg-[#F8F8F8] text-gray-600 border border-gray-200">
-              Q3
-            </button>
-            <button className="px-10 py-2 rounded-lg font-medium text-sm bg-[#F8F8F8] text-gray-600 border border-gray-200">
-              Q4
-            </button>
+            <p className="truncate text-right text-base font-semibold md:text-xl">{away}</p>
           </div>
-        
-        {/* Divider */}
-        <hr className="my-16 border-gray-200" />
-
-
-          {/* Circular Progress Indicators */}
-          <div className="flex justify-center gap-16 mb-8">
-            {/* Team A FG% */}
-            <div className="text-center">
-              <div className="relative w-32 h-32 mb-2">
-                <svg className="w-32 h-32 transform -rotate-90" viewBox="0 0 100 100">
-                  {/* Background circle */}
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="40"
-                    stroke="#E5E7EB"
-                    strokeWidth="8"
-                    fill="none"
-                  />
-                  {/* Progress circle */}
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="40"
-                    stroke="#FFCA69"
-                    strokeWidth="8"
-                    fill="none"
-                    strokeDasharray="251.2"
-                    strokeDashoffset="125.6"
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="text-lg font-bold text-gray-800">FG%</div>
-                  </div>
-                </div>
-              </div>
-              <div className="text-3xl font-bold text-gray-800">50</div>
-            </div>
-
-            {/* Team B FG% */}
-            <div className="text-center">
-              <div className="relative w-32 h-32 mb-2">
-                <svg className="w-32 h-32 transform -rotate-90" viewBox="0 0 100 100">
-                  {/* Background circle */}
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="40"
-                    stroke="#E5E7EB"
-                    strokeWidth="8"
-                    fill="none"
-                  />
-                  {/* Progress circle */}
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="40"
-                    stroke="#80B7D5"
-                    strokeWidth="8"
-                    fill="none"
-                    strokeDasharray="251.2"
-                    strokeDashoffset="125.6"
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="text-lg font-bold text-gray-800">FG%</div>
-                  </div>
-                </div>
-              </div>
-              <div className="text-3xl font-bold text-gray-800">50</div>
-            </div>
-          </div>
-
-          {/* Divider */}
-          <hr className="my-16 w-[45rem] mx-auto border-gray-200" />
-
-          {/* Horizontal Comparison Bars */}
-          <div className="space-y-6">
-            {/* 3pt Bar */}
-            <div className="flex items-center justify-center gap-4">
-              {/* Left Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#FFCA69]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Center Label */}
-              <div className="px-4">
-                <span className="text-sm font-medium text-gray-800 bg-[#F8F8F8] px-3 py-1 rounded shadow-sm">3pt</span>
-              </div>
-              
-              {/* Right Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-gray-200 overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#80B7D5]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* 2pt Bar */}
-            <div className="flex items-center justify-center gap-4">
-              {/* Left Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#FFCA69]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Center Label */}
-              <div className="px-4">
-                <span className="text-sm font-medium text-gray-800 bg-[#F8F8F8] px-3 py-1 rounded shadow-sm">2pt</span>
-              </div>
-              
-              {/* Right Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#80B7D5]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* FT Bar */}
-            <div className="flex items-center justify-center gap-4">
-              {/* Left Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#FFCA69]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Center Label */}
-              <div className="px-4">
-                <span className="text-sm font-medium text-gray-800 bg-[#F8F8F8] px-3 py-1 rounded shadow-sm">FT</span>
-              </div>
-              
-              {/* Right Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#80B7D5]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-        {/* Divider */}
-        <hr className="my-16 w-[45rem] mx-auto border-gray-200" />
-        
-         {/* Horizontal Comparison Bars more View */}
-           <div className="space-y-6">
-             {/* Total rebounds */}
-             <div className="text-center mb-4">
-               <h3 className="text-sm font-bold text-gray-700">Total rebounds</h3>
-             </div>
-             <div className="flex items-center justify-center gap-4">
-              {/* Left Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#FFCA69]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-              
-             
-              {/* Right Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-gray-200 overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#80B7D5]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Offensive rebounds */}
-            <div className="text-center mb-4">
-              <h3 className="text-sm font-bold text-gray-700">Offensive rebounds</h3>
-            </div>
-            <div className="flex items-center justify-center gap-4">
-              {/* Left Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#FFCA69]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Right Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#80B7D5]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Defensive rebounds */}
-            <div className="text-center mb-4">
-              <h3 className="text-sm font-bold text-gray-700">Defensive rebounds</h3>
-            </div>
-            <div className="flex items-center justify-center gap-4">
-              {/* Left Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#FFCA69]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Right Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#80B7D5]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Assists */}
-            <div className="text-center mb-4">
-              <h3 className="text-sm font-bold text-gray-700">Assists</h3>
-            </div>
-            <div className="flex items-center justify-center gap-4">
-              {/* Left Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#FFCA69]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Right Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#80B7D5]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Blocks */}
-            <div className="text-center mb-4">
-              <h3 className="text-sm font-bold text-gray-700">Blocks</h3>
-            </div>
-            <div className="flex items-center justify-center gap-4">
-              {/* Left Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#FFCA69]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Right Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#80B7D5]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Steals */}
-            <div className="text-center mb-4">
-              <h3 className="text-sm font-bold text-gray-700">Steals</h3>
-            </div>
-            <div className="flex items-center justify-center gap-4">
-              {/* Left Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#FFCA69]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Right Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#80B7D5]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Turnovers */}
-            <div className="text-center mb-4">
-              <h3 className="text-sm font-bold text-gray-700">Turnovers</h3>
-            </div>
-            <div className="flex items-center justify-center gap-4">
-              {/* Left Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#FFCA69]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Right Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#80B7D5]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Points in the paint */}
-            <div className="text-center mb-4">
-              <h3 className="text-sm font-bold text-gray-700">Points in the paint</h3>
-            </div>
-            <div className="flex items-center justify-center gap-4">
-              {/* Left Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#FFCA69]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Right Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#80B7D5]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Foul - Personal */}
-            <div className="text-center mb-4">
-              <h3 className="text-sm font-bold text-gray-700">Foul - Personal</h3>
-            </div>
-            <div className="flex items-center justify-center gap-4">
-              {/* Left Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#FFCA69]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Right Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#80B7D5]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-          </div>
-
-        {/* Divider */}
-        <hr className="my-16 w-[45rem] mx-auto border-gray-200" />
-
-        {/* Additional Team Comparison Bars */}
-        <div className="space-y-8">
-          {/* Points off turnovers */}
-          <div>
-            <div className="text-center mb-4">
-              <h3 className="text-sm font-bold text-gray-700">Points off turnovers</h3>
-            </div>
-            <div className="flex items-center justify-center gap-4">
-              {/* Left Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#FFCA69]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-              {/* Right Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#80B7D5]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Points from the bench */}
-          <div>
-            <div className="text-center mb-4">
-              <h3 className="text-sm font-bold text-gray-700">Points from the bench</h3>
-            </div>
-            <div className="flex items-center justify-center gap-4">
-              {/* Left Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#FFCA69]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-              {/* Right Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#80B7D5]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Second chance points */}
-          <div>
-            <div className="text-center mb-4">
-              <h3 className="text-sm font-bold text-gray-700">Second chance points</h3>
-            </div>
-            <div className="flex items-center justify-center gap-4">
-              {/* Left Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#FFCA69]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-              {/* Right Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#80B7D5]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Fast break points */}
-          <div>
-            <div className="text-center mb-4">
-              <h3 className="text-sm font-bold text-gray-700">Fast break points</h3>
-            </div>
-            <div className="flex items-center justify-center gap-4">
-              {/* Left Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#FFCA69]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-              {/* Right Progress Bar */}
-              <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                  <div className="h-full w-1/2 bg-[#80B7D5]"></div>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <p className="mt-5 text-sm text-court-200">
+            {formatMatchDate(match.scheduledDate)}{match.venue ? ` · ${match.venue}` : ''}
+          </p>
         </div>
-
-         {/* Divider */}
-         <hr className="my-16 w-[45rem] mx-auto border-gray-200" />
-
-         {/* Additional Team Comparison Bars */}
-         <div className="space-y-8">
-           {/* Time leading */}
-           <div>
-             <div className="text-center mb-4">
-               <h3 className="text-sm font-bold text-gray-700">Time leading</h3>
-             </div>
-             <div className="flex items-center justify-center gap-4">
-               {/* Left Progress Bar */}
-               <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                 <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                   <div className="h-full w-1/2 bg-[#FFCA69]"></div>
-                   <div className="absolute inset-0 flex items-center justify-center">
-                     <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                   </div>
-                 </div>
-               </div>
-               {/* Right Progress Bar */}
-               <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                 <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                   <div className="h-full w-1/2 bg-[#80B7D5]"></div>
-                   <div className="absolute inset-0 flex items-center justify-center">
-                     <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                   </div>
-                 </div>
-               </div>
-             </div>
-           </div>
-
-           {/* Biggest Lead */}
-           <div>
-             <div className="text-center mb-4">
-               <h3 className="text-sm font-bold text-gray-700">Biggest Lead</h3>
-             </div>
-             <div className="flex items-center justify-center gap-4">
-               {/* Left Progress Bar */}
-               <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                 <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                   <div className="h-full w-1/2 bg-[#FFCA69]"></div>
-                   <div className="absolute inset-0 flex items-center justify-center">
-                     <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                   </div>
-                 </div>
-               </div>
-               {/* Right Progress Bar */}
-               <div className="flex-1 relative" style={{ maxWidth: '290px' }}>
-                 <div className="h-4 bg-[#D9D9D9] overflow-hidden relative">
-                   <div className="h-full w-1/2 bg-[#80B7D5]"></div>
-                   <div className="absolute inset-0 flex items-center justify-center">
-                     <span className="bg-[#F8F8F8] text-gray-700 text-xs px-2 py-1 rounded">50%</span>
-                   </div>
-                 </div>
-               </div>
-             </div>
-           </div>
-         </div>
-
-        </div>
+        {quarters.length > 0 && (
+          <div className="relative overflow-x-auto px-5 py-3 md:px-8">
+            <table className="w-full text-sm tabular-nums">
+              <caption className="sr-only">Scores by quarter</caption>
+              <thead className="text-xs uppercase text-gray-500">
+                <tr>
+                  <th scope="col" className="py-1.5 text-left font-semibold">Team</th>
+                  {quarters.map((x) => <th key={x.q} scope="col" className="py-1.5 text-right font-semibold">Q{x.q}</th>)}
+                </tr>
+              </thead>
+              <tbody className="text-gray-800 dark:text-gray-200">
+                <tr><th scope="row" className="py-1.5 text-left font-medium">{home}</th>{quarters.map((x) => <td key={x.q} className="py-1.5 text-right">{x.h}</td>)}</tr>
+                <tr><th scope="row" className="py-1.5 text-left font-medium">{away}</th>{quarters.map((x) => <td key={x.q} className="py-1.5 text-right">{x.a}</td>)}</tr>
+              </tbody>
+            </table>
+          </div>
         )}
+      </Card>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardTitle>Statistician</CardTitle>
+          <CardDescription>{statisticianName ? `Currently scoring: ${statisticianName}` : 'No statistician is assigned to this game yet.'}</CardDescription>
+          <form
+            className="flex flex-wrap items-end gap-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (assignmentChanged) saveAssignee();
+            }}
+          >
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+              <label htmlFor="assign-statistician" className="text-sm font-medium text-gray-700 dark:text-gray-300">Assign to</label>
+              <select
+                id="assign-statistician"
+                value={selectedAssignee}
+                onChange={(e) => setAssignee(e.target.value)}
+                disabled={statisticiansQuery.isPending || updateMatch.isPending}
+                className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+              >
+                <option value="">Unassigned</option>
+                {statisticians.map((s) => <option key={s.id} value={s.id}>{s.name || s.email}</option>)}
+              </select>
+            </div>
+            <Button type="submit" disabled={!assignmentChanged || updateMatch.isPending}>
+              {updateMatch.isPending ? 'Saving…' : 'Save statistician'}
+            </Button>
+          </form>
+          {statisticiansQuery.isError && <p className="text-sm text-rose-600">Couldn’t load statisticians: {(statisticiansQuery.error as Error).message}</p>}
+
+          <div className="mt-2 flex flex-wrap items-center gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Match code</p>
+              <code className="block truncate text-xs text-gray-600 dark:text-gray-400" data-testid="match-code">{matchCodeOf(match)}</code>
+              <p className="text-xs text-gray-500">The statistician types this on the match key screen to open the game.</p>
+            </div>
+            <CopyMatchCodeButton code={matchCodeOf(match)} label={label} size="default" />
+          </div>
+        </Card>
+
+        <Card>
+          <CardTitle>This game</CardTitle>
+          <CardDescription>Scores come from the scorer’s recorded plays. Edit the time, venue or status on the fixture.</CardDescription>
+          <div className="flex flex-col gap-2">
+            <Button variant="secondary" onClick={() => navigate(`/tournaments/${tournamentId}/fixtures`)}>Edit on fixtures</Button>
+            <Button
+              variant="secondary"
+              disabled={!sessionId || rebuild.isPending}
+              onClick={() => sessionId && rebuild.mutate(sessionId, { onSuccess: () => toast.success('Box score rebuilt from the recorded plays.'), onError: (e) => toast.error(`Couldn’t rebuild: ${e.message}`) })}
+              title={!sessionId ? 'There’s no game data to rebuild yet' : 'Recalculate the box score and shot chart from every recorded play'}
+            >
+              {rebuild.isPending ? 'Rebuilding…' : 'Rebuild box score'}
+            </Button>
+            <Button variant="destructive-ghost" onClick={() => setDeleteTarget({ id: match.id, label, hasGameData: started })}>Delete match</Button>
+          </div>
+        </Card>
       </div>
-      
-      {/* Bottom Spacing */}
-      <div className="h-32"></div>
-      <ConfirmDialog {...dialogProps} />
+
+      <div role="tablist" aria-label="Game data" className="flex gap-1 border-b border-gray-200 dark:border-gray-800">
+        {([{ id: 'box', label: 'Box score' }, { id: 'shots', label: 'Shot chart' }] as const).map((t) => (
+          <button
+            key={t.id}
+            role="tab"
+            type="button"
+            aria-selected={tab === t.id}
+            onClick={() => setTab(t.id)}
+            className={cn('relative h-11 px-4 text-sm font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-court-400/50', tab === t.id ? 'text-court-900 dark:text-white' : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200')}
+          >
+            {t.label}
+            {tab === t.id && <span aria-hidden className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-signal-500" />}
+          </button>
+        ))}
+      </div>
+
+      {!sessionId ? (
+        <EmptyState title="No game data yet" description={started ? 'The scorer hasn’t recorded this game yet.' : 'Game data appears once the match starts.'} />
+      ) : tab === 'box' ? (
+        boxQuery.isPending ? (
+          <ListSkeleton columns={8} rows={5} label="Loading box score" />
+        ) : boxQuery.isError ? (
+          <ErrorState message={dataErrorMessage(boxQuery.error, 'box score')} onRetry={() => void boxQuery.refetch()} />
+        ) : boxQuery.data && boxQuery.data.totalEvents === 0 ? (
+          <EmptyState title="No plays recorded yet" description="The box score fills in as the game is scored." />
+        ) : split ? (
+          <div className="flex flex-col gap-6">
+            <BoxScoreTable teamName={home} rows={split.home} caption="Box score" playerHref={playerHref} />
+            <BoxScoreTable teamName={away} rows={split.away} caption="Box score" playerHref={playerHref} />
+            {split.unassigned > 0 && (
+              <p className="text-xs text-gray-500">{split.unassigned} {split.unassigned === 1 ? 'player isn’t' : 'players aren’t'} on either team roster and {split.unassigned === 1 ? 'is' : 'are'} left out.</p>
+            )}
+          </div>
+        ) : null
+      ) : shotQuery.isPending ? (
+        <ListSkeleton columns={2} rows={3} label="Loading shot chart" />
+      ) : shotQuery.isError ? (
+        <ErrorState message={dataErrorMessage(shotQuery.error, 'shot chart')} onRetry={() => void shotQuery.refetch()} />
+      ) : (
+        <ShotChartCourt shots={shotQuery.data ?? []} homeTeamId={match.homeTeamId} homeLabel={home} awayLabel={away} />
+      )}
+
+      <DeleteFixtureDialog target={deleteTarget} isDeleting={deleteMatch.isPending} onCancel={() => setDeleteTarget(null)} onConfirm={confirmDelete} />
     </div>
   );
 };

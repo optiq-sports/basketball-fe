@@ -11,7 +11,7 @@ export interface ToastItem {
 const TYPE_STYLES: Record<ToastType, string> = {
   success: 'bg-success-50 border-success-100 text-success-700 dark:bg-success-500/15 dark:border-success-500/30 dark:text-success-500',
   error: 'bg-error-50 border-error-100 text-error-700 dark:bg-error-500/15 dark:border-error-500/30 dark:text-error-500',
-  info: 'bg-brand-50 border-brand-100 text-brand-700 dark:bg-brand-500/15 dark:border-brand-500/30 dark:text-brand-400',
+  info: 'bg-court-50 border-court-200 text-court-800 dark:bg-court-400/15 dark:border-court-400/30 dark:text-court-200',
 };
 
 const TYPE_ICON: Record<ToastType, string> = {

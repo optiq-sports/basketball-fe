@@ -1,76 +1,31 @@
 import React from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { FiArrowLeft } from 'react-icons/fi';
+import { Link, useParams } from 'react-router-dom';
 import { useStatistician } from '../../api/hooks';
 import type { Statistician } from '../../types/api';
+import { ErrorState } from '../../components/admin/page-states';
+import Skeleton from '../../components/ui/Skeleton';
 import StatisticianProfileContent from './StatisticianProfileContent';
 
+const BackLink = () => (
+  <Link to="/statisticians" className="w-fit text-sm font-semibold text-court-700 hover:underline dark:text-court-300">← Statisticians</Link>
+);
+
+/** `/statisticians/:id` — one statistician and the games they have scored. */
 const ViewStat: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const statQuery = useStatistician(id ?? null);
-
-  if (!id) {
-    return (
-      <div className="min-h-screen bg-white dark:bg-gray-950 p-6">
-        <div className="max-w-7xl mx-auto">
-          <p className="text-error-600 dark:text-error-500">Statistician not found</p>
-          <button
-            onClick={() => navigate('/statisticians')}
-            className="mt-4 text-brand-600 dark:text-brand-400 hover:underline"
-          >
-            Back to Statisticians
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (statQuery.isPending) {
-    return (
-      <div className="min-h-screen bg-white dark:bg-gray-950 p-6">
-        <div className="max-w-7xl mx-auto">
-          <p className="text-gray-500 dark:text-gray-400">Loading statistician...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (statQuery.error || !statQuery.data) {
-    return (
-      <div className="min-h-screen bg-white dark:bg-gray-950 p-6">
-        <div className="max-w-7xl mx-auto">
-          <p className="text-error-600 dark:text-error-500">
-            {statQuery.error instanceof Error ? statQuery.error.message : 'Statistician not found'}
-          </p>
-          <button
-            onClick={() => navigate('/statisticians')}
-            className="mt-4 text-brand-600 dark:text-brand-400 hover:underline"
-          >
-            Back to Statisticians
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const query = useStatistician(id ?? null);
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-950">
-      <div className="relative bg-gradient-to-br from-brand-50 to-brand-100 dark:from-brand-500/10 dark:to-brand-500/5 pt-8 pb-12 px-8 overflow-hidden">
-        <div className="relative z-10 max-w-7xl mx-auto">
-          <div className="mb-6">
-            <button
-              onClick={() => navigate(-1)}
-              className="flex items-center gap-2 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
-            >
-              <FiArrowLeft size={20} />
-              <span className="font-medium">Back</span>
-            </button>
-          </div>
-
-          <StatisticianProfileContent stat={statQuery.data as Statistician} />
+    <div className="flex flex-col gap-4">
+      <BackLink />
+      {query.isPending && (
+        <div className="flex flex-col gap-4" aria-label="Loading statistician">
+          <Skeleton className="h-44 w-full rounded-xl" />
+          <Skeleton className="h-24 w-full rounded-xl" />
         </div>
-      </div>
+      )}
+      {query.isError && <ErrorState message={query.error.message} onRetry={() => void query.refetch()} />}
+      {query.data && <StatisticianProfileContent stat={query.data as Statistician} />}
     </div>
   );
 };

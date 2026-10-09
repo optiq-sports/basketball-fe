@@ -1,33 +1,28 @@
 import React, { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, useNavigate } from 'react-router-dom';
 import { FiEye, FiEyeOff } from 'react-icons/fi';
 import { useLogin } from '../../api/hooks';
 import { ROLE_STATISTICIAN } from '../../constants/roles';
+import { loginFormSchema, type LoginFormValues } from './login-form';
 import { enterFullscreenBestEffort } from '../../utils/enterFullscreen';
 import GrainOverlay from '../../components/decor/GrainOverlay';
 import { GATEWAY_DISPLAY_FONT_STACK as DISPLAY_FONT_STACK, GATEWAY_FONT_STACK as FONT_STACK } from '../../authGatewayTheme';
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 const AdminLoginPage: React.FC = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const navigate = useNavigate();
   const login = useLogin();
+  const {
+    register,
+    handleSubmit,
+    formState: { errors: fieldErrors },
+  } = useForm<LoginFormValues>({ defaultValues: { email: '', password: '' }, resolver: zodResolver(loginFormSchema) });
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    const nextErrors: { email?: string; password?: string } = {};
-    if (!email.trim()) nextErrors.email = 'Enter your email address.';
-    else if (!EMAIL_RE.test(email.trim())) nextErrors.email = 'Enter a valid email address.';
-    if (!password) nextErrors.password = 'Enter your password.';
-    setFieldErrors(nextErrors);
-    if (nextErrors.email || nextErrors.password) return;
-
+  const handleLogin = handleSubmit((values) => {
     login.mutate(
-      { email: email.trim(), password },
+      { email: values.email, password: values.password },
       {
         onSuccess: (res) => {
           const role = (res.data?.user as { role?: string } | undefined)?.role;
@@ -40,7 +35,7 @@ const AdminLoginPage: React.FC = () => {
         },
       }
     );
-  };
+  });
 
   return (
     <div
@@ -140,15 +135,11 @@ const AdminLoginPage: React.FC = () => {
                 type="email"
                 autoComplete="email"
                 placeholder="you@optiqsports.com"
-                value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value);
-                  if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: undefined }));
-                }}
+                {...register('email')}
                 aria-invalid={!!fieldErrors.email}
                 className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3.5 text-[15px] text-white placeholder-white/25 outline-none transition-colors focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20"
               />
-              {fieldErrors.email && <p className="mt-1.5 text-xs text-red-300">{fieldErrors.email}</p>}
+              {fieldErrors.email && <p className="mt-1.5 text-xs text-red-300">{fieldErrors.email.message}</p>}
             </div>
 
             <div>
@@ -172,11 +163,7 @@ const AdminLoginPage: React.FC = () => {
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
                   placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    if (fieldErrors.password) setFieldErrors((prev) => ({ ...prev, password: undefined }));
-                  }}
+                  {...register('password')}
                   aria-invalid={!!fieldErrors.password}
                   className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3.5 pr-12 text-[15px] text-white placeholder-white/25 outline-none transition-colors focus:border-sky-400/60 focus:ring-2 focus:ring-sky-400/20"
                 />
@@ -189,7 +176,7 @@ const AdminLoginPage: React.FC = () => {
                   {showPassword ? <FiEyeOff size={17} /> : <FiEye size={17} />}
                 </button>
               </div>
-              {fieldErrors.password && <p className="mt-1.5 text-xs text-red-300">{fieldErrors.password}</p>}
+              {fieldErrors.password && <p className="mt-1.5 text-xs text-red-300">{fieldErrors.password.message}</p>}
             </div>
           </div>
 

@@ -31,6 +31,10 @@ import type {
   Paginated,
   PaginationParams,
   ChangePasswordRequest,
+  Client,
+  ClientCreate,
+  ClientApiKey,
+  ClientApiKeyCreated,
 } from '../types/api';
 import { ApiError } from '../types/api';
 import { API_BASE } from '../config';
@@ -410,37 +414,17 @@ class ApiClient {
       });
     },
 
-    /**
-     * One page, server-side, of every team (not scoped to a tournament — see `getAll`'s doc
-     * comment for why a `tournamentId` can't be sent here).
-     */
+    /** One page, server-side (search/sortBy/sortOrder/tournamentId; max 100/page). */
     getPage: async (
-      params?: PaginationParams,
+      params?: { tournamentId?: string } & PaginationParams,
     ): Promise<ApiResponse<Paginated<Team>>> => {
       const qs = ApiClient.toQuery({ ...params });
       return this.request<Paginated<Team>>(`/teams${qs}`);
     },
 
-    /**
-     * Every team matching `params`, walking every page — see `fetchAllPages`.
-     *
-     * `tournamentId` is deliberately NOT sent to `GET /teams`: the backend's
-     * `TeamFilterDto.tournamentId` is validated with `@IsUUID()`, but every id in this app is a
-     * cuid (e.g. "cmuidecfq0001…"), so the backend 400s on it ("tournamentId must be a UUID") —
-     * confirmed live on the deployed API (see docs/BACKEND_GAPS.md). A tournament's teams are
-     * available fully formed (with rosters) from the tournament's own detail endpoint instead, so
-     * that's used as the workaround here.
-     */
-    getAll: async (params?: { tournamentId?: string }): Promise<ApiResponse<Team[]>> => {
-      if (params?.tournamentId) {
-        const res = await this.tournaments.getById(params.tournamentId);
-        if (!res.ok || !res.data) return { ok: res.ok, data: undefined, message: res.message, status: res.status };
-        const nested = (res.data as unknown as { teams?: Array<{ team?: Team }> }).teams ?? [];
-        const teams = nested.map((tt) => tt.team).filter((t): t is Team => !!t);
-        return { ok: true, data: teams, message: res.message, status: res.status };
-      }
-      return ApiClient.fetchAllPages((page, limit) => this.teams.getPage({ page, limit }));
-    },
+    /** Every team matching `params` (optionally one tournament's), walking every page — see `fetchAllPages`. */
+    getAll: async (params?: { tournamentId?: string }): Promise<ApiResponse<Team[]>> =>
+      ApiClient.fetchAllPages((page, limit) => this.teams.getPage({ ...params, page, limit })),
 
     getById: async (id: string): Promise<ApiResponse<Team>> => {
       return this.request<Team>(`/teams/${id}`);
@@ -625,6 +609,62 @@ class ApiClient {
     },
   };
 
+  /**
+   * Internal Administration: clients and their API keys (JWT). `listClients`/`createClient`/
+   * `assignUser` are SUPER_ADMIN only on the backend. Keys can be managed by ADMIN for clients they
+   * belong to, and by SUPER_ADMIN for any client. Keys are hard-deleted on revoke.
+   */
+  clients = {
+    /** One page of clients (search/sortBy/sortOrder; max 100/page). SUPER_ADMIN only. */
+    getPage: async (params?: PaginationParams): Promise<ApiResponse<Paginated<Client>>> => {
+      return this.request<Paginated<Client>>(`/clients${ApiClient.toQuery({ ...params })}`);
+    },
+
+    /** Every client, walking every page — see `fetchAllPages`. */
+    getAll: async (): Promise<ApiResponse<Client[]>> =>
+      ApiClient.fetchAllPages((page, limit) => this.clients.getPage({ page, limit })),
+
+    create: async (data: ClientCreate): Promise<ApiResponse<Client>> => {
+      return this.request<Client>('/clients', { method: 'POST', body: JSON.stringify(data) });
+    },
+
+    /** Gives an existing user access to a client's data. `userId` is any user's id. */
+    assignUser: async (clientId: string, userId: string): Promise<ApiResponse<unknown>> => {
+      return this.request(`/clients/${encodeURIComponent(clientId)}/users`, {
+        method: 'POST',
+        body: JSON.stringify({ userId }),
+      });
+    },
+
+    /** The signed-in CLIENT user's own client keys (`/clients/me/api-keys`, roles ADMIN and CLIENT). */
+    listMyApiKeys: async (): Promise<ApiResponse<ClientApiKey[]>> => {
+      return this.request<ClientApiKey[]>('/clients/me/api-keys');
+    },
+
+    createMyApiKey: async (name: string): Promise<ApiResponse<ClientApiKeyCreated>> => {
+      return this.request<ClientApiKeyCreated>('/clients/me/api-keys', {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      });
+    },
+
+    listApiKeys: async (clientId: string): Promise<ApiResponse<ClientApiKey[]>> => {
+      return this.request<ClientApiKey[]>(`/clients/${encodeURIComponent(clientId)}/api-keys`);
+    },
+
+    /** Creates a key. The raw `apiKey` in the response is shown once and never again. */
+    createApiKey: async (clientId: string, name: string): Promise<ApiResponse<ClientApiKeyCreated>> => {
+      return this.request<ClientApiKeyCreated>('/clients/api-keys', {
+        method: 'POST',
+        body: JSON.stringify({ clientId, name }),
+      });
+    },
+
+    revokeApiKey: async (id: string): Promise<ApiResponse<unknown>> => {
+      return this.request(`/clients/api-keys/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    },
+  };
+
   admin = {
     create: async (data: AdminCreateBody): Promise<ApiResponse<Admin>> => {
       return this.request<Admin>('/admin', {
@@ -684,8 +724,8 @@ class ApiClient {
     },
 
     /** Every statistician, walking every page — see `fetchAllPages`. */
-    getAll: async (): Promise<ApiResponse<Statistician[]>> =>
-      ApiClient.fetchAllPages((page, limit) => this.statistician.getPage({ page, limit })),
+    getAll: async (status?: 'ACTIVE' | 'INACTIVE'): Promise<ApiResponse<Statistician[]>> =>
+      ApiClient.fetchAllPages((page, limit) => this.statistician.getPage({ ...(status ? { status } : {}), page, limit })),
 
     getById: async (id: string): Promise<ApiResponse<Statistician>> => {
       return this.request<Statistician>(`/statistician/${id}`);

@@ -6,9 +6,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import Login from './pages/login/login';
 import ForgotPassword from './pages/login/ForgotPassword';
 import ChangePasswordRequired from './pages/login/ChangePasswordRequired';
+import ClientPortal from './pages/portal/ClientPortal';
 import Wrapper from './components/wrapper';
 import { useProfile, queryKeys } from './api/hooks';
-import { ROLE_STATISTICIAN } from './constants/roles';
+import { ROLE_CLIENT, ROLE_STATISTICIAN } from './constants/roles';
 import { StatisticianTeamColorsProvider } from './contexts/StatisticianTeamColorsContext';
 import { enterFullscreenBestEffort } from './utils/enterFullscreen';
 
@@ -54,6 +55,7 @@ const AppGate: React.FC = () => {
     isPaused: profile.fetchStatus === 'paused',
     isError: profile.isError,
     hasData: profile.data !== undefined,
+    forcePasswordChange: (profile.data as { forcePasswordChange?: boolean } | undefined)?.forcePasswordChange === true,
     error: profile.error,
   });
 
@@ -87,6 +89,14 @@ const AppGate: React.FC = () => {
     return (
       <Suspense fallback={<LoadingScreen />}>
         <StatisticianRoutes />
+      </Suspense>
+    );
+  }
+
+  if (rawRole === ROLE_CLIENT) {
+    return (
+      <Suspense fallback={<LoadingScreen />}>
+        <ClientPortal />
       </Suspense>
     );
   }

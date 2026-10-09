@@ -1,311 +1,134 @@
-import React, { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { FiFilter, FiChevronDown, FiSearch } from 'react-icons/fi';
-import { useMatches, useTeams } from '../../api/hooks';
+import React from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useMatchesPage, useTournaments } from '../../api/hooks';
+import type { Match } from '../../types/api';
+import { PageHeader, EmptyState, ErrorState, NoResultsState } from '../../components/admin/page-states';
+import Pagination from '../../components/ui/Pagination';
+import { MatchCard, MATCH_GRID } from '../../components/matches/MatchCard';
+import { cn } from '../../lib/utils';
+import { normalizeName } from '../../lib/text';
+import { groupByDay } from './results-format';
 
-interface MatchResult {
-  id: string;
-  teamA: string;
-  teamAScore: number;
-  teamAColor: string;
-  teamB: string;
-  teamBScore: number;
-  teamBColor: string;
-  venue: string;
-  datetime: string;
-  date: string;
-}
+const PAGE_SIZE = 12;
 
+const selectClass =
+  'h-9 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-court-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white';
+
+/**
+ * Finished games, newest first, one server page at a time, under a heading for each day. The tournament
+ * filter and the page live in the URL.
+ *
+ * There is no search box: the backend accepts `search` on matches and ignores it (Gap 33), and the page
+ * is no longer the whole list fetched at once, so filtering the twelve on screen would be wrong for the
+ * rest. Scores are `homeScore` and `awayScore`; this page used to read `totalHome` and `totalAway`,
+ * which the backend never sends.
+ */
 const Results: React.FC = () => {
-  const navigate = useNavigate();
-  const [selectedDate, setSelectedDate] = useState('All');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
+  const [params, setParams] = useSearchParams();
+  const tournamentId = params.get('tournament') ?? '';
+  const pageParam = Number(params.get('page'));
+  const page = Number.isInteger(pageParam) && pageParam >= 1 ? pageParam : 1;
 
-  const matchesQuery = useMatches(undefined, 'COMPLETED');
-  const teamsQuery = useTeams();
-  const teamMap = useMemo(() => {
-    const map = new Map<string, { name: string; color: string }>();
-    (teamsQuery.data ?? []).forEach((team) =>
-      map.set(team.id, { name: team.name, color: team.color ?? '' }),
-    );
-    return map;
-  }, [teamsQuery.data]);
-  const results: MatchResult[] = useMemo(() => {
-    return (matchesQuery.data ?? []).map((match) => {
-      const dateObj = new Date(match.scheduledDate);
-      return {
-        id: match.id,
-        teamA: teamMap.get(match.homeTeamId)?.name ?? 'TEAM A',
-        teamAScore: match.totalHome ?? 0,
-        teamAColor: teamMap.get(match.homeTeamId)?.color ? 'yellow' : 'yellow',
-        teamB: teamMap.get(match.awayTeamId)?.name ?? 'TEAM B',
-        teamBScore: match.totalAway ?? 0,
-        teamBColor: teamMap.get(match.awayTeamId)?.color ? 'blue' : 'blue',
-        venue: match.venue ?? 'Match Venue',
-        datetime: dateObj.toLocaleString(),
-        date: dateObj.toLocaleDateString(),
-      };
-    });
-  }, [matchesQuery.data, teamMap]);
-
-  // Get unique dates for the dropdown and sort them (most recent first)
-  const uniqueDatesSet = Array.from(new Set(results.map(r => r.date)));
-  const sortedDates = uniqueDatesSet.sort((a, b) => {
-    // Parse dates for comparison (assuming format: "DD Month YYYY")
-    const dateA = new Date(a);
-    const dateB = new Date(b);
-    return dateB.getTime() - dateA.getTime(); // Descending order (newest first)
+  const query = useMatchesPage({
+    status: 'COMPLETED',
+    tournamentId: tournamentId || undefined,
+    sortBy: 'scheduledDate',
+    sortOrder: 'desc',
+    page,
+    limit: PAGE_SIZE,
   });
-  const uniqueDates = ['All', ...sortedDates];
+  const tournaments = useTournaments();
 
-  // Filter results by selected date and search query
-  const filteredResults = useMemo(() => {
-    let filtered = results;
-
-    // Filter by date
-    if (selectedDate !== 'All') {
-      filtered = filtered.filter(result => result.date === selectedDate);
+  const setParam = (changes: Record<string, string | null>) => {
+    const p = new URLSearchParams(params);
+    for (const [k, v] of Object.entries(changes)) {
+      if (v === null || v === '') p.delete(k);
+      else p.set(k, v);
     }
+    setParams(p, { replace: true });
+  };
 
-    // Filter by search query (search in team names, venue, or datetime)
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim();
-      filtered = filtered.filter(result =>
-        result.teamA.toLowerCase().includes(query) ||
-        result.teamB.toLowerCase().includes(query) ||
-        result.venue.toLowerCase().includes(query) ||
-        result.datetime.toLowerCase().includes(query)
-      );
-    }
-
-    return filtered;
-  }, [selectedDate, searchQuery, results]);
-
-  // Group filtered results by date and sort by date (most recent first)
-  const groupedResults = filteredResults.reduce((acc, result) => {
-    if (!acc[result.date]) {
-      acc[result.date] = [];
-    }
-    acc[result.date].push(result);
-    return acc;
-  }, {} as Record<string, MatchResult[]>);
-
-  // Sort grouped results by date (most recent first)
-  const sortedGroupedResults = Object.entries(groupedResults).sort(([dateA], [dateB]) => {
-    const parsedDateA = new Date(dateA);
-    const parsedDateB = new Date(dateB);
-    return parsedDateB.getTime() - parsedDateA.getTime();
-  });
-
-  // Flatten grouped results for pagination
-  const allMatches = sortedGroupedResults.flatMap(([date, matches]) =>
-    matches.map(match => ({ ...match, groupDate: date }))
-  );
-
-  // Calculate pagination
-  const totalPages = Math.ceil(allMatches.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedMatches = allMatches.slice(startIndex, endIndex);
-
-  // Group paginated matches by date for display
-  const paginatedGroupedResults = paginatedMatches.reduce((acc, match) => {
-    if (!acc[match.groupDate]) {
-      acc[match.groupDate] = [];
-    }
-    acc[match.groupDate].push(match);
-    return acc;
-  }, {} as Record<string, (MatchResult & { groupDate: string })[]>);
-
-  const sortedPaginatedResults = Object.entries(paginatedGroupedResults).sort(([dateA], [dateB]) => {
-    const parsedDateA = new Date(dateA);
-    const parsedDateB = new Date(dateB);
-    return parsedDateB.getTime() - parsedDateA.getTime();
-  });
-
-  // Reset to page 1 when filters change
-  React.useEffect(() => {
-    setCurrentPage(1);
-  }, [selectedDate, searchQuery]);
+  const rows: Match[] = query.data?.items ?? [];
+  const meta = query.data?.meta;
+  const groups = groupByDay(rows);
+  const showEmpty = !query.isPending && !query.isError && rows.length === 0;
 
   return (
-    <div className="min-h-screen bg-white p-6">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-semibold text-gray-800 mb-6">Results</h1>
-          
-          {/* Search and Filter Bar */}
-          <div className="flex items-center gap-4">
-            {/* Search Bar */}
-            <div className="flex-1 relative">
-              <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-              <input
-                type="text"
-                placeholder="Search by team, venue, or date"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader title="Results" description="Games that have finished, newest first. Open one for the box score and shot chart." />
 
-            {/* Date Sort Dropdown */}
-            <div className="relative">
-              <select
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="appearance-none pl-10 pr-8 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white cursor-pointer"
-              >
-                {uniqueDates.map((date) => (
-                  <option key={date} value={date}>
-                    {date}
-                  </option>
-                ))}
-              </select>
-              <FiFilter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
-              <FiChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
-            </div>
-          </div>
-        </div>
-
-        {/* Results List */}
-        <div className="space-y-8 mb-8">
-          {(matchesQuery.isPending || teamsQuery.isPending) && (
-            <div className="text-sm text-gray-600">Loading completed games...</div>
-          )}
-          {(matchesQuery.error instanceof Error || teamsQuery.error instanceof Error) && (
-            <div className="text-sm text-red-600">
-              {matchesQuery.error instanceof Error ? matchesQuery.error.message : teamsQuery.error instanceof Error ? teamsQuery.error.message : 'Failed to load results'}
-            </div>
-          )}
-          {sortedPaginatedResults.length > 0 ? (
-            sortedPaginatedResults.map(([date, matches], groupIndex) => (
-              <div key={groupIndex}>
-                {/* Date Header */}
-                <h2 className="text-sm font-semibold text-gray-800 mb-4">{date}</h2>
-                
-                {/* Matches for this date */}
-                <div className="space-y-4">
-                  {matches.map((match) => (
-                    <div
-                      key={match.id}
-                      className="bg-gray-50 rounded-lg p-5 border border-gray-200 cursor-pointer hover:shadow-md transition-shadow"
-                      onClick={() => navigate(`/tournaments/1/match/${match.id}`)}
-                    >
-                      <div className="flex justify-between items-center">
-                        {/* Left side - Teams and Scores */}
-                        <div className="space-y-3">
-                          {/* Team A */}
-                          <div className="flex items-center gap-3">
-                            <div className="flex items-center justify-center w-10 h-10 bg-yellow-100 rounded">
-                              <img
-                                src={match.teamAColor === 'yellow' ? '/ball1.png' : '/ball2.png'}
-                                alt="Basketball"
-                                className="w-7 h-7 object-contain"
-                              />
-                            </div>
-                            <span className="text-sm font-medium text-gray-700 w-20">{match.teamA}</span>
-                            <span className="text-sm font-semibold text-gray-800">- {match.teamAScore}</span>
-                          </div>
-
-                          {/* Team B */}
-                          <div className="flex items-center gap-3">
-                            <div className="flex items-center justify-center w-10 h-10 bg-blue-100 rounded">
-                              <img
-                                src={match.teamBColor === 'yellow' ? '/ball1.png' : '/ball2.png'}
-                                alt="Basketball"
-                                className="w-7 h-7 object-contain"
-                              />
-                            </div>
-                            <span className="text-sm font-medium text-gray-700 w-20">{match.teamB}</span>
-                            <span className="text-sm font-semibold text-gray-800">- {match.teamBScore}</span>
-                          </div>
-                        </div>
-
-                        {/* Right side - Venue and DateTime */}
-                        <div className="text-right text-xs text-gray-500">
-                          <p>{match.venue}</p>
-                          <p>{match.datetime}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))
-          ) : (
-            <div className="text-center py-12">
-              <p className="text-gray-500 text-lg">No results found</p>
-              <p className="text-gray-400 text-sm mt-2">Try adjusting your search or filter criteria</p>
-            </div>
-          )}
-        </div>
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex justify-center items-center gap-2 mt-8">
-            <button
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                currentPage === 1
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              Previous
-            </button>
-            
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-              // Show first page, last page, current page, and pages around current
-              const showPage = 
-                page === 1 ||
-                page === totalPages ||
-                (page >= currentPage - 1 && page <= currentPage + 1);
-
-              if (!showPage) {
-                // Show ellipsis
-                if (page === currentPage - 2 || page === currentPage + 2) {
-                  return (
-                    <span key={page} className="px-2 text-gray-400">
-                      ...
-                    </span>
-                  );
-                }
-                return null;
-              }
-
-              return (
-                <button
-                  key={page}
-                  onClick={() => setCurrentPage(page)}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    currentPage === page
-                      ? 'bg-blue-900 text-white'
-                      : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  {page}
-                </button>
-              );
-            })}
-
-            <button
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                currentPage === totalPages
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              Next
-            </button>
-          </div>
-        )}
+      <div className="flex flex-wrap items-center gap-3">
+        <label htmlFor="results-tournament" className="sr-only">Filter by tournament</label>
+        <select
+          id="results-tournament"
+          className={selectClass}
+          value={tournamentId}
+          onChange={(e) => setParam({ tournament: e.target.value || null, page: null })}
+        >
+          <option value="">All tournaments</option>
+          {(tournaments.data ?? []).map((t) => (
+            <option key={t.id} value={t.id}>{normalizeName(t.name)}</option>
+          ))}
+        </select>
       </div>
+
+      {query.isPending && (
+        <div role="status" aria-label="Loading results" className={MATCH_GRID}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="h-44 animate-pulse rounded-xl bg-gray-200 dark:bg-gray-800" />
+          ))}
+        </div>
+      )}
+
+      {query.isError && <ErrorState message={(query.error as Error).message} onRetry={() => void query.refetch()} />}
+
+      {showEmpty && tournamentId && <NoResultsState onClear={() => setParam({ tournament: null, page: null })} />}
+      {showEmpty && !tournamentId && (
+        <EmptyState title="No finished games yet" description="A game shows up here once the scorer has finished it." />
+      )}
+
+      {!query.isPending && !query.isError && rows.length > 0 && (
+        <>
+          <div className={cn('flex flex-col gap-6', query.isFetching && 'opacity-70 transition-opacity')}>
+            {groups.map((g) => (
+              <section key={g.day} aria-labelledby={`day-${g.day}`} className="flex flex-col gap-3">
+                <h2 id={`day-${g.day}`} className="text-sm font-semibold text-gray-700 dark:text-gray-300">{g.label}</h2>
+                <ul className={MATCH_GRID} aria-label={g.label}>
+                  {g.matches.map((m) => (
+                    <li key={m.id} className="min-w-0">
+                      <MatchCard
+                        match={{
+                          id: m.id,
+                          home: { name: m.homeTeam?.name ?? 'Home', code: m.homeTeam?.code, logo: m.homeTeam?.logo, color: m.homeTeam?.color },
+                          away: { name: m.awayTeam?.name ?? 'Away', code: m.awayTeam?.code, logo: m.awayTeam?.logo, color: m.awayTeam?.color },
+                          homeScore: m.homeScore,
+                          awayScore: m.awayScore,
+                          status: m.status,
+                          scheduledDate: m.scheduledDate,
+                          venue: m.venue,
+                          eyebrow: m.tournament?.name,
+                        }}
+                        // The match carries its own tournament; the old page sent every game to tournament 1.
+                        href={`/tournaments/${m.tournamentId}/match/${m.id}`}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+
+          {meta && meta.pageCount > 1 && (
+            <Pagination
+              currentPage={meta.page}
+              totalPages={meta.pageCount}
+              totalItems={meta.itemCount}
+              pageSize={PAGE_SIZE}
+              onPageChange={(p) => setParam({ page: p <= 1 ? null : String(p) })}
+            />
+          )}
+        </>
+      )}
     </div>
   );
 };

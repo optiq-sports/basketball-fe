@@ -1,467 +1,273 @@
-import React, { useState, useMemo } from 'react';
-import { FiSearch, FiEdit2, FiTrash, FiCopy } from 'react-icons/fi';
-import { MdCancel } from 'react-icons/md';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import type { ColumnDef } from '@tanstack/react-table';
-import {
-  useAdmins,
-  useCreateAdmin,
-  useUpdateAdmin,
-  useDeleteAdmin,
-  useProfile,
-} from '../../api/hooks';
-import type { Admin as ApiAdmin } from '../../types/api';
-import ConfirmDialog from '../../components/ui/ConfirmDialog';
-import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { useAdmins, useCreateAdmin, useDeleteAdmin, useProfile, useUpdateAdmin } from '../../api/hooks';
 import { useToast } from '../../hooks/useToast';
-import { useDebouncedValue } from '../../hooks/useDebouncedValue';
+import type { Admin, AdminCreateBody, AdminUpdateBody } from '../../types/api';
+import { PageHeader } from '../../components/admin/page-states';
+import { Button } from '../../components/ui/primitives/button';
+import { Badge } from '../../components/ui/primitives/badge';
 import DataTable from '../../components/ui/DataTable';
-import StatusBadge from '../../components/ui/StatusBadge';
+import AdminFormDialog from '../../components/admins/AdminFormDialog';
+import DeactivateAdminDialog, { type DeactivateAdminTarget } from '../../components/admins/DeactivateAdminDialog';
+import { ROLES, roleLabel } from '../../components/admins/admin-form';
+import { isSelf, lockReason, type Me } from '../../components/admins/admin-rules';
 
-const ROLE_OPTIONS = [
-  { value: 'SUPER_ADMIN', label: 'Super Administrator' },
-  { value: 'ADMIN', label: 'Administrator' },
-  { value: 'STATISTICIAN', label: 'Statistician' },
-] as const;
+const selectClass =
+  'h-9 rounded-md border border-gray-300 bg-white px-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-court-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white';
 
-const STATUS_OPTIONS = [
-  { value: 'ACTIVE', label: 'Active' },
-  { value: 'INACTIVE', label: 'Inactive' },
-] as const;
+const labelOf = (a: Admin) => a.name?.trim() || a.email;
 
-interface UserDisplay {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-  status: string;
-}
-
-function formatRole(role: string): string {
-  return ROLE_OPTIONS.find((r) => r.value === role)?.label ?? role;
-}
-
-function generatePassword(length = 12): string {
-  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-  const lower = 'abcdefghjkmnpqrstuvwxyz';
-  const digits = '23456789';
-  const all = upper + lower + digits;
-  let result = '';
-  result += upper[Math.floor(Math.random() * upper.length)];
-  result += lower[Math.floor(Math.random() * lower.length)];
-  result += digits[Math.floor(Math.random() * digits.length)];
-  for (let i = 3; i < length; i++) {
-    result += all[Math.floor(Math.random() * all.length)];
-  }
-  return result.split('').sort(() => Math.random() - 0.5).join('');
-}
-
+/**
+ * Admins and super admins, in a table: there are few of them, they have no photos, and the point is
+ * comparing role and status across rows. Only a SUPER_ADMIN reaches this page (`UsersRouteGuard`, and
+ * the whole `/admin` controller is SUPER_ADMIN-only).
+ *
+ * Role, status and search live in the URL and filter the full list in the browser — the backend takes
+ * `search` and ignores it (Gap 39), and the list is short enough that nothing is lost.
+ *
+ * "Deactivate", not "Delete": `DELETE /admin/:id` only sets the status to INACTIVE. The backend also
+ * lets you deactivate or demote yourself, or the last super admin, which would lock everyone out of
+ * this page, so `admin-rules` blocks both here (Gap 41).
+ */
 const Users: React.FC = () => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [roleFilter, setRoleFilter] = useState<string>('All');
-  const [statusFilter, setStatusFilter] = useState<string>('All');
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<UserDisplay | null>(null);
-  const [passwordCopied, setPasswordCopied] = useState(false);
-  const debouncedSearchQuery = useDebouncedValue(searchQuery, 250);
+  const [params, setParams] = useSearchParams();
+  const toast = useToast();
+
+  const role = ROLES.find((r) => r.value === params.get('role'))?.value ?? '';
+  const status = params.get('status') === 'active' ? 'ACTIVE' : params.get('status') === 'inactive' ? 'INACTIVE' : '';
+  const q = params.get('q') ?? '';
+
+  const setParam = (changes: Record<string, string | null>) => {
+    const p = new URLSearchParams(params);
+    for (const [k, v] of Object.entries(changes)) {
+      if (v === null || v === '') p.delete(k);
+      else p.set(k, v);
+    }
+    setParams(p, { replace: true });
+  };
+
+  const [draft, setDraft] = useState(q);
+  useEffect(() => setDraft(q), [q]);
+  useEffect(() => {
+    if (draft === q) return;
+    const id = window.setTimeout(() => setParam({ q: draft.trim() || null }), 300);
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft]);
 
   const adminsQuery = useAdmins();
   const profileQuery = useProfile();
   const createAdmin = useCreateAdmin();
   const updateAdmin = useUpdateAdmin();
-  const deleteAdmin = useDeleteAdmin();
-  const { confirm, dialogProps } = useConfirmDialog();
-  const toast = useToast();
+  const deactivate = useDeleteAdmin();
 
-  const profileData = profileQuery.data as { email?: string; role?: string } | undefined;
+  const me: Me | undefined = profileQuery.data ? { id: profileQuery.data.id, email: profileQuery.data.email } : undefined;
+  const all: Admin[] = useMemo(() => adminsQuery.data ?? [], [adminsQuery.data]);
 
-  const users = useMemo(() => {
-    return (adminsQuery.data ?? []).map((a: ApiAdmin): UserDisplay => ({
-      id: a.id,
-      email: a.email ?? '',
-      name: (a.name as string) ?? '—',
-      role: (a.role as string) ?? '—',
-      status: (a.status as string) ?? 'ACTIVE',
-    }));
-  }, [adminsQuery.data]);
+  const rows = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return all.filter(
+      (a) =>
+        (!role || a.role === role) &&
+        (!status || (a.status ?? 'ACTIVE') === status) &&
+        (!needle || (a.name ?? '').toLowerCase().includes(needle) || a.email.toLowerCase().includes(needle)),
+    );
+  }, [all, role, status, q]);
 
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-    name: '',
-    role: 'ADMIN' as 'SUPER_ADMIN' | 'ADMIN' | 'STATISTICIAN',
-    status: 'ACTIVE' as 'ACTIVE' | 'INACTIVE',
-  });
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<Admin | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [target, setTarget] = useState<DeactivateAdminTarget | null>(null);
+  const [reactivatingId, setReactivatingId] = useState<string | null>(null);
 
-  const filteredUsers = useMemo(() => {
-    let filtered = users;
-    if (roleFilter !== 'All') {
-      filtered = filtered.filter((u) => u.role === roleFilter);
-    }
-    if (statusFilter !== 'All') {
-      filtered = filtered.filter((u) => u.status === statusFilter);
-    }
-    if (debouncedSearchQuery.trim()) {
-      const q = debouncedSearchQuery.toLowerCase().trim();
-      filtered = filtered.filter(
-        (u) =>
-          u.email.toLowerCase().includes(q) ||
-          u.name.toLowerCase().includes(q) ||
-          u.role.toLowerCase().includes(q)
-      );
-    }
-    return filtered;
-  }, [debouncedSearchQuery, roleFilter, statusFilter, users]);
+  const openCreate = () => { setEditing(null); setFormError(null); setFormOpen(true); };
+  const openEdit = (a: Admin) => { setEditing(a); setFormError(null); setFormOpen(true); };
+  const closeForm = () => { setFormOpen(false); setEditing(null); };
 
-  const handleAddUser = () => {
-    setEditingUser(null);
-    const generatedPassword = generatePassword();
-    setFormData({
-      email: '',
-      password: generatedPassword,
-      name: '',
-      role: 'ADMIN',
-      status: 'ACTIVE',
-    });
-    setIsModalOpen(true);
-  };
-
-  const handleEditUser = (u: UserDisplay) => {
-    setEditingUser(u);
-    const apiAdmin = (adminsQuery.data ?? []).find((x) => x.id === u.id) as ApiAdmin | undefined;
-    setFormData({
-      email: u.email,
-      password: '',
-      name: u.name === '—' ? '' : u.name,
-      role: (apiAdmin?.role as 'SUPER_ADMIN' | 'ADMIN' | 'STATISTICIAN') ?? 'ADMIN',
-      status: (apiAdmin?.status as 'ACTIVE' | 'INACTIVE') ?? 'ACTIVE',
-    });
-    setIsModalOpen(true);
-  };
-
-  const handleDeleteUser = async (u: UserDisplay) => {
-    if (u.email === profileData?.email) {
-      toast.error('You cannot delete your own account.');
-      return;
-    }
-    const ok = await confirm({
-      description: `Delete user ${u.email}? This cannot be undone.`,
-      confirmLabel: 'Delete',
-      tone: 'danger',
-    });
-    if (ok) {
-      deleteAdmin.mutate(u.id, { onError: (err) => toast.error(err.message) });
-    }
-  };
-
-  const handleSaveUser = () => {
-    if (!formData.email?.trim()) {
-      toast.error('Email is required');
-      return;
-    }
-    if (editingUser) {
-      const updateData: import('../../types/api').AdminUpdateBody = {
-        name: formData.name || undefined,
-        status: formData.status,
-        role: formData.role,
-      };
-      if (formData.password?.trim()) {
-        updateData.password = formData.password.trim();
-      }
-      updateAdmin.mutate(
-        {
-          id: editingUser.id,
-          data: updateData,
-        },
-        {
-          onSuccess: () => {
-            setIsModalOpen(false);
-            setEditingUser(null);
-            resetForm();
-          },
-          onError: (e) => toast.error(e.message),
-        }
-      );
-    } else {
-      if (!formData.password?.trim()) {
-        toast.error('Password is required for new user');
-        return;
-      }
-      createAdmin.mutate(
-        {
-          email: formData.email.trim(),
-          password: formData.password,
-          name: formData.name || undefined,
-          role: formData.role,
-          status: formData.status,
-        },
-        {
-          onSuccess: () => {
-            setIsModalOpen(false);
-            resetForm();
-          },
-          onError: (e) => toast.error(e.message),
-        }
-      );
-    }
-  };
-
-  const resetForm = () => {
-    setPasswordCopied(false);
-    setFormData({
-      email: '',
-      password: '',
-      name: '',
-      role: 'ADMIN',
-      status: 'ACTIVE',
+  const create = (body: AdminCreateBody) => {
+    setFormError(null);
+    createAdmin.mutate(body, {
+      onSuccess: (created) => {
+        toast.success(
+          body.password ? `${labelOf(created)} added.` : `${labelOf(created)} added. The server was asked to email them a temporary password. If it doesn’t arrive, set one from Edit.`,
+        );
+        closeForm();
+      },
+      onError: (err) => setFormError(err.message),
     });
   };
 
-  const columns = useMemo<ColumnDef<UserDisplay>[]>(
-    () => [
-      { accessorKey: 'email', header: 'Email' },
+  const update = (body: AdminUpdateBody) => {
+    if (!editing) return;
+    setFormError(null);
+    if (Object.keys(body).length === 0) { closeForm(); return; }
+    const who = editing;
+    updateAdmin.mutate(
+      { id: who.id, data: body },
       {
-        accessorKey: 'name',
+        onSuccess: () => { toast.success(`${labelOf(who)} saved.`); closeForm(); },
+        onError: (err) => setFormError(err.message),
+      },
+    );
+  };
+
+  const confirmDeactivate = () => {
+    if (!target) return;
+    const t = target;
+    deactivate.mutate(t.id, {
+      onSuccess: () => { toast.success(`${t.label} deactivated.`); setTarget(null); },
+      onError: (err) => { toast.error(`Couldn’t deactivate ${t.label}: ${err.message}`); setTarget(null); },
+    });
+  };
+
+  const reactivate = (a: Admin) => {
+    setReactivatingId(a.id);
+    updateAdmin.mutate(
+      { id: a.id, data: { status: 'ACTIVE' } },
+      {
+        onSuccess: () => toast.success(`${labelOf(a)} reactivated.`),
+        onError: (err) => toast.error(`Couldn’t reactivate ${labelOf(a)}: ${err.message}`),
+        onSettled: () => setReactivatingId(null),
+      },
+    );
+  };
+
+  const columns = useMemo<ColumnDef<Admin>[]>(
+    () => [
+      {
+        id: 'name',
         header: 'Name',
-        cell: ({ row }) => <span className="font-medium text-gray-900 dark:text-white">{row.original.name}</span>,
+        accessorFn: (a) => labelOf(a).toLowerCase(),
+        cell: ({ row }) => (
+          <div className="min-w-0">
+            <p className="truncate font-medium text-gray-900 dark:text-white">
+              {row.original.name?.trim() || '—'}
+              {isSelf(row.original, me) && <Badge variant="court" className="ml-2 align-middle">You</Badge>}
+            </p>
+            <p className="truncate text-sm text-gray-500">{row.original.email}</p>
+          </div>
+        ),
       },
       {
         accessorKey: 'role',
         header: 'Role',
-        cell: ({ row }) => formatRole(row.original.role),
+        cell: ({ row }) => (
+          <Badge variant={row.original.role === 'SUPER_ADMIN' ? 'court' : 'neutral'}>{roleLabel(row.original.role)}</Badge>
+        ),
       },
       {
         accessorKey: 'status',
         header: 'Status',
-        cell: ({ row }) => (
-          <StatusBadge
-            label={row.original.status === 'ACTIVE' ? 'Active' : 'Inactive'}
-            tone={row.original.status === 'ACTIVE' ? 'success' : 'neutral'}
-          />
-        ),
+        cell: ({ row }) =>
+          row.original.status === 'INACTIVE' ? <Badge variant="warning">Inactive</Badge> : <Badge variant="success">Active</Badge>,
+      },
+      {
+        accessorKey: 'createdAt',
+        header: 'Added',
+        cell: ({ row }) =>
+          row.original.createdAt ? new Date(row.original.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—',
       },
       {
         id: 'actions',
         header: 'Actions',
         enableSorting: false,
         cell: ({ row }) => {
-          const user = row.original;
-          const isSelf = user.email === profileData?.email;
+          const a = row.original;
+          const locked = lockReason(a, all, me);
+          const label = labelOf(a);
           return (
-            <div className="flex justify-center gap-2">
-              <button
-                onClick={() => handleEditUser(user)}
-                className="p-2 text-brand-600 hover:bg-brand-50 rounded-lg dark:text-brand-400 dark:hover:bg-brand-500/10"
-                title="Edit"
-              >
-                <FiEdit2 size={18} />
-              </button>
-              <button
-                onClick={() => handleDeleteUser(user)}
-                className="p-2 text-error-600 hover:bg-error-50 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed dark:text-error-500 dark:hover:bg-error-500/10"
-                title="Delete"
-                disabled={isSelf}
-              >
-                <FiTrash size={18} />
-              </button>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" size="sm" aria-label={`Edit ${label}`} onClick={() => openEdit(a)}>Edit</Button>
+              {a.status === 'INACTIVE' ? (
+                <Button variant="secondary" size="sm" aria-label={`Reactivate ${label}`} onClick={() => reactivate(a)} disabled={reactivatingId === a.id}>
+                  Reactivate
+                </Button>
+              ) : (
+                <Button
+                  variant="destructive-ghost"
+                  size="sm"
+                  aria-label={`Deactivate ${label}`}
+                  title={locked ?? undefined}
+                  disabled={!!locked}
+                  onClick={() => setTarget({ id: a.id, label })}
+                >
+                  Deactivate
+                </Button>
+              )}
             </div>
           );
         },
       },
     ],
+    // openEdit/reactivate only read stable setters; the data they depend on is listed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [profileData?.email],
+    [all, me?.id, me?.email, reactivatingId],
   );
 
+  const hasFilter = !!(role || status || q);
+
   return (
-    <div className="min-h-screen bg-white p-8 dark:bg-gray-950">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-4xl font-bold text-gray-900 dark:text-white">Users</h1>
-        {profileData && (
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Logged in as: <strong>{profileData.email}</strong> ({profileData.role})
-          </p>
-        )}
-      </div>
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Admins"
+        description="Who can manage the platform. Only super administrators can see this page."
+        actions={<Button onClick={openCreate}>Add admin</Button>}
+      />
 
-      {adminsQuery.error && (
-        <div className="mb-6 px-4 py-3 rounded-lg bg-error-50 border border-error-100 text-error-700 text-sm dark:bg-error-500/10 dark:border-error-500/30 dark:text-error-500">
-          {adminsQuery.error.message}
-        </div>
-      )}
-
-      <div className="flex flex-wrap items-center gap-3 mb-8">
-        <button
-          onClick={handleAddUser}
-          className="px-6 py-3 bg-brand-500 text-white rounded-lg font-medium hover:bg-brand-600 transition-colors"
-        >
-          Add User
-        </button>
-        <div className="relative" style={{ width: '220px', minWidth: '180px' }}>
-          <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500" size={20} />
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="w-full md:max-w-sm">
+          <label htmlFor="admin-search" className="sr-only">Search admins</label>
           <input
-            type="text"
-            placeholder="Search by email or name"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500"
+            id="admin-search"
+            type="search"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Search by name or email"
+            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-court-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
           />
         </div>
-        <select
-          value={roleFilter}
-          onChange={(e) => setRoleFilter(e.target.value)}
-          className="px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white text-gray-900 min-w-[140px] dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-        >
-          <option value="All">All Roles</option>
-          {ROLE_OPTIONS.map((r) => (
-            <option key={r.value} value={r.value}>
-              {r.label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white text-gray-900 min-w-[120px] dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-        >
-          <option value="All">All Status</option>
-          {STATUS_OPTIONS.map((s) => (
-            <option key={s.value} value={s.value}>
-              {s.label}
-            </option>
-          ))}
-        </select>
+        <div>
+          <label htmlFor="admin-role" className="sr-only">Filter by role</label>
+          <select id="admin-role" className={selectClass} value={role} onChange={(e) => setParam({ role: e.target.value || null })}>
+            <option value="">All roles</option>
+            {ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="admin-status" className="sr-only">Filter by status</label>
+          <select id="admin-status" className={selectClass} value={status.toLowerCase()} onChange={(e) => setParam({ status: e.target.value || null })}>
+            <option value="">Any status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </div>
+        {hasFilter && (
+          <Button variant="ghost" size="sm" onClick={() => { setDraft(''); setParams(new URLSearchParams(), { replace: true }); }}>Clear filters</Button>
+        )}
       </div>
 
       <DataTable
         columns={columns}
-        data={filteredUsers}
+        data={rows}
         isLoading={adminsQuery.isPending}
-        error={adminsQuery.error ? (adminsQuery.error as Error).message || 'Failed to load users.' : null}
-        onRetry={() => adminsQuery.refetch()}
-        emptyMessage="No users found. Try adjusting your search or filters."
+        error={adminsQuery.isError ? (adminsQuery.error as Error).message : null}
+        onRetry={() => void adminsQuery.refetch()}
+        emptyMessage={hasFilter ? 'No admins match these filters.' : 'No admins yet.'}
       />
 
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg w-full max-w-md shadow-lg dark:bg-gray-900">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-800">
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                {editingUser ? 'Edit User' : 'Add User'}
-              </h2>
-              <button onClick={() => { setIsModalOpen(false); setEditingUser(null); resetForm(); }} className="text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white">
-                <MdCancel size={20} />
-              </button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">Email *</label>
-                <input
-                  type="email"
-                  placeholder="user@example.com"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  disabled={!!editingUser}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:bg-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:disabled:bg-white/5"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
-                  {editingUser ? 'New password (leave blank to keep current)' : 'Password *'}
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="password"
-                    placeholder={editingUser ? 'Leave blank to keep current' : '••••••••'}
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="flex-1 px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, password: generatePassword() })}
-                    className="px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 hover:bg-gray-100 text-sm font-medium whitespace-nowrap dark:border-gray-700 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10"
-                    title="Generate password"
-                  >
-                    Generate
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (formData.password) {
-                        navigator.clipboard.writeText(formData.password);
-                        setPasswordCopied(true);
-                        window.setTimeout(() => setPasswordCopied(false), 2000);
-                      }
-                    }}
-                    disabled={!formData.password}
-                    className="p-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed dark:border-gray-700 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10"
-                    title="Copy password"
-                  >
-                    <FiCopy size={18} />
-                  </button>
-                </div>
-                {passwordCopied && (
-                  <p className="text-xs text-success-600 dark:text-success-500 mt-1">Password copied to clipboard</p>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">Name</label>
-                <input
-                  type="text"
-                  placeholder="Full name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">Role</label>
-                <select
-                  value={formData.role}
-                  onChange={(e) => setFormData({ ...formData, role: e.target.value as typeof formData.role })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                >
-                  {ROLE_OPTIONS.map((r) => (
-                    <option key={r.value} value={r.value}>
-                      {r.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">Status</label>
-                <select
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value as 'ACTIVE' | 'INACTIVE' })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                >
-                  {STATUS_OPTIONS.map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-800">
-              <button
-                onClick={() => { setIsModalOpen(false); setEditingUser(null); resetForm(); }}
-                className="px-5 py-2.5 text-gray-700 bg-white border border-gray-300 rounded-lg font-medium hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-300 dark:border-gray-700 dark:hover:bg-white/5"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveUser}
-                disabled={createAdmin.isPending || updateAdmin.isPending}
-                className="px-5 py-2.5 bg-brand-500 text-white rounded-lg font-medium hover:bg-brand-600 disabled:opacity-70"
-              >
-                {createAdmin.isPending || updateAdmin.isPending ? 'Saving...' : editingUser ? 'Update' : 'Create'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      <ConfirmDialog {...dialogProps} />
+      <AdminFormDialog
+        open={formOpen}
+        onClose={closeForm}
+        initial={editing}
+        lockedReason={editing ? lockReason(editing, all, me) : null}
+        isSaving={createAdmin.isPending || updateAdmin.isPending}
+        serverError={formError}
+        onCreate={create}
+        onUpdate={update}
+      />
+
+      <DeactivateAdminDialog target={target} isWorking={deactivate.isPending} onCancel={() => setTarget(null)} onConfirm={confirmDeactivate} />
     </div>
   );
 };
