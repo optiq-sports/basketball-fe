@@ -1,6 +1,6 @@
 import React from 'react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 type Q<T> = { data?: T; isPending: boolean; isError: boolean; isFetching: boolean; error: unknown; refetch: () => void };
@@ -110,6 +110,46 @@ describe('TeamDetails: roster and header', () => {
   });
 });
 
+describe('TeamDetails: roster as cards or a table (Fix 126)', () => {
+  it('shows the roster as photo cards by default — the pre-redesign experience, restored', () => {
+    renderAt();
+    expect(screen.getByRole('list', { name: 'Roster' })).toBeTruthy();
+    expect(screen.getAllByRole('table')).toHaveLength(1); // only the record table, not a roster table
+    expect(screen.getByRole('button', { name: /^Remove Ana Guard as captain$/ })).toBeTruthy();
+  });
+
+  it('switches to the table, where height/nationality are compared across columns', () => {
+    renderAt();
+    fireEvent.click(screen.getByRole('button', { name: 'table' }));
+    expect(screen.getAllByRole('table')).toHaveLength(2); // record table + roster table
+    expect(screen.queryByRole('list', { name: 'Roster' })).toBeNull();
+  });
+
+  it('removing a player from the roster works the same from either view', async () => {
+    h.removePlayer.mutate = vi.fn((_vars: unknown, opts: { onSuccess: () => void }) => opts.onSuccess());
+    renderAt();
+    fireEvent.click(screen.getByRole('button', { name: /^Remove Ana Guard$/ }));
+    await waitFor(() => expect(h.removePlayer.mutate).toHaveBeenCalledWith({ playerId: 'p1', teamId: 't1' }, expect.anything()));
+  });
+});
+
+describe('TeamDetails: coaching staff (Fix 126)', () => {
+  it('shows the head coach and assistant coach by name, from the team’s own real data', () => {
+    h.team = ok({ ...baseTeam(), assistantCoach: 'Erik Spoelstra', country: 'USA' });
+    renderAt();
+    const section = screen.getByText('Coaching staff').closest('section, div')!;
+    expect(within(section as HTMLElement).getByText('Pat Riley')).toBeTruthy();
+    expect(within(section as HTMLElement).getByText('Erik Spoelstra')).toBeTruthy();
+    expect(within(section as HTMLElement).getByText(/Assistant coach/)).toBeTruthy();
+  });
+
+  it('is left out entirely when the team has no coach on record, rather than showing an empty section', () => {
+    h.team = ok({ ...baseTeam(), coach: undefined });
+    renderAt();
+    expect(screen.queryByText('Coaching staff')).toBeNull();
+  });
+});
+
 describe('TeamDetails: delete', () => {
   it('shows the real cascade counts without a second request, from the already-loaded team', () => {
     renderAt();
@@ -127,5 +167,31 @@ describe('TeamDetails: delete', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete team' }));
     expect(h.del.mutate).toHaveBeenCalledWith('t1', expect.anything());
     expect(screen.getByTestId('where').textContent).toBe('/teams-management');
+  });
+});
+
+describe('TeamDetails: season at a glance and team information (restored from real data)', () => {
+  it('shows games played, win %, home and away record and per-game points from the team’s own matches', () => {
+    renderAt();
+    const card = screen.getByText('Season at a glance').closest('div')!.parentElement!;
+    expect(within(card).getByText('Games played').nextSibling?.textContent).toBe('2');
+    expect(within(card).getByText('Win %').nextSibling?.textContent).toBe('100%');
+    expect(within(card).getByText('Home record').nextSibling?.textContent).toBe('1–0');
+    expect(within(card).getByText('Away record').nextSibling?.textContent).toBe('1–0');
+    expect(within(card).getByText('Points per game').nextSibling?.textContent).toBe('77.5');
+  });
+
+  it('shows dashes, not zeros, before a team has played', () => {
+    h.team = ok({ ...baseTeam(), homeMatches: [], awayMatches: [] });
+    renderAt();
+    const card = screen.getByText('Season at a glance').closest('div')!.parentElement!;
+    expect(within(card).getByText('Win %').nextSibling?.textContent).toBe('—');
+  });
+
+  it('lists the team’s details, and the arena, founding year and contact email once the server sends them', () => {
+    h.team = ok({ ...baseTeam(), country: 'USA', arena: 'Main Arena', foundedYear: 1999, contactEmail: 'a@b.test' });
+    renderAt();
+    const card = screen.getByText('Team information').closest('div')!.parentElement!;
+    for (const t of ['USA', 'Main Arena', '1999', 'a@b.test']) expect(within(card).getAllByText(t).length).toBeGreaterThan(0);
   });
 });

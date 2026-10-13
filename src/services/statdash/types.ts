@@ -171,6 +171,8 @@ export interface ShotChartProjection {
 
 export interface SessionSummaryProjection {
   sessionId: string;
+  /** Not sent yet (Gap 54). Keyed by team id. */
+  advanced?: Record<string, AdvancedTeamStats>;
   version: number;
   score: {
     home: number;
@@ -205,4 +207,37 @@ export interface RealtimeSessionMessage {
     eventType?: string;
     createdAt?: string | Date;
   }>;
+}
+
+/**
+ * One recorded play, in order, with the score after it. Requested from the backend as
+ * `GET /statdash/projections/match/:sessionId/timeline` (Gap 53); the shape below is the contract the
+ * frontend was built against.
+ */
+export interface TimelineEvent {
+  sequence: number;
+  /** e.g. `shot`, `free_throw`, `rebound`, `foul`, `turnover`, `substitution`, `period_end`, `game_end`. */
+  eventType: string;
+  teamId: string | null;
+  playerId: string | null;
+  /** 1–4, then 5 and up for overtime. */
+  period: number | null;
+  clockSecondsRemaining: number | null;
+  /** The running score after this play. */
+  homeScore: number;
+  awayScore: number;
+  /** What happened, without the player's name: "2PtsFG jump shot made", "offensive rebound". */
+  description: string;
+}
+
+/**
+ * Team stats the scorer's feed can't give today (Gap 54), requested as an optional `advanced` block on the
+ * summary projection. Any field may be absent; the page shows only what comes.
+ */
+export interface AdvancedTeamStats {
+  pointsInPaint?: number;
+  fastBreakPoints?: number;
+  pointsOffTurnovers?: number;
+  secondChancePoints?: number;
+  benchPoints?: number;
 }

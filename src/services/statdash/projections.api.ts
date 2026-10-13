@@ -4,6 +4,7 @@ import type {
   PlayerGameProjection,
   SessionSummaryProjection,
   ShotChartProjection,
+  TimelineEvent,
 } from './types';
 
 export const projectionsApi = {
@@ -16,6 +17,13 @@ export const projectionsApi = {
   getShotChart(sessionId: string): Promise<ShotChartProjection[]> {
     return statdashRequest<ShotChartProjection[]>(
       `/statdash/projections/match/${encodeURIComponent(sessionId)}/shot-chart`,
+    );
+  },
+
+  /** Every recorded play in order, with the running score. Not on the backend yet (Gap 53): a 404 means that. */
+  getTimeline(sessionId: string): Promise<TimelineEvent[]> {
+    return statdashRequest<TimelineEvent[]>(
+      `/statdash/projections/match/${encodeURIComponent(sessionId)}/timeline`,
     );
   },
 

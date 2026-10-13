@@ -7,6 +7,7 @@ import Pagination from '../../components/ui/Pagination';
 import { MatchCard, MATCH_GRID } from '../../components/matches/MatchCard';
 import { cn } from '../../lib/utils';
 import { MATCH_FILTERS, parseMatchFilter, parsePage } from './portal-format';
+import { useLivePoll } from '../../hooks/useLivePoll';
 
 const PAGE_SIZE = 10;
 
@@ -40,6 +41,8 @@ const PortalMatches: React.FC = () => {
   const meta = query.data?.meta;
   const showEmpty = !query.isPending && !query.isError && rows.length === 0;
   const filtered = status !== 'all';
+  // Fix 125: without this a live score sat exactly as it was when the page loaded.
+  useLivePoll(status === 'all' || status === 'LIVE', () => void query.refetch());
 
   return (
     <div className="flex flex-col gap-6">

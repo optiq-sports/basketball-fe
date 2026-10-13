@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { LuTrophy, LuUsers, LuCalendarClock, LuRadio } from 'react-icons/lu';
 import { useProfile, useTournaments, useMatches, useTeams } from '../../api/hooks';
 import type { Match as MatchType } from '../../types/api';
+import { useLivePoll } from '../../hooks/useLivePoll';
 
 const PlusCircleIcon: React.FC<{ className?: string }> = ({ className }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -70,6 +71,10 @@ const BasketballDashboard: React.FC = () => {
   const liveMatches = useMatches(undefined, 'LIVE');
   const scheduledMatches = useMatches(undefined, 'SCHEDULED');
   const completedMatches = useMatches(undefined, 'COMPLETED');
+  // The Ongoing Game card's score, and the Live now count, otherwise sat as they were when the
+  // dashboard loaded. Polled on a fixed interval, not only while a live game is already known, so a
+  // game going live after the page loaded is picked up too. Fix 125.
+  useLivePoll(true, () => void liveMatches.refetch());
   const tournamentsQuery = useTournaments();
 
   const teamMap = useMemo(() => {

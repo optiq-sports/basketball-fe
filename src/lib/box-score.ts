@@ -4,13 +4,13 @@ import type { BoxScoreRow } from '../components/client/BoxScoreTable';
 
 /** Maps every rostered player id to their name and team side, from the match's two rosters. */
 export function rosterOf(match: Match) {
-  const names = new Map<string, { name: string; side: 'home' | 'away' }>();
+  const names = new Map<string, { name: string; side: 'home' | 'away'; photo?: string | null; jerseyNumber?: number | null }>();
   const add = (side: 'home' | 'away', team?: Match['homeTeam']) => {
     for (const pt of team?.playerTeams ?? []) {
       const id = pt.playerId ?? pt.player?.id;
       const p = pt.player;
       if (!id) continue;
-      names.set(id, { name: p ? `${p.firstName} ${p.lastName}`.trim() : 'Player', side });
+      names.set(id, { name: p ? `${p.firstName} ${p.lastName}`.trim() : 'Player', side, photo: p?.photo, jerseyNumber: pt.jerseyNumber });
     }
   };
   add('home', match.homeTeam);
@@ -29,7 +29,7 @@ export function splitBoxScore(box: BoxScoreProjection, match: Match): { home: Bo
   let unassigned = 0;
   for (const p of Object.values(box.players)) {
     const who = roster.get(p.playerId);
-    const row = { ...p, name: who?.name ?? 'Unknown player' } as BoxScoreRow;
+    const row = { ...p, name: who?.name ?? 'Unknown player', photo: who?.photo, jerseyNumber: who?.jerseyNumber } as BoxScoreRow;
     if (!who) unassigned += 1;
     else if (who.side === 'home') home.push(row);
     else away.push(row);

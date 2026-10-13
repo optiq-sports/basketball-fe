@@ -7,6 +7,7 @@ export interface ShotPoint {
   result: string | null;
   x: number | null;
   y: number | null;
+  shooterPlayerId?: string | null;
   /** Quarter the shot was taken in. Only some events carry it; the period filter appears only when they do. */
   period?: number;
 }
@@ -41,16 +42,25 @@ export function ShotChartCourt({
   homeTeamId,
   homeLabel = 'Home',
   awayLabel = 'Away',
+  homeColor = '#ff6b2c',
+  awayColor = '#8fb4e0',
+  playerNames,
 }: {
   shots: ShotPoint[];
   homeTeamId?: string;
   homeLabel?: string;
   awayLabel?: string;
+  homeColor?: string;
+  awayColor?: string;
+  /** Player id → name. With it, each shooter gets a chip to show only their shots. */
+  playerNames?: Record<string, string>;
 }) {
   const courtId = useId().replace(/:/g, '');
   const [period, setPeriod] = useState<'all' | number>('all');
   const [showMade, setShowMade] = useState(true);
   const [showMissed, setShowMissed] = useState(true);
+  const [team, setTeam] = useState<'both' | 'home' | 'away'>('both');
+  const [picked, setPicked] = useState<string[]>([]);
 
   const periods = useMemo(() => {
     const set = new Set<number>();
@@ -59,8 +69,28 @@ export function ShotChartCourt({
   }, [shots]);
 
   const placed = shots.filter((s) => s.x !== null && s.y !== null && s.x >= 0 && s.x <= 1 && s.y >= 0 && s.y <= 1);
+  const isHomeShot = (s: ShotPoint) => homeTeamId !== undefined && s.teamId === homeTeamId;
+
+  // Shooters with their made/attempted, per side, from the shots in the chosen quarter.
+  const shooters = useMemo(() => {
+    const m = new Map<string, { id: string; home: boolean; made: number; att: number }>();
+    for (const s of shots) {
+      if (!s.shooterPlayerId || (period !== 'all' && s.period !== period)) continue;
+      if (s.result !== 'made' && s.result !== 'missed') continue;
+      const e = m.get(s.shooterPlayerId) ?? { id: s.shooterPlayerId, home: homeTeamId !== undefined && s.teamId === homeTeamId, made: 0, att: 0 };
+      e.att += 1;
+      if (s.result === 'made') e.made += 1;
+      m.set(s.shooterPlayerId, e);
+    }
+    return [...m.values()].sort((a, b) => b.att - a.att);
+  }, [shots, period, homeTeamId]);
+  const nameOf = (id: string) => playerNames?.[id] ?? 'Player';
+
   const visible = placed.filter((s) => {
     if (period !== 'all' && s.period !== period) return false;
+    if (team === 'home' && !isHomeShot(s)) return false;
+    if (team === 'away' && isHomeShot(s)) return false;
+    if (picked.length > 0 && !(s.shooterPlayerId && picked.includes(s.shooterPlayerId))) return false;
     const made = s.result === 'made';
     return made ? showMade : showMissed;
   });
@@ -108,6 +138,23 @@ export function ShotChartCourt({
         </div>
       </div>
 
+      <div role="group" aria-label="Team" className="flex flex-wrap gap-1.5">
+        {([['both', 'Both teams'], ['home', homeLabel], ['away', awayLabel]] as const).map(([v, text]) => (
+          <button
+            key={v}
+            type="button"
+            aria-pressed={team === v}
+            onClick={() => { setTeam(v); setPicked([]); }}
+            className={cn(
+              'h-8 rounded-md px-3 text-xs font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-court-400/50',
+              team === v ? 'bg-court-700 text-white' : 'bg-white text-gray-700 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200',
+            )}
+          >
+            {text}
+          </button>
+        ))}
+      </div>
+
       <div className="relative overflow-hidden rounded-xl bg-court-900 p-3 md:p-5">
         <svg viewBox="-2 -2 98 54" role="img" aria-label={`Shot chart: ${visible.length} shots shown`} className="block h-auto w-full">
           <rect x={-2} y={-2} width={98} height={54} fill="none" />
@@ -115,8 +162,7 @@ export function ShotChartCourt({
           {visible.map((s) => {
             const x = (s.x as number) * 94;
             const y = (s.y as number) * 50;
-            const isHome = homeTeamId !== undefined && s.teamId === homeTeamId;
-            const color = isHome ? '#ff6b2c' : '#8fb4e0';
+            const color = isHomeShot(s) ? homeColor : awayColor;
             return s.result === 'made' ? (
               <circle key={s.eventId} cx={x} cy={y} r={1.6} fill={color} stroke="#0a1224" strokeWidth={0.4} />
             ) : (
@@ -133,10 +179,36 @@ export function ShotChartCourt({
       </div>
 
       <div className="flex flex-wrap gap-4 text-xs text-gray-600 dark:text-gray-400">
-        <span className="flex items-center gap-2"><span className="size-2.5 rounded-full bg-signal-500" aria-hidden />{homeLabel}</span>
-        <span className="flex items-center gap-2"><span className="size-2.5 rounded-full bg-[#8fb4e0]" aria-hidden />{awayLabel}</span>
+        <span className="flex items-center gap-2"><span className="size-2.5 rounded-full" style={{ backgroundColor: homeColor }} aria-hidden />{homeLabel}</span>
+        <span className="flex items-center gap-2"><span className="size-2.5 rounded-full" style={{ backgroundColor: awayColor }} aria-hidden />{awayLabel}</span>
         <span>● made &nbsp; ✕ missed</span>
       </div>
+
+      {playerNames && shooters.length > 0 && (
+        <div role="group" aria-label="Shooters" className="flex flex-wrap gap-1.5">
+          {shooters
+            .filter((p) => team === 'both' || (team === 'home') === p.home)
+            .map((p) => {
+              const on = picked.includes(p.id);
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => setPicked((cur) => (cur.includes(p.id) ? cur.filter((x) => x !== p.id) : [...cur, p.id]))}
+                  className={cn(
+                    'flex h-8 items-center gap-2 rounded-md border px-2.5 text-xs font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-court-400/50',
+                    on ? 'border-court-700 bg-court-700 text-white' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200',
+                  )}
+                >
+                  <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: p.home ? homeColor : awayColor }} />
+                  {nameOf(p.id)}
+                  <span className="tabular-nums opacity-75">{p.made}/{p.att}</span>
+                </button>
+              );
+            })}
+        </div>
+      )}
     </div>
   );
 }

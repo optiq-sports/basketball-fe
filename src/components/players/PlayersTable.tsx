@@ -9,8 +9,14 @@ import { normalizeName } from '../../lib/text';
 import { cn } from '../../lib/utils';
 import type { Player } from '../../types/api';
 
-/** The sorts the backend accepts for players. Each is a column on the player table itself. */
-export type PlayerSortKey = 'name' | 'position' | 'nationality' | 'createdAt';
+/**
+ * The sorts the backend accepts for players. Each is a column on the player table itself.
+ *
+ * `createdAt` is excluded even though it is a real column: `PlayersService.findAll` singles that
+ * value out and falls back to alphabetical, so sorting by it silently does nothing (Gap 56). The
+ * Added column still shows the date — only its sort arrow is gone.
+ */
+export type PlayerSortKey = 'name' | 'position' | 'nationality';
 
 interface Column {
   key: string;
@@ -27,7 +33,7 @@ const COLUMNS: Column[] = [
   { key: 'team', label: 'Team' },
   { key: 'height', label: 'Height' },
   { key: 'nationality', label: 'Nationality', sortKey: 'nationality' },
-  { key: 'createdAt', label: 'Added', sortKey: 'createdAt' },
+  { key: 'createdAt', label: 'Added' },
 ];
 
 const formatAdded = (iso?: string) => {
@@ -40,7 +46,7 @@ const formatAdded = (iso?: string) => {
  * The players as a table, for scanning and comparing many at once. The page is the same server page the
  * cards show, and the sort is the same server-side sort: a header click asks the server, it doesn't
  * reorder the twelve rows on screen. Jersey number and team have no sort arrow because the backend
- * answers 400 for them (Gap 37).
+ * answers 400 for them (Gap 37), and Added has none because the backend ignores that sort (Gap 56).
  */
 export function PlayersTable({
   players,

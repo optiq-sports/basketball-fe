@@ -13,6 +13,7 @@ import FixtureFormDialog, { type FixtureStatistician, type FixtureTeam } from '.
 import DeleteFixtureDialog, { type FixtureDeleteTarget } from '../../components/fixtures/DeleteFixtureDialog';
 import { cn } from '../../lib/utils';
 import { normalizeName } from '../../lib/text';
+import { useLivePoll } from '../../hooks/useLivePoll';
 
 const PAGE_SIZE = 10;
 const FILTERS = [
@@ -68,6 +69,8 @@ const Fixtures: React.FC = () => {
   const meta = matchesQuery.data?.meta;
   const tournamentName = (tournamentQuery.data as { name?: string } | undefined)?.name ?? 'Tournament';
   const canCreate = teams.length >= 2;
+  // Fixture cards show the live score, so poll while this page is looking at a live game (Fix 125).
+  useLivePoll(rows.some((m) => m.status === 'LIVE'), () => matchesQuery.refetch());
 
   const setParam = (changes: Record<string, string | null>) => {
     const p = new URLSearchParams(params);

@@ -46,6 +46,49 @@ describe('BoxScoreTable', () => {
   });
 });
 
+describe('a stat the backend returns but never calculates', () => {
+  // The backend declares plusMinus and secondsPlayed, returns them, and only ever sets them to 0
+  // (Gap 55). Zero is not the same as absent, so a flat zero across every player is treated as
+  // untracked — otherwise the table shows a real-looking column of zeros.
+  const allZero: BoxScoreRow[] = [
+    { ...base[0], secondsPlayed: 0, plusMinus: 0, fga: 10, fgm: 6 },
+    { ...base[1], secondsPlayed: 0, plusMinus: 0, fga: 8, fgm: 3 },
+  ];
+
+  it('leaves out MIN and +/- when every player is zero', () => {
+    render(<BoxScoreTable teamName="Sparks" rows={allZero} caption="Box score" />);
+    expect(screen.queryByRole('columnheader', { name: 'MIN' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '+/-' })).toBeNull();
+  });
+
+  it('still shows the columns that do have real numbers', () => {
+    render(<BoxScoreTable teamName="Sparks" rows={allZero} caption="Box score" />);
+    expect(screen.getByRole('columnheader', { name: 'FG' })).toBeTruthy();
+  });
+
+  it('shows MIN as soon as one player has real minutes', () => {
+    const oneReal = [{ ...allZero[0], secondsPlayed: 1440 }, allZero[1]];
+    render(<BoxScoreTable teamName="Sparks" rows={oneReal} caption="Box score" />);
+    expect(screen.getByRole('columnheader', { name: 'MIN' })).toBeTruthy();
+  });
+
+  it('keeps +/- when a player is legitimately on zero but another is not', () => {
+    const mixed = [{ ...allZero[0], plusMinus: 0 }, { ...allZero[1], plusMinus: -6 }];
+    render(<BoxScoreTable teamName="Sparks" rows={mixed} caption="Box score" />);
+    expect(screen.getByRole('columnheader', { name: '+/-' })).toBeTruthy();
+  });
+
+  it('does not suppress a core stat that is genuinely zero for everyone', () => {
+    // Blocks are counted properly; two players with no blocks is a real fact, not missing data.
+    const noBlocks: BoxScoreRow[] = [
+      { ...base[0], blocks: 0 },
+      { ...base[1], blocks: 0 },
+    ];
+    render(<BoxScoreTable teamName="Sparks" rows={noBlocks} caption="Box score" />);
+    expect(screen.getByRole('columnheader', { name: 'BLK' })).toBeTruthy();
+  });
+});
+
 describe('BoxScoreTable player links', () => {
   const rows = [{ playerId: 'p1', name: 'Ada Obi', points: 10, rebounds: 2, assists: 1, steals: 0, blocks: 0, fouls: 1, turnovers: 0 }];
 

@@ -14,6 +14,8 @@ const h = vi.hoisted(() => ({
   match: null as unknown,
   box: null as unknown,
   shots: null as unknown,
+  timeline: { data: undefined, isPending: false, isError: true, error: Object.assign(new Error('Not Found'), { status: 404 }), refetch: () => undefined } as unknown,
+  summary: { data: undefined, isPending: false, isError: false, refetch: () => undefined } as unknown,
   keys: null as unknown,
   createKey: { mutate: vi.fn(), isPending: false },
   revokeKey: { mutate: vi.fn(), isPending: false },
@@ -32,6 +34,9 @@ vi.mock('../../api/hooks', () => ({
 vi.mock('../../services/statdash/hooks', () => ({
   useBoxScoreProjection: () => h.box,
   useShotChartProjection: () => h.shots,
+  useSummaryProjection: () => h.summary,
+  useTimelineProjection: () => h.timeline,
+  timelineUnavailable: (e: unknown) => (e as { status?: number })?.status === 404,
 }));
 vi.mock('../../hooks/useToast', () => ({ useToast: () => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }) }));
 vi.mock('../../hooks/useConfirmDialog', () => ({
@@ -163,7 +168,7 @@ describe('PortalMatchDetail', () => {
       totals: {},
       totalEvents: 14,
     });
-    at('/portal/matches/m1', <PortalMatchDetail />, '/portal/matches/:matchId');
+    at('/portal/matches/m1?tab=box', <PortalMatchDetail />, '/portal/matches/:matchId');
     const tables = screen.getAllByRole('table');
     expect(within(tables[0]).getByText('Ana Guard')).toBeTruthy();
     expect(within(tables[1]).getByText('Ben Wing')).toBeTruthy();

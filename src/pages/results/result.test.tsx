@@ -1,20 +1,27 @@
 import React from 'react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 type Q = { data?: unknown; isPending: boolean; isError: boolean; isFetching: boolean; error: unknown; refetch: () => void };
 const ok = (data: unknown): Q => ({ data, isPending: false, isError: false, isFetching: false, error: null, refetch: vi.fn() });
 
-const h = vi.hoisted(() => ({ page: null as unknown, tournaments: null as unknown, lastParams: null as unknown }));
+type MatchesQ = { data?: Array<{ tournamentId: string }>; isPending: boolean; isError: boolean; isFetching: boolean; error: unknown; refetch: () => void };
+const h = vi.hoisted(() => ({ matches: null as unknown, tournaments: null as unknown, lastArgs: null as unknown }));
 vi.mock('../../api/hooks', () => ({
-  useMatchesPage: (params: unknown) => { h.lastParams = params; return h.page; },
+  // A real `useMatches(tournamentId, ...)` re-queries the server scoped to that tournament; this mock
+  // does the same against the fixed list, so a tournament filter can realistically narrow it to nothing.
+  useMatches: (tournamentId: string | undefined, status: unknown) => {
+    h.lastArgs = { tournamentId, status };
+    const q = h.matches as MatchesQ;
+    if (!tournamentId || !q?.data) return q;
+    return { ...q, data: q.data.filter((m) => m.tournamentId === tournamentId) };
+  },
   useTournaments: () => h.tournaments,
 }));
 
 import Results from './result';
 
-const meta = (itemCount: number, pageCount = 1, page = 1) => ({ page, limit: 12, itemCount, pageCount, hasPreviousPage: page > 1, hasNextPage: page < pageCount });
 const match = (id: string, over: Record<string, unknown> = {}) => ({
   id,
   tournamentId: 'tour-7',
@@ -39,14 +46,23 @@ const renderAt = (path = '/results') =>
   );
 
 beforeEach(() => {
-  h.page = ok({ items: [match('m1'), match('m2', { scheduledDate: new Date(2026, 8, 17, 10, 0).toISOString(), homeScore: 60, awayScore: 70 })], meta: meta(2) });
+  h.matches = ok([
+    match('m1'),
+    match('m2', {
+      scheduledDate: new Date(2026, 8, 17, 10, 0).toISOString(),
+      homeScore: 60,
+      awayScore: 70,
+      homeTeam: { name: 'Charlie' },
+      awayTeam: { name: 'Delta' },
+    }),
+  ]);
   h.tournaments = ok([{ id: 'tour-7', name: 'SUMMER CUP' }, { id: 'tour-8', name: 'Autumn Cup' }]);
 });
 
 describe('Results', () => {
-  it('asks the server for finished games, newest first, one page at a time', () => {
+  it('asks for every finished game, status COMPLETED, with no tournament filter by default', () => {
     renderAt();
-    expect(h.lastParams).toMatchObject({ status: 'COMPLETED', sortBy: 'scheduledDate', sortOrder: 'desc', page: 1, limit: 12 });
+    expect(h.lastArgs).toEqual({ tournamentId: undefined, status: 'COMPLETED' });
   });
 
   it('shows the real scores from homeScore and awayScore', () => {
@@ -57,9 +73,11 @@ describe('Results', () => {
     expect(within(card).getByText('Marktown Flyers')).toBeInTheDocument();
   });
 
-  it('puts each day under its own heading', () => {
+  it('puts each day under its own heading, newest day first', () => {
     renderAt();
-    expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(2);
+    const headings = screen.getAllByRole('heading', { level: 2 });
+    expect(headings).toHaveLength(2);
+    expect(headings[0]).toHaveTextContent('21');
   });
 
   it('links each game to its own tournament, never a hardcoded one', () => {
@@ -69,41 +87,70 @@ describe('Results', () => {
     }
   });
 
-  it('filters by tournament on the server, from the URL, and goes back to page 1', () => {
+  it('filters by tournament, from the URL, and goes back to page 1', () => {
     renderAt('/results?page=3');
     fireEvent.change(screen.getByLabelText('Filter by tournament'), { target: { value: 'tour-8' } });
     expect(screen.getByTestId('where')).toHaveTextContent('tournament=tour-8');
     expect(screen.getByTestId('where')).not.toHaveTextContent('page=');
-    expect(h.lastParams).toMatchObject({ tournamentId: 'tour-8', page: 1 });
+    expect(h.lastArgs).toEqual({ tournamentId: 'tour-8', status: 'COMPLETED' });
   });
 
-  it('reads the page from the URL', () => {
+  it('searches by team, venue or tournament over the full list — the backend ignores `search`, so this runs in the browser (Gap 33)', async () => {
+    renderAt();
+    fireEvent.change(screen.getByLabelText(/Search by team, venue or tournament/), { target: { value: 'riverside' } });
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('q=riverside'));
+    expect(screen.getAllByRole('article')).toHaveLength(1);
+    expect(screen.getByText('Riverside Kings')).toBeInTheDocument();
+  });
+
+  it('finds a game by its venue too', async () => {
+    renderAt();
+    fireEvent.change(screen.getByLabelText(/Search by team, venue or tournament/), { target: { value: 'main court' } });
+    await waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(2));
+  });
+
+  it('filters to one day, from the date picker, and goes back to page 1', async () => {
     renderAt('/results?page=2');
-    expect(h.lastParams).toMatchObject({ page: 2 });
+    fireEvent.change(screen.getByLabelText('Filter by date'), { target: { value: '2026-09-17' } });
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('date=2026-09-17'));
+    expect(screen.getByTestId('where')).not.toHaveTextContent('page=');
+    expect(screen.getAllByRole('article')).toHaveLength(1);
+    expect(screen.getByText('Charlie')).toBeInTheDocument();
+  });
+
+  it('says so, with a way back, when no game was played on the chosen day', () => {
+    renderAt('/results?date=2026-01-01');
+    expect(screen.getByText('Nothing matches the current filters.')).toBeInTheDocument();
   });
 
   it('says there are no finished games yet', () => {
-    h.page = ok({ items: [], meta: meta(0, 0) });
+    h.matches = ok([]);
     renderAt();
     expect(screen.getByText('No finished games yet')).toBeInTheDocument();
   });
 
-  it('says so when a tournament has none, with a way to clear the filter', () => {
-    h.page = ok({ items: [], meta: meta(0, 0) });
+  it('says so, distinctly, when a tournament filter matches nothing — not the plain empty state', () => {
     renderAt('/results?tournament=tour-8');
-    fireEvent.click(screen.getByRole('button', { name: /clear/i }));
+    expect(screen.getByText('Nothing matches the current filters.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /clear filters/i }));
     expect(screen.getByTestId('where')).not.toHaveTextContent('tournament=');
   });
 
   it('shows the error with a retry', () => {
-    h.page = { ...ok(undefined), isError: true, error: new Error('boom') };
+    h.matches = { ...ok(undefined), isError: true, error: new Error('boom') };
     renderAt();
     expect(screen.getByText(/boom/)).toBeInTheDocument();
   });
 
-  it('has no search box, since the backend ignores search on matches', () => {
+  it('shows the first page of 12 when there are more finished games than that', () => {
+    h.matches = ok(Array.from({ length: 14 }, (_, i) => match(`m${i}`, { scheduledDate: new Date(2026, 8, 1 + i, 18, 0).toISOString() })));
     renderAt();
-    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
-    expect(screen.queryByPlaceholderText(/search/i)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('article')).toHaveLength(12);
+  });
+
+  it('paginates the filtered list in the browser, not from the server', () => {
+    h.matches = ok(Array.from({ length: 14 }, (_, i) => match(`m${i}`, { scheduledDate: new Date(2026, 8, 1 + i, 18, 0).toISOString() })));
+    renderAt('/results?page=2');
+    expect(screen.getAllByRole('article')).toHaveLength(2);
   });
 });

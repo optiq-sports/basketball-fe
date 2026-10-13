@@ -66,6 +66,20 @@ export function usePlayerGameProjection(
   });
 }
 
+export function useTimelineProjection(sessionId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: [...statdashQueryKeys.summary(sessionId ?? ''), 'timeline'],
+    queryFn: () => projectionsApi.getTimeline(sessionId!),
+    enabled: enabled && !!sessionId,
+    staleTime: 1000 * 5,
+    // A 404 means the backend doesn't have the endpoint yet; retrying won't change that.
+    retry: (count, error) => (error as { status?: number })?.status !== 404 && count < 2,
+  });
+}
+
+/** True when the timeline call failed because the backend has no such endpoint yet. */
+export const timelineUnavailable = (error: unknown) => [404, 501].includes((error as { status?: number })?.status ?? 0);
+
 export function useSummaryProjection(sessionId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: statdashQueryKeys.summary(sessionId ?? ''),

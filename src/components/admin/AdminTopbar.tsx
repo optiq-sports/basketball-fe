@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSidebar } from '../../contexts/SidebarContext';
 import ThemeToggle from './ThemeToggle';
+import GlobalSearch from './GlobalSearch';
 import { ChevronDownIcon, HamburgerIcon, CloseIcon, SignOutIcon } from './icons';
 import { cn } from '../../lib/utils';
 
@@ -11,9 +12,9 @@ interface AdminTopbarProps {
 }
 
 /**
- * Sticky header: sidebar toggle, theme, and the account menu. The search box and notification bell
- * were removed in the redesign — neither had a working handler, and the module rules forbid
- * shipping stubs. They come back with real behaviour (global search, notifications).
+ * Sticky header: sidebar toggle, global search, theme, and the account menu. The search box returned
+ * with real behaviour (Fix 129); the notification bell is still out, because there is nothing for it to
+ * show until the backend has notifications (Gap 57).
  */
 const AdminTopbar: React.FC<AdminTopbarProps> = ({ userName = 'Admin User', userRole = 'Administrator', onLogout }) => {
   const { isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
@@ -57,6 +58,8 @@ const AdminTopbar: React.FC<AdminTopbarProps> = ({ userName = 'Admin User', user
       >
         {isMobileOpen ? <CloseIcon className="size-5" /> : <HamburgerIcon className="size-5" />}
       </button>
+
+      <div className="flex min-w-0 flex-1 justify-start"><GlobalSearch /></div>
 
       <div className="flex items-center gap-2">
         <ThemeToggle />

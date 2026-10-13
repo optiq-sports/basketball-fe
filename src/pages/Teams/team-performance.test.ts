@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { teamPerformanceByTournament, type TeamMatchForPerformance } from './team-performance';
+import { hasFinalScore, teamPerformanceByTournament, teamSummary, type TeamMatchForPerformance } from './team-performance';
 
 const tournaments = [{ id: 't1', name: 'Summer Cup' }, { id: 't2', name: 'Winter League' }];
 const m = (tournamentId: string, isHome: boolean, hs: number, as_: number, status = 'COMPLETED'): TeamMatchForPerformance => ({ tournamentId, isHome, homeScore: hs, awayScore: as_, status });
@@ -30,5 +30,32 @@ describe('teamPerformanceByTournament', () => {
   it('sorts tournaments by name', () => {
     const rows = teamPerformanceByTournament(tournaments, []);
     expect(rows.map((r) => r.tournamentName)).toEqual(['Summer Cup', 'Winter League']);
+  });
+});
+
+describe('teamSummary', () => {
+  const g = (isHome: boolean, f: number, a: number, date: string): TeamMatchForPerformance => ({ tournamentId: 't1', isHome, homeScore: isHome ? f : a, awayScore: isHome ? a : f, status: 'COMPLETED', scheduledDate: date });
+
+  it('is empty, with no percentages, before a first game', () => {
+    expect(teamSummary([])).toMatchObject({ played: 0, winPct: null, ppg: null, papg: null, streak: null });
+  });
+
+  it('adds up wins, losses, home and away records and per-game points', () => {
+    const s = teamSummary([g(true, 80, 70, '2026-09-01'), g(false, 60, 75, '2026-09-08'), g(true, 90, 50, '2026-09-15')]);
+    expect(s).toMatchObject({ played: 3, wins: 2, losses: 1, winPct: 66.7, home: { w: 2, l: 0 }, away: { w: 0, l: 1 }, ppg: 76.7, papg: 65 });
+  });
+
+  it('finds the current streak from the latest game back, whatever order the games arrive in', () => {
+    const s = teamSummary([g(true, 90, 50, '2026-09-15'), g(true, 60, 70, '2026-09-01'), g(true, 80, 70, '2026-09-08')]);
+    expect(s.streak).toEqual({ kind: 'W', count: 2 });
+  });
+
+  it('leaves out a finished game stored as 0 – 0 rather than inventing a tie (Gap 47)', () => {
+    expect(hasFinalScore({ status: 'COMPLETED', homeScore: 0, awayScore: 0 })).toBe(false);
+    expect(teamSummary([g(true, 0, 0, '2026-09-01'), g(true, 80, 70, '2026-09-08')]).played).toBe(1);
+  });
+
+  it('ignores games that are not finished', () => {
+    expect(teamSummary([{ tournamentId: 't1', isHome: true, homeScore: 10, awayScore: 5, status: 'LIVE' }]).played).toBe(0);
   });
 });

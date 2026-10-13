@@ -9,16 +9,21 @@ import { Card, CardTitle } from '../../components/ui/primitives/card';
 import TeamFormDialog from '../../components/teams/TeamFormDialog';
 import DeleteTeamDialog, { type DeleteTeamTarget } from '../../components/teams/DeleteTeamDialog';
 import RosterTable from '../../components/teams/RosterTable';
+import RosterCard from '../../components/teams/RosterCard';
 import AddPlayerDialog from '../../components/teams/AddPlayerDialog';
 import { safeColor } from '../../components/teams/TeamCrest';
-import { teamPerformanceByTournament, type TeamMatchForPerformance } from './team-performance';
+import { teamPerformanceByTournament, teamSummary, type TeamMatchForPerformance } from './team-performance';
 import { cn } from '../../lib/utils';
 import { normalizeName } from '../../lib/text';
 
 type TeamDetail = Team & {
+  /** Not on the backend `Team` yet (Gap 56): shown when they arrive. */
+  arena?: string | null;
+  foundedYear?: number | null;
+  contactEmail?: string | null;
   tournamentTeams?: Array<{ tournament: { id: string; name: string } }>;
-  homeMatches?: Array<{ tournamentId: string; status: string; homeScore?: number | null; awayScore?: number | null }>;
-  awayMatches?: Array<{ tournamentId: string; status: string; homeScore?: number | null; awayScore?: number | null }>;
+  homeMatches?: Array<{ tournamentId: string; status: string; homeScore?: number | null; awayScore?: number | null; scheduledDate?: string }>;
+  awayMatches?: Array<{ tournamentId: string; status: string; homeScore?: number | null; awayScore?: number | null; scheduledDate?: string }>;
 };
 
 /**
@@ -40,19 +45,53 @@ const TeamDetails: React.FC = () => {
   const [editError, setEditError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTeamTarget | null>(null);
   const [addPlayerOpen, setAddPlayerOpen] = useState(false);
+  // Cards is the restored pre-redesign roster experience and the default (Fix 126); Table is still
+  // here for scanning many players' height/nationality/position across columns at once.
+  const [rosterView, setRosterView] = useState<'cards' | 'table'>('cards');
 
   const team = teamQuery.data as TeamDetail | undefined;
   const players = playersQuery.data ?? [];
 
-  const performance = useMemo(() => {
+  // Coach and assistant coach, named and labelled, restored from the pre-redesign page (Fix 126) —
+  // real data (`team.coach`/`team.assistantCoach`/`team.country`), not the fabricated section that
+  // sat beside it there (see this file's own history and docs/BACKEND_GAPS.md for why that's gone).
+  const coachingStaff = useMemo(() => {
     if (!team) return [];
-    const tournaments = (team.tournamentTeams ?? []).map((tt) => tt.tournament);
-    const matches: TeamMatchForPerformance[] = [
-      ...(team.homeMatches ?? []).map((m) => ({ ...m, isHome: true })),
-      ...(team.awayMatches ?? []).map((m) => ({ ...m, isHome: false })),
+    return [
+      ...(team.coach ? [{ id: 'coach', name: team.coach, role: 'Coach' }] : []),
+      ...(team.assistantCoach ? [{ id: 'assistant', name: team.assistantCoach, role: 'Assistant coach' }] : []),
     ];
-    return teamPerformanceByTournament(tournaments, matches);
   }, [team]);
+
+  const teamMatches = useMemo<TeamMatchForPerformance[]>(
+    () => (team ? [...(team.homeMatches ?? []).map((m) => ({ ...m, isHome: true })), ...(team.awayMatches ?? []).map((m) => ({ ...m, isHome: false }))] : []),
+    [team],
+  );
+  const performance = useMemo(
+    () => (team ? teamPerformanceByTournament((team.tournamentTeams ?? []).map((tt) => tt.tournament), teamMatches) : []),
+    [team, teamMatches],
+  );
+  const summary = useMemo(() => teamSummary(teamMatches), [teamMatches]);
+
+  const info: Array<[string, string]> = team
+    ? ([
+        ['Country', team.country],
+        ['State or city', team.state],
+        ['Home arena', team.arena],
+        ['Founded', team.foundedYear != null ? String(team.foundedYear) : null],
+        ['Contact email', team.contactEmail],
+      ] as Array<[string, string | null | undefined]>).filter((r): r is [string, string] => !!r[1])
+    : [];
+  const record = (r: { w: number; l: number }) => `${r.w}–${r.l}`;
+  const tiles: Array<[string, string]> = [
+    ['Games played', String(summary.played)],
+    ['Win %', summary.winPct == null ? '—' : `${summary.winPct}%`],
+    ['Home record', summary.played ? record(summary.home) : '—'],
+    ['Away record', summary.played ? record(summary.away) : '—'],
+    ['Streak', summary.streak ? `${summary.streak.kind}${summary.streak.count}` : '—'],
+    ['Points per game', summary.ppg == null ? '—' : String(summary.ppg)],
+    ['Allowed per game', summary.papg == null ? '—' : String(summary.papg)],
+  ];
 
   const saveEdit = (body: TeamCreate) => {
     if (!team) return;
@@ -107,6 +146,33 @@ const TeamDetails: React.FC = () => {
       />
 
       <Card>
+        <CardTitle>Season at a glance</CardTitle>
+        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
+          {tiles.map(([label, value]) => (
+            <div key={label} className="min-w-0">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</dt>
+              <dd className="text-2xl font-bold tabular-nums text-gray-900 dark:text-white">{value}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="text-xs text-gray-500">From this team’s finished games. A game whose score hasn’t reached the match yet isn’t counted.</p>
+      </Card>
+
+      {info.length > 0 && (
+        <Card>
+          <CardTitle>Team information</CardTitle>
+          <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {info.map(([label, value]) => (
+              <div key={label} className="min-w-0">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</dt>
+                <dd className="truncate text-sm font-medium text-gray-900 dark:text-white">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </Card>
+      )}
+
+      <Card>
         <CardTitle>Record by tournament</CardTitle>
         {performance.length === 0 ? (
           <p className="text-sm text-gray-500">This team isn’t in any tournament yet.</p>
@@ -143,15 +209,51 @@ const TeamDetails: React.FC = () => {
         )}
       </Card>
 
-      <div className="flex items-center justify-between">
+      {coachingStaff.length > 0 && (
+        <Card>
+          <CardTitle>Coaching staff</CardTitle>
+          <div className="grid gap-6 sm:grid-cols-2">
+            {coachingStaff.map((staff) => (
+              <div key={staff.id} className="min-w-0">
+                <p className="truncate text-base font-semibold text-gray-900 dark:text-white">{normalizeName(staff.name)}</p>
+                <p className="text-sm text-gray-500">{staff.role}{team.country ? ` · ${team.country}` : ''}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Roster</h2>
-        <Button onClick={() => setAddPlayerOpen(true)}>Add player</Button>
+        <div className="flex items-center gap-2">
+          <div role="group" aria-label="Roster view" className="flex rounded-md border border-gray-200 bg-white p-0.5 dark:border-gray-700 dark:bg-gray-900">
+            {(['cards', 'table'] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                aria-pressed={rosterView === v}
+                onClick={() => setRosterView(v)}
+                className={cn(
+                  'h-8 rounded px-3 text-sm font-semibold capitalize outline-none focus-visible:ring-[3px] focus-visible:ring-court-400/50',
+                  rosterView === v ? 'bg-court-700 text-white dark:bg-court-400 dark:text-court-950' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800',
+                )}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+          <Button onClick={() => setAddPlayerOpen(true)}>Add player</Button>
+        </div>
       </div>
 
       {playersQuery.isPending ? (
         <ListSkeleton columns={6} rows={5} label="Loading roster" />
       ) : playersQuery.isError ? (
         <ErrorState message={(playersQuery.error as Error).message} onRetry={() => void playersQuery.refetch()} />
+      ) : players.length === 0 ? (
+        <RosterTable teamId={team.id} teamName={team.name} players={players} onAddPlayers={() => setAddPlayerOpen(true)} />
+      ) : rosterView === 'cards' ? (
+        <RosterCard teamId={team.id} teamName={team.name} players={players} />
       ) : (
         <RosterTable teamId={team.id} teamName={team.name} players={players} onAddPlayers={() => setAddPlayerOpen(true)} />
       )}

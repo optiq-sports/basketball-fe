@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { useDeleteTournament, useMatches, useTournament, useUpdateTournament } from '../../api/hooks';
+import { useCreateMatch, useDeleteTournament, useMatches, useStatisticians, useTournament, useUpdateTournament } from '../../api/hooks';
 import { useToast } from '../../hooks/useToast';
-import type { Match, Tournament, TournamentCreate } from '../../types/api';
+import type { Match, MatchCreate, Tournament, TournamentCreate } from '../../types/api';
 import { PageHeader, ListSkeleton, EmptyState, ErrorState } from '../../components/admin/page-states';
 import { Button } from '../../components/ui/primitives/button';
 import { Badge } from '../../components/ui/primitives/badge';
@@ -15,7 +15,11 @@ import { divisionLabel } from '../../components/tournaments/tournament-form';
 import { computeStandings, leadersFrom, LEADER_LABELS, LEADER_STATS, type LeaderStat, type StandingsTeam } from './standings';
 import { cn } from '../../lib/utils';
 import { MatchCard, MATCH_GRID } from '../../components/matches/MatchCard';
+import { CopyMatchCodeButton } from '../../components/matches/CopyMatchCodeButton';
+import { matchCodeOf } from '../../lib/match-code';
+import FixtureFormDialog, { type FixtureStatistician, type FixtureTeam } from '../../components/fixtures/FixtureFormDialog';
 import { normalizeName } from '../../lib/text';
+import { useLivePoll } from '../../hooks/useLivePoll';
 
 type Tab = 'overview' | 'teams' | 'matches';
 const TABS: Array<{ id: Tab; label: string }> = [
@@ -45,16 +49,23 @@ const Tournaments: React.FC = () => {
   };
 
   const tournamentQuery = useTournament(id);
+  // Polls while the tournament has a live game, so the Matches tab (and its standings/leaders on
+  // Overview) catch up without the admin reloading the page — see Fix 125.
   const matchesQuery = useMatches(id);
+  const hasLiveMatch = (matchesQuery.data ?? []).some((m) => m.status === 'LIVE');
+  useLivePoll(hasLiveMatch, () => matchesQuery.refetch());
+  const statisticiansQuery = useStatisticians();
   const updateTournament = useUpdateTournament();
   const deleteTournament = useDeleteTournament();
+  const createMatch = useCreateMatch();
 
   const [editOpen, setEditOpen] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [addTeamsOpen, setAddTeamsOpen] = useState(false);
   const [leaderStat, setLeaderStat] = useState<LeaderStat>('points');
-  const [copied, setCopied] = useState(false);
+  const [fixtureOpen, setFixtureOpen] = useState(false);
+  const [fixtureError, setFixtureError] = useState<string | null>(null);
 
   // Teams come with the tournament, each with its group and full details.
   const tournament = tournamentQuery.data as (Tournament & { teams?: Array<{ teamId: string; group?: string | null; team: StandingsTeam & { color?: string | null } }> }) | undefined;
@@ -72,6 +83,15 @@ const Tournaments: React.FC = () => {
   const teamColors = useMemo(() => new Map(linkedTeams.map((lt) => [lt.team.id, lt.team.color])), [linkedTeams]);
   const teamLogos = useMemo(() => new Map(linkedTeams.map((lt) => [lt.team.id, (lt.team as { logo?: string }).logo])), [linkedTeams]);
   const leaders = useMemo(() => leadersFrom(matches, leaderStat, teamNames), [matches, leaderStat, teamNames]);
+
+  // For the "New fixture" dialog, opened from this page's own Matches tab (Fix 125) rather than
+  // sending the admin to /fixtures first, which is where this used to be the only way in.
+  const fixtureTeams: FixtureTeam[] = useMemo(
+    () => linkedTeams.map((lt) => ({ id: lt.team.id, name: normalizeName(lt.team.name) })).sort((a, b) => a.name.localeCompare(b.name)),
+    [linkedTeams],
+  );
+  const fixtureStatisticians: FixtureStatistician[] = (statisticiansQuery.data ?? []) as FixtureStatistician[];
+  const canCreateFixture = fixtureTeams.length >= 2;
 
   const saveEdit = (body: TournamentCreate) => {
     if (!tournament) return;
@@ -103,15 +123,16 @@ const Tournaments: React.FC = () => {
     });
   };
 
-  const copyCode = async () => {
-    if (!tournament?.code) return;
-    try {
-      await navigator.clipboard.writeText(tournament.code);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      toast.error('Couldn’t copy the code. Select it and copy by hand.');
-    }
+  const createFixture = (body: { create?: MatchCreate }) => {
+    if (!body.create) return;
+    setFixtureError(null);
+    createMatch.mutate(body.create, {
+      onSuccess: () => {
+        toast.success('Fixture created.');
+        setFixtureOpen(false);
+      },
+      onError: (err) => setFixtureError(err.message),
+    });
   };
 
   if (tournamentQuery.isPending) {
@@ -136,11 +157,6 @@ const Tournaments: React.FC = () => {
         actions={
           <>
             <Badge variant="court">{divisionLabel(tournament.division)}</Badge>
-            {tournament.code && (
-              <Button variant="secondary" size="sm" onClick={() => void copyCode()} aria-label={`Copy tournament code ${tournament.code}`}>
-                {copied ? 'Copied' : `Code ${tournament.code}`}
-              </Button>
-            )}
             <Button variant="secondary" onClick={() => { setEditError(null); setEditOpen(true); }}>Edit</Button>
             <Button
               variant="destructive-ghost"
@@ -243,10 +259,15 @@ const Tournaments: React.FC = () => {
 
       {tab === 'matches' && (
         <div id="panel-matches" role="tabpanel" aria-labelledby="tab-matches" className="flex flex-col gap-4">
+          <div className="flex justify-end">
+            <Button onClick={() => { setFixtureError(null); setFixtureOpen(true); }} disabled={!canCreateFixture} title={canCreateFixture ? undefined : 'Add at least two teams on the Teams tab first'}>
+              New fixture
+            </Button>
+          </div>
           {matchesQuery.isPending && <ListSkeleton columns={4} rows={5} label="Loading matches" />}
           {matchesQuery.isError && <ErrorState message={(matchesQuery.error as Error).message} onRetry={() => void matchesQuery.refetch()} />}
           {!matchesQuery.isPending && !matchesQuery.isError && matches.length === 0 && (
-            <EmptyState title="No matches yet" description="Matches are scheduled from the fixtures view." action={{ label: 'Open fixtures', onClick: () => navigate(`/tournaments/${tournament.id}/fixtures`) }} />
+            <EmptyState title="No matches yet" description="Schedule the first game between two of this tournament's teams." action={{ label: 'New fixture', onClick: () => { setFixtureError(null); setFixtureOpen(true); } }} />
           )}
           {!matchesQuery.isPending && !matchesQuery.isError && matches.length > 0 && (
             <ul className={MATCH_GRID} aria-label="Matches in this tournament">
@@ -264,6 +285,7 @@ const Tournaments: React.FC = () => {
                       venue: m.venue,
                     }}
                     href={`/tournaments/${tournament.id}/match/${m.id}`}
+                    actions={m.status === 'SCHEDULED' ? <CopyMatchCodeButton code={matchCodeOf(m)} label={`${teamNames.get(m.homeTeamId) ?? 'TBD'} vs ${teamNames.get(m.awayTeamId) ?? 'TBD'}`} /> : undefined}
                   />
                 </li>
               ))}
@@ -282,6 +304,17 @@ const Tournaments: React.FC = () => {
       />
       <DeleteTournamentDialog target={deleteTarget} isDeleting={deleteTournament.isPending} onCancel={() => setDeleteTarget(null)} onConfirm={confirmDelete} />
       <AddTeamsDialog open={addTeamsOpen} onClose={() => setAddTeamsOpen(false)} tournamentId={tournament.id} existingTeamIds={existingTeamIds} />
+      <FixtureFormDialog
+        open={fixtureOpen}
+        onClose={() => setFixtureOpen(false)}
+        match={null}
+        teams={fixtureTeams}
+        statisticians={fixtureStatisticians}
+        isSaving={createMatch.isPending}
+        serverError={fixtureError}
+        onSubmit={createFixture}
+        tournamentId={tournament.id}
+      />
     </div>
   );
 };

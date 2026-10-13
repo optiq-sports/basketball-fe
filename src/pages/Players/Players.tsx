@@ -28,12 +28,15 @@ const PAGE_SIZE = 12;
  * Sort fields the list offers. Each has to be a column on the player table — the backend hands
  * `sortBy` straight to Prisma, so jersey number and team name (which live on the join table) answer
  * 400 rather than sorting.
+ *
+ * `createdAt` is deliberately absent even though it is a real column: `PlayersService.findAll`
+ * excludes that one value by name and falls back to alphabetical, so an "Added" sort would look like
+ * it worked and do nothing (Gap 56). It comes back when the backend stops ignoring it.
  */
 const SORTS = {
   name: 'lastName',
   position: 'position',
   nationality: 'nationality',
-  createdAt: 'createdAt',
 } as const;
 type SortKey = keyof typeof SORTS;
 const isSortKey = (v: string | null): v is SortKey => v !== null && v in SORTS;
@@ -67,7 +70,7 @@ const Players: React.FC = () => {
   const sortParam = params.get('sort');
   const sort: SortKey = isSortKey(sortParam) ? sortParam : 'name';
   const dir: 'asc' | 'desc' =
-    params.get('dir') === 'asc' ? 'asc' : params.get('dir') === 'desc' ? 'desc' : sort === 'createdAt' ? 'desc' : 'asc';
+    params.get('dir') === 'asc' ? 'asc' : params.get('dir') === 'desc' ? 'desc' : 'asc';
   const q = params.get('q') ?? '';
   const view = readView(params.get('view'));
   const team = params.get('team') ?? '';
@@ -223,7 +226,7 @@ const Players: React.FC = () => {
   };
 
   const toggleSort = (key: SortKey) => {
-    const nextDir = sort === key && dir === 'asc' ? 'desc' : sort === key && dir === 'desc' ? 'asc' : key === 'createdAt' ? 'desc' : 'asc';
+    const nextDir = sort === key && dir === 'asc' ? 'desc' : 'asc';
     setParam({ sort: key, dir: nextDir, page: null });
   };
 
@@ -231,7 +234,6 @@ const Players: React.FC = () => {
     { key: 'name', label: 'Name' },
     { key: 'position', label: 'Position' },
     { key: 'nationality', label: 'Nationality' },
-    { key: 'createdAt', label: 'Added' },
   ];
 
   const showEmpty = !query.isPending && !query.isError && rows.length === 0 && !hasFilter;

@@ -7,10 +7,15 @@ import type { Team } from '../../types/api';
 
 type TeamRow = Team & { _count?: { playerTeams?: number } };
 
-/** A team as a card: crest, name, code, coach, and its roster size. The whole card opens the team. */
+/**
+ * A team as a card: crest, name, code, coach, roster size and location. Location was on the
+ * pre-redesign card and dropped when this one was built; it's back at the product lead's request
+ * (Fix 126). The whole card opens the team.
+ */
 export function TeamCard({ team, onEdit, onDelete }: { team: TeamRow; onEdit: () => void; onDelete: () => void }) {
   const name = normalizeName(team.name);
   const rosterCount = team._count?.playerTeams;
+  const location = [team.state, team.country].filter(Boolean).join(', ');
 
   return (
     <article className="group relative flex min-w-0 flex-col gap-4 overflow-hidden rounded-xl border border-gray-200 bg-white p-5 transition-shadow hover:shadow-md dark:border-gray-800 dark:bg-gray-900">
@@ -30,6 +35,10 @@ export function TeamCard({ team, onEdit, onDelete }: { team: TeamRow; onEdit: ()
         <div>
           <dt className="text-xs uppercase tracking-wide text-gray-500">Roster</dt>
           <dd className="font-medium text-gray-800 dark:text-gray-200">{rosterCount ?? '—'}</dd>
+        </div>
+        <div className="col-span-2">
+          <dt className="text-xs uppercase tracking-wide text-gray-500">Location</dt>
+          <dd className="truncate font-medium text-gray-800 dark:text-gray-200">{location || '—'}</dd>
         </div>
       </dl>
 

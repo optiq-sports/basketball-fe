@@ -10,12 +10,14 @@ const h = vi.hoisted(() => ({
   tournament: null as unknown,
   matches: null as unknown,
   teams: null as unknown,
+  statisticians: null as unknown,
   setGroup: { mutate: vi.fn(), isPending: false, variables: undefined as unknown },
   removeTeam: { mutate: vi.fn(), isPending: false },
   addTeams: { mutate: vi.fn(), isPending: false },
   update: { mutate: vi.fn(), isPending: false },
   del: { mutate: vi.fn(), isPending: false },
   upload: { mutate: vi.fn(), isPending: false },
+  createMatch: { mutate: vi.fn(), isPending: false },
   toast: { success: vi.fn(), error: vi.fn() },
   confirmResult: { value: true },
 }));
@@ -24,12 +26,14 @@ vi.mock('../../api/hooks', () => ({
   useTournament: () => h.tournament,
   useMatches: () => h.matches,
   useTeams: () => h.teams,
+  useStatisticians: () => h.statisticians,
   useUpdateTournament: () => h.update,
   useDeleteTournament: () => h.del,
   useSetTournamentTeamGroup: () => h.setGroup,
   useTournamentRemoveTeam: () => h.removeTeam,
   useTournamentAddTeams: () => h.addTeams,
   useUploadFile: () => h.upload,
+  useCreateMatch: () => h.createMatch,
 }));
 vi.mock('../../hooks/useToast', () => ({ useToast: () => h.toast }));
 vi.mock('../../hooks/useConfirmDialog', () => ({
@@ -106,6 +110,8 @@ beforeEach(() => {
   h.addTeams = { mutate: vi.fn(), isPending: false };
   h.update = { mutate: vi.fn(), isPending: false };
   h.del = { mutate: vi.fn(), isPending: false };
+  h.createMatch = { mutate: vi.fn(), isPending: false };
+  h.statisticians = ok([{ id: 's1', name: 'Sam Scorer', email: 'sam@x.test' }]);
   h.toast = { success: vi.fn(), error: vi.fn() };
   h.confirmResult.value = true;
 });
@@ -249,5 +255,29 @@ describe('Tournament detail: matches', () => {
     h.matches = ok([]);
     renderAt('/tournaments/t1?tab=matches');
     expect(screen.getByText('No matches yet')).toBeTruthy();
+  });
+
+  it('offers to create a fixture right here, not only by sending the admin to /fixtures (Fix 125)', async () => {
+    renderAt('/tournaments/t1?tab=matches');
+    fireEvent.click(screen.getByRole('button', { name: 'New fixture' }));
+    const dialog = screen.getByRole('dialog', { name: 'New fixture' });
+    fireEvent.change(within(dialog).getByLabelText(/^Home team/), { target: { value: 'a' } });
+    fireEvent.change(within(dialog).getByLabelText(/^Away team/), { target: { value: 'b' } });
+    fireEvent.change(within(dialog).getByLabelText(/^Date/), { target: { value: '2026-11-01' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create fixture' }));
+    await waitFor(() =>
+      expect(h.createMatch.mutate).toHaveBeenCalledWith(expect.objectContaining({ tournamentId: 't1', homeTeamId: 'a', awayTeamId: 'b' }), expect.anything()),
+    );
+  });
+
+  it('gives a scheduled fixture a copy-code button, so it can be handed to a statistician right from here', () => {
+    renderAt('/tournaments/t1?tab=matches');
+    expect(screen.getByRole('button', { name: /^Copy match code for/ })).toBeTruthy();
+  });
+
+  it('has no tournament-level code button: it let anyone who read it open the tournament’s only match without a real match key (Gap 52)', () => {
+    renderAt('/tournaments/t1');
+    expect(screen.queryByText(/^Code /)).toBeNull();
+    expect(screen.queryByRole('button', { name: /copy tournament code/i })).toBeNull();
   });
 });

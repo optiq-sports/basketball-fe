@@ -542,8 +542,8 @@ export interface Match {
   quarter4Away?: number;
   totalHome?: number;
   totalAway?: number;
-  homeTeam?: Team & { playerTeams?: Array<{ playerId?: string; jerseyNumber?: number; isCaptain?: boolean; player?: { id: string; firstName: string; lastName: string; position?: string; dateOfBirth?: string; height?: string } }> };
-  awayTeam?: Team & { playerTeams?: Array<{ playerId?: string; jerseyNumber?: number; isCaptain?: boolean; player?: { id: string; firstName: string; lastName: string; position?: string; dateOfBirth?: string; height?: string } }> };
+  homeTeam?: Team & { playerTeams?: Array<{ playerId?: string; jerseyNumber?: number; isCaptain?: boolean; player?: { id: string; firstName: string; lastName: string; position?: string; dateOfBirth?: string; height?: string; photo?: string | null } }> };
+  awayTeam?: Team & { playerTeams?: Array<{ playerId?: string; jerseyNumber?: number; isCaptain?: boolean; player?: { id: string; firstName: string; lastName: string; position?: string; dateOfBirth?: string; height?: string; photo?: string | null } }> };
   tournament?: Tournament;
   stats?: MatchStatRecord[];
   gameSessions?: Array<{ id: string; status: string }>;

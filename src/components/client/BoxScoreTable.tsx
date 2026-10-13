@@ -12,6 +12,9 @@ export interface BoxScoreRow {
   blocks: number;
   fouls: number;
   turnovers: number;
+  /** From the roster, for leader cards. */
+  photo?: string | null;
+  jerseyNumber?: number | null;
   /** Advanced fields (Backend Gap #28). Their columns appear only when the backend sends them. */
   secondsPlayed?: number | null;
   fga?: number;
@@ -46,6 +49,20 @@ interface Column {
 
 const anyNumber = (rows: BoxScoreRow[], pick: (r: BoxScoreRow) => unknown) =>
   rows.some((r) => pick(r) !== undefined && pick(r) !== null);
+/**
+ * Like `anyNumber`, but a field that is present and zero for *every* player counts as untracked.
+ *
+ * Needed for MIN and +/-, which the backend declares and returns but never calculates — it sends `0`
+ * for everyone rather than omitting them (Gap 55). Zero is not the same as absent, and a column of
+ * zeros reads as real data. No real game has every player on zero minutes, so treating a flat zero
+ * as "not tracked" is safe here; it is not applied to stats that are legitimately zero all game,
+ * like blocks in a quiet quarter.
+ */
+const anyNonZero = (rows: BoxScoreRow[], pick: (r: BoxScoreRow) => number | null | undefined) =>
+  rows.some((r) => {
+    const v = pick(r);
+    return v !== undefined && v !== null && v !== 0;
+  });
 const sum = (rows: BoxScoreRow[], pick: (r: BoxScoreRow) => number | undefined) =>
   rows.reduce((s, r) => s + (pick(r) ?? 0), 0);
 /** 50, 28.6 and 80, never 50.0: one decimal at most, and none when it is a whole number. */
@@ -101,7 +118,7 @@ const MIN: Column = {
   label: 'MIN',
   title: 'Minutes played',
   summed: false,
-  present: (rows) => anyNumber(rows, (r) => r.secondsPlayed),
+  present: (rows) => anyNonZero(rows, (r) => r.secondsPlayed),
   // Whole minutes, as the reference specifies: 1,470 seconds is 24, not 24.5.
   value: (r) => (r.secondsPlayed == null ? '—' : String(Math.floor(r.secondsPlayed / 60))),
   total: () => '—',
@@ -112,7 +129,7 @@ const PLUS_MINUS: Column = {
   label: '+/-',
   title: 'Plus/minus while on court',
   summed: false,
-  present: (rows) => anyNumber(rows, (r) => r.plusMinus),
+  present: (rows) => anyNonZero(rows, (r) => r.plusMinus),
   value: (r) => (r.plusMinus == null ? '—' : r.plusMinus > 0 ? `+${r.plusMinus}` : String(r.plusMinus)),
   total: () => '—',
 };
