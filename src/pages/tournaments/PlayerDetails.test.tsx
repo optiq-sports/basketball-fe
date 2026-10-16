@@ -1,6 +1,6 @@
 import React from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({ match: null as unknown }));
@@ -43,22 +43,40 @@ describe('Player in a game', () => {
     expect(screen.getByText(/Marktown Flyers vs Riverside Kings/)).toBeInTheDocument();
   });
 
-  it('shows the recorded line as tiles, including turnovers', () => {
+  it('shows the recorded line as the six restored tiles', () => {
     renderAt();
     expect(tile('PTS')).toBe('21');
     expect(tile('REB')).toBe('7');
     expect(tile('AST')).toBe('5');
-    expect(tile('STL')).toBe('2');
     expect(tile('BLK')).toBe('1');
+    expect(tile('STL')).toBe('2');
     expect(tile('PF')).toBe('3');
-    expect(tile('TO')).toBe('4');
   });
 
-  it('no longer repeats the one game as a Cumulative and an Average row', () => {
+  it('puts the full line, turnovers included, in the stat table', () => {
     renderAt();
+    const row = within(screen.getByRole('table')).getAllByRole('row')[1];
+    const cells = within(row).getAllByRole('cell').map((c) => c.textContent);
+    // Game(s), PTS, FG, 2PT, 3PT, FT, REB, OREB, DREB, AST, STL, BLK, PF, TO, +/-, EFF
+    expect(cells[1]).toBe('21');
+    expect(cells[6]).toBe('7');
+    expect(cells[9]).toBe('5');
+    expect(cells[13]).toBe('4'); // turnovers
+  });
+
+  it('shows a dash for the columns this game has no record of', () => {
+    renderAt();
+    const row = within(screen.getByRole('table')).getAllByRole('row')[1];
+    const cells = within(row).getAllByRole('cell').map((c) => c.textContent);
+    for (const i of [2, 3, 4, 5, 7, 8, 14, 15]) expect(cells[i]).toBe('—');
+  });
+
+  it('does not repeat the one game as a Cumulative and an Average row', () => {
+    renderAt();
+    expect(screen.getByRole('table')).toBeInTheDocument();
     expect(screen.queryByText('Cumulative')).not.toBeInTheDocument();
     expect(screen.queryByText('Average')).not.toBeInTheDocument();
-    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.getByText(/no cumulative or average to show/)).toBeInTheDocument();
   });
 
   it('goes back to the match by default', () => {

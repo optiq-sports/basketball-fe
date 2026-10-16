@@ -58,8 +58,8 @@ export function PlayByPlay({ events, roster, homeTeamId, awayTeamId, home, away 
             aria-pressed={p === period}
             onClick={() => setPicked(p)}
             className={cn(
-              'h-8 min-w-12 rounded-md px-3 text-xs font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-court-400/50',
-              p === period ? 'bg-court-700 text-white dark:bg-court-400 dark:text-court-950' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200',
+              'h-8 min-w-12 rounded-md px-3 text-xs font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-brand-500/50',
+              p === period ? 'bg-brand-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200',
             )}
           >
             {periodLabel(p)}
@@ -79,7 +79,7 @@ export function PlayByPlay({ events, roster, homeTeamId, awayTeamId, home, away 
 
           if (e.eventType === 'period_end' || e.eventType === 'game_end') {
             return (
-              <li key={e.sequence} className="flex items-center justify-between rounded-md bg-court-950 px-4 py-3 text-white">
+              <li key={e.sequence} className="flex items-center justify-between rounded-md bg-brand-900 px-4 py-3 text-white">
                 <span className="text-sm tabular-nums text-white/70">{clock || '0:00'}</span>
                 <span className="text-base font-bold uppercase tracking-wide">{e.eventType === 'game_end' ? 'End of game' : 'End of period'}</span>
                 <span className="text-sm">{score}</span>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { TournamentCard } from './TournamentCard';
 import type { Tournament } from '../../types/api';
@@ -48,11 +48,25 @@ describe('TournamentCard', () => {
 
   it('shows the division, dates, venue and counts', () => {
     renderCard();
-    const card = screen.getByRole('link', { name: 'Open Summer Cup' }).closest('article')!;
-    expect(within(card).getByText('Division 1')).toBeTruthy();
-    expect(within(card).getByText('Main Arena')).toBeTruthy();
-    expect(within(card).getByText('6')).toBeTruthy();
-    expect(within(card).getByText('12')).toBeTruthy();
+    const link = screen.getByRole('link', { name: 'Open Summer Cup' });
+    expect(within(link).getByText('Division 1')).toBeTruthy();
+    expect(within(link).getByText('Main Arena')).toBeTruthy();
+    // The exact wording is the runtime locale's; what matters is that it's a range ending in the year.
+    expect(within(link).getByText(/Oct.+–.+Oct.+2026/)).toBeTruthy();
+    expect(within(link).getByText('6 teams · 12 matches')).toBeTruthy();
+  });
+
+  it('says TBA rather than a dash when a tournament has no dates at all', () => {
+    renderCard({ startDate: undefined, endDate: undefined });
+    expect(screen.getByText('TBA')).toBeTruthy();
+  });
+
+  it('falls back to the trophy when the flyer URL is broken, not the browser’s broken-image icon', () => {
+    const { container } = renderCard({ flyer: 'https://example.test/gone.png' });
+    const img = container.querySelector('img') as HTMLImageElement;
+    fireEvent.error(img);
+    expect(container.querySelector('img')).toBeNull();
+    expect(screen.getByText('No flyer')).toBeTruthy();
   });
 
   it('puts its actions outside the link, so a click on them doesn’t open the tournament', () => {

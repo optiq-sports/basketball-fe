@@ -9,8 +9,16 @@ interface AdminSidebarProps {
 }
 
 /**
- * Collapsible navy rail. Collapses to icons on desktop, expands on hover, and slides in as a drawer
- * on mobile. Items are filtered by role here for presentation only; the API enforces access.
+ * The collapsible sidebar, back to its pre-redesign light rail: white (dark grey in dark mode) with a
+ * right border, `brand`-tinted active item, and the `menu-item` utilities from `assets/admin/menu.css`.
+ * The redesign had made it a navy `court-950` rail with signal accents.
+ *
+ * It collapses to icons on desktop, expands on hover, and slides in as a drawer on mobile. Items are
+ * filtered by role for presentation only; the API enforces access.
+ *
+ * The accessibility the redesign added stays: a labelled `nav`, `aria-current="page"` on the active
+ * item, and an `aria-label`/`title` on each item while the rail is collapsed to icons — without which
+ * the collapsed rail is a column of unlabelled pictures.
  */
 const AdminSidebar: React.FC<AdminSidebarProps> = ({ userRole }) => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
@@ -27,23 +35,23 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ userRole }) => {
   return (
     <aside
       className={cn(
-        'fixed top-0 left-0 z-50 flex h-screen flex-col border-r border-court-800 bg-court-950 text-white transition-all duration-300 ease-in-out mt-16 lg:mt-0',
-        wide ? 'w-[260px]' : 'w-[80px]',
+        'fixed top-0 left-0 z-50 mt-16 flex h-screen flex-col border-r border-gray-200 bg-white px-5 text-gray-900 transition-all duration-300 ease-in-out lg:mt-0 dark:border-gray-800 dark:bg-gray-900',
+        wide ? 'w-[290px]' : 'w-[90px]',
         isMobileOpen ? 'translate-x-0' : '-translate-x-full',
         'lg:translate-x-0',
       )}
       onMouseEnter={() => !isExpanded && setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className={cn('flex h-16 items-center px-5', !showLabels && 'lg:justify-center lg:px-0')}>
-        <Link to="/dashboard" className="flex items-center gap-3 rounded-md focus-visible:ring-[3px] focus-visible:ring-court-400/50 outline-none">
+      <div className={cn('flex py-8', showLabels ? 'justify-start' : 'lg:justify-center')}>
+        <Link to="/dashboard" className="flex items-center gap-2 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
           <img src="/logo.png" alt="OptiqSports" className="size-8 shrink-0" />
-          {showLabels && <span className="text-base font-bold tracking-wide">OPTIQ SPORTS</span>}
+          {showLabels && <span className="text-lg font-semibold text-gray-800 dark:text-white">OptiqSports</span>}
         </Link>
       </div>
 
-      <nav aria-label="Main navigation" className="flex-1 overflow-y-auto px-3 py-4 no-scrollbar">
-        <ul className="flex flex-col gap-1">
+      <nav aria-label="Main navigation" className="no-scrollbar mb-6 flex-1 overflow-y-auto">
+        <ul className="flex flex-col gap-3">
           {visibleItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
@@ -55,14 +63,15 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ userRole }) => {
                   aria-label={showLabels ? undefined : item.label}
                   title={showLabels ? undefined : item.label}
                   className={cn(
-                    'group relative flex h-11 items-center gap-3 rounded-md px-3 text-sm font-medium outline-none transition-colors focus-visible:ring-[3px] focus-visible:ring-court-400/50',
-                    active ? 'bg-court-800 text-white' : 'text-court-200 hover:bg-court-900 hover:text-white',
-                    !showLabels && 'lg:justify-center lg:px-0',
+                    'menu-item group outline-none focus-visible:ring-2 focus-visible:ring-brand-500',
+                    active ? 'menu-item-active' : 'menu-item-inactive',
+                    !showLabels && 'lg:justify-center',
                   )}
                 >
-                  {active && <span aria-hidden className="absolute inset-y-2 left-0 w-1 rounded-r-full bg-signal-500" />}
-                  <Icon className={cn('size-5 shrink-0', active ? 'text-signal-300' : 'text-court-300 group-hover:text-white')} />
-                  {showLabels && <span className="truncate">{item.label}</span>}
+                  <span className={active ? 'menu-item-icon-active' : 'menu-item-icon-inactive'}>
+                    <Icon className="size-5 shrink-0" />
+                  </span>
+                  {showLabels && <span className="menu-item-text truncate">{item.label}</span>}
                 </Link>
               </li>
             );

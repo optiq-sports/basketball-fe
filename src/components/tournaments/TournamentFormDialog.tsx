@@ -3,24 +3,21 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import Modal from '../ui/Modal';
 import Spinner from '../ui/Spinner';
-import { Button } from '../ui/primitives/button';
+import { btnDanger, btnPrimary, btnSecondary, dialogFooter, errorBanner, fieldErrorClass, inputClass, labelClass, selectClass } from '../ui/formStyles';
 import { useUploadFile } from '../../api/hooks';
 import { useToast } from '../../hooks/useToast';
 import { DIVISIONS, EMPTY_TOURNAMENT_FORM, fromTournament, toTournamentPayload, tournamentFormSchema, type TournamentFormValues } from './tournament-form';
 import type { Tournament, TournamentCreate } from '../../types/api';
 
-const inputClass =
-  'w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-court-400 aria-[invalid=true]:border-rose-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white';
-
 function Field({ id, label, error, required, children }: { id: string; label: string; error?: string; required?: boolean; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-gray-700 dark:text-gray-300">
+    <div>
+      <label htmlFor={id} className={labelClass}>
         {label}
-        {required && <span aria-hidden className="text-rose-600"> *</span>}
+        {required && <span aria-hidden className="text-error-600"> *</span>}
       </label>
       {children}
-      {error && <p id={`${id}-error`} className="text-xs text-rose-600">{error}</p>}
+      {error && <p id={`${id}-error`} className={fieldErrorClass}>{error}</p>}
     </div>
   );
 }
@@ -88,28 +85,28 @@ const TournamentFormDialog: React.FC<{
     <Modal open={open} onClose={requestClose} title={editing ? 'Edit tournament' : 'New tournament'} size="lg" closeOnBackdropClick={!busy} closeOnEscape={!busy}>
       <form onSubmit={submit} className="flex flex-col gap-6" noValidate aria-busy={busy}>
         {serverError && (
-          <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
+          <p role="alert" className={errorBanner}>
             {serverError}
           </p>
         )}
 
         <div className="flex items-center gap-4">
           {flyer ? (
-            <img src={flyer} alt="" className={`h-16 w-28 rounded-md object-cover ${uploadFile.isPending ? 'opacity-50' : ''}`} />
+            <img src={flyer} alt="" className={`h-20 w-36 rounded-lg object-cover ${uploadFile.isPending ? 'opacity-50' : ''}`} />
           ) : (
-            <span className="flex h-16 w-28 items-center justify-center rounded-md bg-gray-100 text-xs text-gray-400 dark:bg-gray-800">No flyer</span>
+            <span className="flex h-20 w-36 items-center justify-center rounded-lg border border-gray-300 bg-gray-100 text-xs text-gray-400 dark:border-gray-700 dark:bg-white/5">No flyer</span>
           )}
           <div className="flex flex-col gap-1">
-            <label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">
+            <label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5">
               {uploadFile.isPending && <Spinner className="size-3.5" />}
-              {uploadFile.isPending ? 'Uploading…' : 'Upload flyer'}
+              {uploadFile.isPending ? 'Uploading...' : 'Upload flyer'}
               <input type="file" accept="image/*" className="sr-only" onChange={pickFlyer} disabled={busy} />
             </label>
-            <span className="text-xs text-gray-500">Shown on the tournament's card.</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">Shown on the tournament's card and at the top of its page.</span>
           </div>
         </div>
 
-        <fieldset className="grid gap-4 md:grid-cols-2" disabled={busy}>
+        <fieldset className="grid gap-5 md:grid-cols-2" disabled={busy}>
           <legend className="sr-only">Tournament details</legend>
           <div className="md:col-span-2">
             <Field id="name" label="Name" required error={msg('name')}>
@@ -117,7 +114,7 @@ const TournamentFormDialog: React.FC<{
             </Field>
           </div>
           <Field id="division" label="Division" required error={msg('division')}>
-            <select id="division" className={inputClass} {...register('division')} aria-invalid={invalid('division')}>
+            <select id="division" className={selectClass} {...register('division')} aria-invalid={invalid('division')}>
               {DIVISIONS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
             </select>
           </Field>
@@ -132,7 +129,7 @@ const TournamentFormDialog: React.FC<{
           </Field>
         </fieldset>
 
-        <fieldset className="grid gap-4 md:grid-cols-4" disabled={busy}>
+        <fieldset className="grid gap-5 md:grid-cols-4" disabled={busy}>
           <legend className="mb-2 text-sm font-semibold text-gray-900 dark:text-white">Format</legend>
           <Field id="numberOfGames" label="Games" required error={msg('numberOfGames')}>
             <input id="numberOfGames" inputMode="numeric" className={inputClass} {...register('numberOfGames')} aria-invalid={invalid('numberOfGames')} aria-describedby={describedBy('numberOfGames')} />
@@ -148,7 +145,7 @@ const TournamentFormDialog: React.FC<{
           </Field>
         </fieldset>
 
-        <fieldset className="grid gap-4 md:grid-cols-2" disabled={busy}>
+        <fieldset className="grid gap-5 md:grid-cols-2" disabled={busy}>
           <legend className="mb-2 text-sm font-semibold text-gray-900 dark:text-white">Officials</legend>
           <Field id="crewChief" label="Crew chief" required error={msg('crewChief')}>
             <input id="crewChief" className={inputClass} {...register('crewChief')} aria-invalid={invalid('crewChief')} aria-describedby={describedBy('crewChief')} />
@@ -164,20 +161,20 @@ const TournamentFormDialog: React.FC<{
           </Field>
         </fieldset>
 
-        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-gray-200 pt-4 dark:border-gray-800">
+        <div className={dialogFooter}>
           {confirmingDiscard ? (
             <div role="alertdialog" aria-label="Discard unsaved changes" className="mr-auto flex flex-wrap items-center gap-3 text-sm">
               <span className="text-gray-700 dark:text-gray-300">Discard your unsaved changes?</span>
-              <Button variant="secondary" type="button" onClick={() => setConfirmingDiscard(false)}>Keep editing</Button>
-              <Button variant="destructive" type="button" onClick={onClose}>Discard</Button>
+              <button type="button" className={btnSecondary} onClick={() => setConfirmingDiscard(false)}>Keep editing</button>
+              <button type="button" className={btnDanger} onClick={onClose}>Discard</button>
             </div>
           ) : (
-            <Button variant="secondary" type="button" onClick={requestClose} disabled={busy}>Cancel</Button>
+            <button type="button" className={btnSecondary} onClick={requestClose} disabled={busy}>Cancel</button>
           )}
-          <Button type="submit" disabled={busy || confirmingDiscard} className="min-w-28">
+          <button type="submit" className={`${btnPrimary} min-w-28`} disabled={busy || confirmingDiscard}>
             {isSaving && <Spinner />}
-            {isSaving ? 'Saving…' : editing ? 'Save changes' : 'Create tournament'}
-          </Button>
+            {isSaving ? 'Saving...' : editing ? 'Save changes' : 'Create tournament'}
+          </button>
         </div>
       </form>
     </Modal>

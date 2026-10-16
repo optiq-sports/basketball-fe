@@ -20,13 +20,15 @@ const TONE_ICON: Record<StatusTone, React.ComponentType<{ className?: string }>>
 export interface StatusBadgeProps {
   label: string;
   tone: StatusTone;
+  /** For placement only — spacing from whatever it sits next to. The tone owns the colours. */
+  className?: string;
 }
 
-const StatusBadge: React.FC<StatusBadgeProps> = ({ label, tone }) => {
+const StatusBadge: React.FC<StatusBadgeProps> = ({ label, tone, className }) => {
   const Icon = TONE_ICON[tone];
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded px-2.5 py-0.5 text-xs font-medium ${TONE_STYLES[tone]}`}
+      className={`inline-flex items-center gap-1 rounded px-2.5 py-0.5 text-xs font-medium ${TONE_STYLES[tone]}${className ? ` ${className}` : ''}`}
     >
       <Icon className="size-3" />
       {label}

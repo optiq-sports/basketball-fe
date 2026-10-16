@@ -1,29 +1,34 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
-import { Button } from '../ui/primitives/button';
-import { Badge } from '../ui/primitives/badge';
+import { FiEdit2, FiMapPin, FiRotateCcw, FiSlash } from 'react-icons/fi';
+import StatusBadge from '../ui/StatusBadge';
 import { PlayerAvatar } from '../players/PlayerAvatar';
 import { displayName, locationOf, splitFullName } from './statistician-form';
 import type { Statistician } from '../../types/api';
 
-export const STATISTICIAN_GRID = 'grid gap-4 sm:grid-cols-2 xl:grid-cols-3';
+export const STATISTICIAN_GRID = 'grid grid-cols-2 gap-5 md:grid-cols-3 lg:grid-cols-4';
 
 /**
- * A statistician as a card: photo, name, email and where they're based. The whole card opens their
- * profile; the buttons sit above that link so they stay clickable.
+ * A statistician as the pre-redesign photo tile: a square portrait with a dark gradient at its foot,
+ * the actions revealed in its top corner, and the name, status and location below. Clicking the tile
+ * opens their profile.
  *
- * The second action depends on status. An active statistician can be deactivated; an inactive one can
- * be reactivated. Nothing here deletes anyone — `DELETE /statistician/:id` only sets the status to
- * INACTIVE, and the account and every game they scored stay.
+ * The actions appear on hover *and on keyboard focus* — the old tile revealed them on hover only, so
+ * they could not be reached by keyboard at all, and never appeared on a touch screen.
+ *
+ * The second action is Deactivate, not Delete. `DELETE /statistician/:id` only sets the account's
+ * status to INACTIVE; the account and every game they scored stay, and an inactive statistician can be
+ * reactivated. The old tile's Delete claimed "This cannot be undone", which was never true.
  */
 export function StatisticianCard({
   statistician,
+  onOpen,
   onEdit,
   onDeactivate,
   onReactivate,
   busy,
 }: {
   statistician: Statistician;
+  onOpen: () => void;
   onEdit: () => void;
   onDeactivate: () => void;
   onReactivate: () => void;
@@ -33,49 +38,75 @@ export function StatisticianCard({
   const { firstName, lastName } = splitFullName(name);
   const inactive = statistician.status === 'INACTIVE';
   const location = locationOf(statistician);
+  // The gradient exists to lift the photo's foot away from the card below it. With no photo the tile is
+  // initials on a light panel, where the same gradient reads as a grey smudge across the bottom third.
+  const photo = statistician.profile?.photos?.[0];
 
   return (
-    <article className="group relative flex min-w-0 flex-col gap-4 overflow-hidden rounded-xl border border-gray-200 bg-white p-5 transition-shadow hover:shadow-md dark:border-gray-800 dark:bg-gray-900">
-      <div className="flex items-start gap-3">
-        <PlayerAvatar firstName={firstName} lastName={lastName} photo={statistician.profile?.photos?.[0]} size="lg" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-base font-semibold text-gray-900 dark:text-white">{name}</p>
-          <p className="truncate text-sm text-gray-500">{statistician.email}</p>
-          {inactive && <Badge variant="warning" className="mt-1.5">Inactive</Badge>}
+    <div className="group relative overflow-hidden rounded-2xl border border-gray-200 bg-white transition-colors hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-gray-700">
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={`Open ${name}`}
+        onClick={onOpen}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onOpen();
+          }
+        }}
+        className="cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500"
+      >
+        <div className="relative aspect-square overflow-hidden bg-gray-100 dark:bg-white/5">
+          <PlayerAvatar firstName={firstName} lastName={lastName} photo={photo} size="full" rounded="none" />
+          {photo && <div aria-hidden className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/60 to-transparent" />}
+        </div>
+
+        <div className="p-4">
+          <div className="mb-2 flex items-start justify-between gap-2">
+            <h3 className="min-w-0 truncate text-base font-bold text-gray-900 dark:text-white">{name}</h3>
+            <StatusBadge label={inactive ? 'Inactive' : 'Active'} tone={inactive ? 'neutral' : 'success'} />
+          </div>
+          <div className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
+            <FiMapPin aria-hidden size={14} className="shrink-0" />
+            <span className="truncate">{location || '—'}</span>
+          </div>
         </div>
       </div>
 
-      <dl className="grid grid-cols-2 gap-3 text-sm">
-        <div className="min-w-0">
-          <dt className="text-xs uppercase tracking-wide text-gray-500">Phone</dt>
-          <dd className="truncate font-medium text-gray-800 dark:text-gray-200">{statistician.profile?.phone || '—'}</dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-xs uppercase tracking-wide text-gray-500">Location</dt>
-          <dd className="truncate font-medium text-gray-800 dark:text-gray-200">{location || '—'}</dd>
-        </div>
-      </dl>
-
-      <Link
-        to={`/statisticians/${statistician.id}`}
-        aria-label={`Open ${name}`}
-        className="absolute inset-0 rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-court-400/60"
-      >
-        <span className="sr-only">Open statistician</span>
-      </Link>
-
-      <div className="relative z-10 mt-auto flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-3 dark:border-gray-800">
-        <Button variant="secondary" size="sm" aria-label={`Edit ${name}`} onClick={onEdit}>Edit</Button>
+      <div className="absolute right-2 top-2 flex gap-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100">
+        <button
+          type="button"
+          onClick={onEdit}
+          aria-label={`Edit ${name}`}
+          title={`Edit ${name}`}
+          className="cursor-pointer rounded-lg bg-white/90 p-2 text-brand-600 hover:bg-white"
+        >
+          <FiEdit2 aria-hidden size={16} />
+        </button>
         {inactive ? (
-          <Button variant="secondary" size="sm" aria-label={`Reactivate ${name}`} onClick={onReactivate} disabled={busy}>
-            Reactivate
-          </Button>
+          <button
+            type="button"
+            onClick={onReactivate}
+            disabled={busy}
+            aria-label={`Reactivate ${name}`}
+            title={`Reactivate ${name}`}
+            className="cursor-pointer rounded-lg bg-white/90 p-2 text-success-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <FiRotateCcw aria-hidden size={16} />
+          </button>
         ) : (
-          <Button variant="destructive-ghost" size="sm" aria-label={`Deactivate ${name}`} onClick={onDeactivate}>
-            Deactivate
-          </Button>
+          <button
+            type="button"
+            onClick={onDeactivate}
+            aria-label={`Deactivate ${name}`}
+            title={`Deactivate ${name}`}
+            className="cursor-pointer rounded-lg bg-white/90 p-2 text-error-600 hover:bg-white"
+          >
+            <FiSlash aria-hidden size={16} />
+          </button>
         )}
       </div>
-    </article>
+    </div>
   );
 }

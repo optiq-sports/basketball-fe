@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { usePlayersPage } from '../../api/hooks';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { PlayerAvatar } from './PlayerAvatar';
-import { Button } from '../ui/primitives/button';
 import { normalizeName } from '../../lib/text';
 import type { Player } from '../../types/api';
 
@@ -44,12 +43,17 @@ export function PlayerPicker({
     return (
       <div className="flex flex-col gap-1.5">
         <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</span>
-        <div className="flex items-center gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800">
+        <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-white/[0.02]">
           <PlayerAvatar firstName={selected.firstName} lastName={selected.lastName} photo={selected.photo} size="sm" />
           <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-900 dark:text-white">{playerLabel(selected)}</span>
-          <Button variant="ghost" size="sm" type="button" onClick={() => { onSelect(null); setDraft(''); }} disabled={disabled}>
+          <button
+            type="button"
+            onClick={() => { onSelect(null); setDraft(''); }}
+            disabled={disabled}
+            className="cursor-pointer rounded-lg px-3 py-1.5 text-sm font-medium text-brand-600 transition-colors hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
+          >
             Change
-          </Button>
+          </button>
         </div>
       </div>
     );
@@ -66,12 +70,12 @@ export function PlayerPicker({
         placeholder="Search by name"
         autoComplete="off"
         disabled={disabled}
-        className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-court-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+        className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
       />
       {searching && (
-        <div aria-live="polite" className="rounded-md border border-gray-200 dark:border-gray-700">
+        <div aria-live="polite" className="rounded-lg border border-gray-200 dark:border-gray-700">
           {query.isPending && <p className="px-3 py-2 text-sm text-gray-500">Searching…</p>}
-          {query.isError && <p className="px-3 py-2 text-sm text-rose-600">{(query.error as Error).message}</p>}
+          {query.isError && <p className="px-3 py-2 text-sm text-error-600 dark:text-error-500">{(query.error as Error).message}</p>}
           {!query.isPending && !query.isError && results.length === 0 && (
             <p className="px-3 py-2 text-sm text-gray-500">No player matches “{search}”.</p>
           )}
@@ -81,7 +85,7 @@ export function PlayerPicker({
                 <button
                   type="button"
                   onClick={() => onSelect(p)}
-                  className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-gray-50 focus-visible:bg-gray-50 focus-visible:outline-none dark:hover:bg-gray-800 dark:focus-visible:bg-gray-800"
+                  className="flex w-full cursor-pointer items-center gap-3 px-3 py-2 text-left text-sm hover:bg-gray-50 focus-visible:bg-gray-50 focus-visible:outline-none dark:hover:bg-white/5 dark:focus-visible:bg-white/5"
                 >
                   <PlayerAvatar firstName={p.firstName} lastName={p.lastName} photo={p.photo} size="sm" />
                   <span className="min-w-0 flex-1 truncate text-gray-900 dark:text-white">{playerLabel(p)}</span>

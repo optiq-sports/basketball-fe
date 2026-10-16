@@ -130,7 +130,7 @@ const BasketballDashboard: React.FC = () => {
           </h1>
           <button
             onClick={handleStartNew}
-            className="flex items-center gap-2 px-5 py-2.5 bg-court-700 hover:bg-court-800 text-white font-medium rounded-lg transition-colors dark:bg-court-400 dark:text-court-950 dark:hover:bg-court-300"
+            className="flex items-center gap-2 px-5 py-2.5 bg-brand-500 hover:bg-brand-600 text-white font-medium rounded-lg transition-colors cursor-pointer"
           >
             <PlusCircleIcon className="w-5 h-5" />
             <span>Start New</span>
@@ -160,7 +160,7 @@ const BasketballDashboard: React.FC = () => {
               key={stat.label}
               className="flex items-center gap-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900"
             >
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-court-100 text-court-700 dark:bg-court-400/10 dark:text-court-300">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-400">
                 <stat.icon className="size-5" />
               </div>
               <div>
@@ -232,7 +232,7 @@ const BasketballDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => navigate('/tournaments')}
-                  className="text-xs text-court-700 dark:text-court-300 hover:underline font-medium"
+                  className="cursor-pointer text-xs text-brand-600 dark:text-brand-400 hover:underline font-medium"
                 >
                   View all
                 </button>
@@ -294,7 +294,7 @@ const BasketballDashboard: React.FC = () => {
                         type="button"
                         onClick={() => setCurrentSlide(idx)}
                         className={`w-1.5 h-1.5 rounded-full transition-colors ${
-                          idx === currentSlideIndex ? 'bg-court-700 dark:bg-court-300' : 'bg-gray-300 dark:bg-gray-700'
+                          idx === currentSlideIndex ? 'bg-brand-500' : 'bg-gray-300 dark:bg-gray-700'
                         }`}
                       />
                     ))}
@@ -312,7 +312,7 @@ const BasketballDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => navigate('/tournaments')}
-                  className="text-xs text-court-700 dark:text-court-300 hover:underline font-medium"
+                  className="cursor-pointer text-xs text-brand-600 dark:text-brand-400 hover:underline font-medium"
                 >
                   View All
                 </button>
@@ -399,7 +399,7 @@ const BasketballDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => navigate('/tournaments')}
-                  className="text-xs text-court-700 dark:text-court-300 hover:underline font-medium"
+                  className="cursor-pointer text-xs text-brand-600 dark:text-brand-400 hover:underline font-medium"
                 >
                   View All
                 </button>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -79,6 +79,11 @@ const match = (id: string, home: string, away: string, hs: number, as_: number, 
   stats,
 });
 
+function Where() {
+  const loc = useLocation();
+  return <div data-testid="where">{loc.pathname}{loc.search}</div>;
+}
+
 function renderAt(path = '/tournaments/t1') {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -86,6 +91,7 @@ function renderAt(path = '/tournaments/t1') {
         <Route path="/tournaments/:id" element={<Tournaments />} />
         <Route path="/tournaments" element={<div>LIST</div>} />
       </Routes>
+      <Where />
     </MemoryRouter>,
   );
 }
@@ -116,19 +122,21 @@ beforeEach(() => {
   h.confirmResult.value = true;
 });
 
-describe('Tournament detail: header and overview', () => {
-  it('shows the name, division, dates and venue', () => {
-    renderAt();
+describe('Tournament detail: header and quick stats', () => {
+  it('shows the name, dates and venue, with the flyer as a banner', () => {
+    h.tournament = ok({ ...baseTournament(), flyer: 'https://cdn.test/flyer.png' });
+    const { container } = renderAt();
     expect(screen.getByRole('heading', { level: 1, name: 'Summer Cup' })).toBeTruthy();
-    expect(screen.getByText('Division 1')).toBeTruthy();
     expect(screen.getByText(/Main Arena/)).toBeTruthy();
+    expect((container.querySelector('img') as HTMLImageElement).src).toBe('https://cdn.test/flyer.png');
   });
 
-  it('shows leaders for the chosen category, from completed games only', () => {
+  it('counts teams, completed games, total games and the division', () => {
     renderAt();
-    expect(screen.getByText('Ana Guard')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Rebounds' }));
-    expect(screen.getByRole('button', { name: 'Rebounds' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText('Teams').nextSibling?.textContent).toBe('3');
+    expect(screen.getByText('Games played').nextSibling?.textContent).toBe('2');
+    expect(screen.getByText('Total games').nextSibling?.textContent).toBe('10');
+    expect(screen.getByText('Division').nextSibling?.textContent).toBe('Division 1');
   });
 
   it('opens the edit form pre-filled with the saved tournament', () => {
@@ -138,9 +146,18 @@ describe('Tournament detail: header and overview', () => {
     expect((screen.getByLabelText(/^Start date/) as HTMLInputElement).value).toBe('2026-10-01');
   });
 
+  it('offers the full format and officials, not the handful of fields the old inline form had', () => {
+    renderAt();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edit tournament' });
+    for (const label of [/^Division/, /^Quarter \(min\)/, /^Overtime \(min\)/, /^Crew chief/, /^Commissioner/]) {
+      expect(within(dialog).getByLabelText(label)).toBeTruthy();
+    }
+  });
+
   it('says what the delete will remove, with the real counts', () => {
     renderAt();
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete tournament' }));
     const dialog = screen.getByRole('dialog', { name: 'Delete tournament?' });
     expect(within(dialog).getByText('3', { selector: 'strong' })).toBeTruthy(); // three matches
   });
@@ -149,116 +166,100 @@ describe('Tournament detail: header and overview', () => {
     const refetch = vi.fn();
     h.tournament = { data: undefined, isPending: false, isError: true, isFetching: false, error: new Error('Not found on server'), refetch };
     renderAt();
-    expect(screen.getByRole('alert').textContent).toMatch(/Not found on server/);
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(screen.getByText(/Not found on server/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(refetch).toHaveBeenCalled();
+  });
+
+  it('has no tournament-level code button: it let anyone who read it open the tournament’s only match without a real match key (Gap 52)', () => {
+    renderAt();
+    expect(screen.queryByText(/^Code /)).toBeNull();
+    expect(screen.queryByRole('button', { name: /copy tournament code/i })).toBeNull();
   });
 });
 
-describe('Tournament detail: teams and standings', () => {
+describe('Tournament detail: standings and its group tabs', () => {
   it('computes standings from completed games and ranks them', () => {
-    renderAt('/tournaments/t1?tab=teams');
-    const table = screen.getByRole('table', { name: 'Teams and standings' });
+    renderAt();
+    const table = screen.getByRole('table', { name: 'Standings' });
     const rows = within(table).getAllByRole('row').slice(1); // skip header
-    expect(within(rows[0]).getByText('Alpha')).toBeTruthy(); // 2 wins (both home and away)
+    expect(within(rows[0]).getByText('Alpha')).toBeTruthy(); // 2 wins, home and away
     expect(within(rows[0]).getByText('4')).toBeTruthy(); // 2 wins x 2 points
   });
 
-  it('moves a team to another group through the optimistic hook', () => {
-    renderAt('/tournaments/t1?tab=teams');
-    fireEvent.change(screen.getByLabelText('Group for Charlie'), { target: { value: 'A' } });
-    expect(h.setGroup.mutate).toHaveBeenCalledWith({ tournamentId: 't1', teamId: 'c', group: 'A' }, expect.anything());
+  it('shows how many of the tournament’s games have been played', () => {
+    renderAt();
+    expect(screen.getByText('2/10 games played')).toBeTruthy();
   });
 
-  it('locks only the dropdown of the team being saved, and shows the saving spinner beside it', () => {
-    h.setGroup = { mutate: vi.fn(), isPending: true, variables: { tournamentId: 't1', teamId: 'c', group: 'A' } };
-    renderAt('/tournaments/t1?tab=teams');
-    expect((screen.getByLabelText('Group for Charlie') as HTMLSelectElement).disabled).toBe(true);
-    expect((screen.getByLabelText('Group for Alpha') as HTMLSelectElement).disabled).toBe(false);
+  it('offers tabs only for the groups the tournament actually uses', () => {
+    renderAt();
+    expect(screen.getByRole('button', { name: 'Group A' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Group B' })).toBeTruthy();
+    // The old page hardcoded A/B/C/D whether or not any team was in them.
+    expect(screen.queryByRole('button', { name: 'Group C' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Group D' })).toBeNull();
   });
 
-  it('removes a team only after confirmation', async () => {
-    h.confirmResult.value = false;
-    renderAt('/tournaments/t1?tab=teams');
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Bravo' }));
-    await new Promise((r) => setTimeout(r, 0));
-    expect(h.removeTeam.mutate).not.toHaveBeenCalled();
-    h.confirmResult.value = true;
-    fireEvent.click(screen.getByRole('button', { name: 'Remove Bravo' }));
-    await waitFor(() => expect(h.removeTeam.mutate).toHaveBeenCalledWith({ tournamentId: 't1', teamId: 'b' }, expect.anything()));
-  });
-
-  it('shows only a real hex colour as a swatch; anything else is neutral, not a made-up colour', () => {
-    renderAt('/tournaments/t1?tab=teams');
-    const alpha = screen.getByText('Alpha').parentElement!.querySelector('[aria-hidden]') as HTMLElement;
-    const bravo = screen.getByText('Bravo').parentElement!.querySelector('[aria-hidden]') as HTMLElement;
-    expect(alpha.style.backgroundColor).not.toBe('');
-    expect(bravo.style.backgroundColor).toBe('');
-  });
-
-  it('filters the table by group', () => {
-    renderAt('/tournaments/t1?tab=teams');
+  it('actually filters the standings by group, which the old tabs never did', () => {
+    renderAt();
+    const table = () => screen.getByRole('table', { name: /[Ss]tandings/ });
+    expect(within(table()).getByText('Alpha')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Group B' }));
-    expect(screen.queryByText('Alpha')).toBeNull();
-    expect(screen.getByText('Charlie')).toBeTruthy();
+    expect(within(table()).queryByText('Alpha')).toBeNull();
+    expect(within(table()).getByText('Charlie')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Group B standings' })).toBeTruthy();
   });
 
-  it('offers to add teams when there are none yet', () => {
-    h.tournament = ok({ ...baseTournament(), teams: [] });
-    renderAt('/tournaments/t1?tab=teams');
-    expect(screen.getByText('No teams yet')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Add teams' }));
-    const dialog = screen.getByRole('dialog', { name: 'Add teams' });
-    expect(within(dialog).getByText('Alpha')).toBeTruthy();
+  it('keeps the chosen group in the URL', () => {
+    renderAt();
+    fireEvent.click(screen.getByRole('button', { name: 'Group B' }));
+    expect(screen.getByTestId('where').textContent).toContain('group=B');
   });
 
-  it('the add dialog leaves out teams already in the tournament', () => {
-    renderAt('/tournaments/t1?tab=teams');
-    fireEvent.click(screen.getByRole('button', { name: 'Add teams' }));
-    const dialog = screen.getByRole('dialog', { name: 'Add teams' });
-    expect(within(dialog).getByText('Delta')).toBeTruthy();
-    expect(within(dialog).queryByText('Alpha')).toBeNull();
-    expect(within(dialog).queryByText('Bravo')).toBeNull();
+  it('offers no group tabs at all when no team has been put in a group', () => {
+    h.tournament = ok({ ...baseTournament(), teams: [teamRow('a', 'Alpha', null, '#ff6b2c')] });
+    renderAt();
+    expect(screen.queryByRole('group', { name: 'Filter standings by group' })).toBeNull();
   });
 });
 
-describe('Tournament detail: add teams', () => {
-  it('cannot be submitted with no team chosen', () => {
-    h.tournament = ok({ ...baseTournament(), teams: [] });
-    renderAt('/tournaments/t1?tab=teams');
-    fireEvent.click(screen.getByRole('button', { name: 'Add teams' }));
-    const submit = screen.getByRole('button', { name: 'Add to tournament' }) as HTMLButtonElement;
-    expect(submit.disabled).toBe(true);
-    expect(h.addTeams.mutate).not.toHaveBeenCalled();
+describe('Tournament detail: the schedule list', () => {
+  it('lists every match with its venue and time, and links each to the match page', () => {
+    renderAt();
+    expect(screen.getByRole('button', { name: /Schedules \(3\)/ })).toBeTruthy();
+    expect(screen.getAllByText('Main Arena').length).toBeGreaterThan(0);
   });
 
-  it('adds the chosen teams with the group picked', () => {
-    h.tournament = ok({ ...baseTournament(), teams: [] });
-    renderAt('/tournaments/t1?tab=teams');
-    fireEvent.click(screen.getByRole('button', { name: 'Add teams' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: /Delta/ }));
-    fireEvent.change(screen.getByLabelText('Group for the new teams'), { target: { value: 'C' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add to tournament' }));
-    expect(h.addTeams.mutate).toHaveBeenCalledWith({ tournamentId: 't1', body: { teamIds: ['d'], group: 'C' } }, expect.anything());
+  it('opens the match page from a schedule row, through a real link', () => {
+    renderAt();
+    const link = screen.getByRole('link', { name: 'Open Alpha against Bravo' }) as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('/tournaments/t1/match/m1');
+    fireEvent.click(link);
+    expect(screen.getByTestId('where').textContent).toBe('/tournaments/t1/match/m1');
   });
-});
 
-describe('Tournament detail: matches', () => {
-  it('lists the tournament’s matches with their scores and links to each', () => {
-    renderAt('/tournaments/t1?tab=matches');
-    const list = screen.getByRole('list', { name: 'Matches in this tournament' });
-    expect(within(list).getByText('80')).toBeTruthy();
-    expect(within(list).getAllByRole('link').length).toBe(3);
+  it('collapses and expands', () => {
+    renderAt();
+    const toggle = screen.getByRole('button', { name: /Schedules \(3\)/ });
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
   });
 
   it('says when no matches exist yet', () => {
     h.matches = ok([]);
-    renderAt('/tournaments/t1?tab=matches');
-    expect(screen.getByText('No matches yet')).toBeTruthy();
+    renderAt();
+    expect(screen.getByText('No matches scheduled yet.')).toBeTruthy();
   });
 
-  it('offers to create a fixture right here, not only by sending the admin to /fixtures (Fix 125)', async () => {
-    renderAt('/tournaments/t1?tab=matches');
+  it('gives a scheduled fixture a copy-code button, so it can be handed to a statistician right from here', () => {
+    renderAt();
+    expect(screen.getByRole('button', { name: /^Copy match code for/ })).toBeTruthy();
+  });
+
+  it('creates a fixture right here, not only by sending the admin to /fixtures (Fix 125)', async () => {
+    renderAt();
     fireEvent.click(screen.getByRole('button', { name: 'New fixture' }));
     const dialog = screen.getByRole('dialog', { name: 'New fixture' });
     fireEvent.change(within(dialog).getByLabelText(/^Home team/), { target: { value: 'a' } });
@@ -269,15 +270,108 @@ describe('Tournament detail: matches', () => {
       expect(h.createMatch.mutate).toHaveBeenCalledWith(expect.objectContaining({ tournamentId: 't1', homeTeamId: 'a', awayTeamId: 'b' }), expect.anything()),
     );
   });
+});
 
-  it('gives a scheduled fixture a copy-code button, so it can be handed to a statistician right from here', () => {
-    renderAt('/tournaments/t1?tab=matches');
-    expect(screen.getByRole('button', { name: /^Copy match code for/ })).toBeTruthy();
+describe('Tournament detail: the ongoing game panel', () => {
+  it('shows a live game with its running score', () => {
+    h.matches = ok([match('m9', 'a', 'b', 44, 41, 'LIVE')]);
+    renderAt();
+    expect(screen.getByText('Ongoing game')).toBeTruthy();
+    expect(screen.getByText('Live')).toBeTruthy();
+    expect(screen.getByText('44')).toBeTruthy();
   });
 
-  it('has no tournament-level code button: it let anyone who read it open the tournament’s only match without a real match key (Gap 52)', () => {
-    renderAt('/tournaments/t1');
-    expect(screen.queryByText(/^Code /)).toBeNull();
-    expect(screen.queryByRole('button', { name: /copy tournament code/i })).toBeNull();
+  it('does not call a finished game ongoing, which the old panel did', () => {
+    renderAt(); // fixtures are COMPLETED and SCHEDULED, none LIVE
+    expect(screen.queryByText('Ongoing game')).toBeNull();
+  });
+});
+
+describe('Tournament detail: leaders', () => {
+  it('shows leaders for the chosen category, from completed games only', () => {
+    renderAt();
+    expect(screen.getByText('Ana Guard')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Rebounds' }));
+    expect(screen.getByRole('button', { name: 'Rebounds' }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('opens the player’s own profile, not their stats in one arbitrary game', () => {
+    renderAt();
+    const link = screen.getByRole('link', { name: 'Open Ana Guard' }) as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('/players-management/p1');
+    fireEvent.click(link);
+    expect(screen.getByTestId('where').textContent).toBe('/players-management/p1');
+  });
+
+  it('says so when nothing has been recorded yet', () => {
+    h.matches = ok([match('m3', 'b', 'c', 0, 0, 'SCHEDULED')]);
+    renderAt();
+    expect(screen.getByText('No stats recorded yet for this tournament.')).toBeTruthy();
+  });
+});
+
+describe('Tournament detail: teams and groups', () => {
+  it('moves a team to another group through the optimistic hook', () => {
+    renderAt();
+    fireEvent.change(screen.getByLabelText('Group for Charlie'), { target: { value: 'A' } });
+    expect(h.setGroup.mutate).toHaveBeenCalledWith({ tournamentId: 't1', teamId: 'c', group: 'A' }, expect.anything());
+  });
+
+  it('locks only the dropdown of the team being saved', () => {
+    h.setGroup = { mutate: vi.fn(), isPending: true, variables: { tournamentId: 't1', teamId: 'c', group: 'A' } };
+    renderAt();
+    expect((screen.getByLabelText('Group for Charlie') as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByLabelText('Group for Alpha') as HTMLSelectElement).disabled).toBe(false);
+  });
+
+  it('removes a team only after confirmation', async () => {
+    h.confirmResult.value = false;
+    renderAt();
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Bravo' }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(h.removeTeam.mutate).not.toHaveBeenCalled();
+    h.confirmResult.value = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Bravo' }));
+    await waitFor(() => expect(h.removeTeam.mutate).toHaveBeenCalledWith({ tournamentId: 't1', teamId: 'b' }, expect.anything()));
+  });
+
+  it('offers to add teams when there are none yet', () => {
+    h.tournament = ok({ ...baseTournament(), teams: [] });
+    renderAt();
+    expect(screen.getByText('No teams yet')).toBeTruthy();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add Teams' })[0]);
+    const dialog = screen.getByRole('dialog', { name: 'Add teams to tournament' });
+    expect(within(dialog).getByText('Alpha')).toBeTruthy();
+  });
+
+  it('the add dialog leaves out teams already in the tournament', () => {
+    renderAt();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add Teams' })[0]);
+    const dialog = screen.getByRole('dialog', { name: 'Add teams to tournament' });
+    expect(within(dialog).getByText('Delta')).toBeTruthy();
+    expect(within(dialog).queryByText('Alpha')).toBeNull();
+    expect(within(dialog).queryByText('Bravo')).toBeNull();
+  });
+});
+
+describe('Tournament detail: add teams', () => {
+  it('cannot be submitted with no team chosen', () => {
+    h.tournament = ok({ ...baseTournament(), teams: [] });
+    renderAt();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add Teams' })[0]);
+    const dialog = screen.getByRole('dialog', { name: 'Add teams to tournament' });
+    expect((within(dialog).getByRole('button', { name: 'Add Teams' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(h.addTeams.mutate).not.toHaveBeenCalled();
+  });
+
+  it('adds the chosen teams with the group picked', () => {
+    h.tournament = ok({ ...baseTournament(), teams: [] });
+    renderAt();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add Teams' })[0]);
+    const dialog = screen.getByRole('dialog', { name: 'Add teams to tournament' });
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: /Delta/ }));
+    fireEvent.change(within(dialog).getByLabelText('Group for the new teams'), { target: { value: 'C' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add Teams' }));
+    expect(h.addTeams.mutate).toHaveBeenCalledWith({ tournamentId: 't1', body: { teamIds: ['d'], group: 'C' } }, expect.anything());
   });
 });

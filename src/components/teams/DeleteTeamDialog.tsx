@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Modal from '../ui/Modal';
 import Spinner from '../ui/Spinner';
-import { Button } from '../ui/primitives/button';
+import { btnDanger, btnSecondary, errorBanner, labelClass } from '../ui/formStyles';
 import { useTeam } from '../../api/hooks';
 
 export interface DeleteTeamTarget {
@@ -42,7 +42,7 @@ const DeleteTeamDialog: React.FC<{
             </p>
           )}
           {detailQuery.isError && (
-            <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
+            <p role="alert" className={errorBanner}>
               Couldn’t check what this removes: {(detailQuery.error as Error).message}
             </p>
           )}
@@ -51,8 +51,8 @@ const DeleteTeamDialog: React.FC<{
               This permanently deletes <strong>{target.name}</strong>, removes it from <strong>{tournaments}</strong> {tournaments === 1 ? 'tournament' : 'tournaments'}, and deletes <strong>{matches}</strong> {matches === 1 ? 'match' : 'matches'} it has played — home or away, in any tournament — with their recorded scores and events. This can’t be undone.
             </p>
           )}
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="confirm-team" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          <div>
+            <label htmlFor="confirm-team" className={labelClass}>
               Type <span className="font-semibold">{target.name}</span> to confirm
             </label>
             <input
@@ -61,15 +61,15 @@ const DeleteTeamDialog: React.FC<{
               onChange={(e) => setTyped(e.target.value)}
               autoComplete="off"
               disabled={!ready}
-              className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-rose-400 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-error-500 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:disabled:bg-white/5"
             />
           </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" type="button" onClick={onCancel} disabled={isDeleting}>Cancel</Button>
-            <Button variant="destructive" type="submit" disabled={!canConfirm}>
+          <div className="flex justify-end gap-3 border-t border-gray-200 pt-4 dark:border-gray-800">
+            <button type="button" className={btnSecondary} onClick={onCancel} disabled={isDeleting}>Cancel</button>
+            <button type="submit" className={btnDanger} disabled={!canConfirm}>
               {isDeleting && <Spinner />}
-              {isDeleting ? 'Deleting…' : 'Delete team'}
-            </Button>
+              {isDeleting ? 'Deleting...' : 'Delete team'}
+            </button>
           </div>
         </form>
       )}

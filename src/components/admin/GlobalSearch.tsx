@@ -50,7 +50,7 @@ function Results({ query, activeIndex, onHits, onPick, listId }: {
                   role="option"
                   aria-selected={active}
                   onMouseDown={(e) => { e.preventDefault(); onPick(hit); }}
-                  className={cn('flex cursor-pointer flex-col rounded-md px-3 py-2', active ? 'bg-court-50 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/60')}
+                  className={cn('flex cursor-pointer flex-col rounded-md px-3 py-2', active ? 'bg-brand-50 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/60')}
                 >
                   <span className="truncate text-sm font-semibold text-gray-900 dark:text-white">{hit.title}</span>
                   <span className="truncate text-xs text-gray-500">{hit.subtitle}</span>
@@ -130,7 +130,7 @@ export default function GlobalSearch() {
           else if (e.key === 'ArrowUp' && hits.length) { e.preventDefault(); setActive((a) => (a - 1 + hits.length) % hits.length); }
           else if (e.key === 'Enter' && showing && hits[active]) { e.preventDefault(); pick(hits[active]); }
         }}
-        className="h-10 w-full rounded-lg border border-gray-200 bg-transparent py-2 pl-11 pr-16 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus-visible:ring-[3px] focus-visible:ring-court-400/50 dark:border-gray-700 dark:text-white xl:w-[400px]"
+        className="h-10 w-full rounded-lg border border-gray-200 bg-transparent py-2 pl-11 pr-16 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus-visible:ring-[3px] focus-visible:ring-brand-500/40 dark:border-gray-700 dark:text-white xl:w-[400px]"
       />
       <kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">⌘K</kbd>
       {showing && <Results query={query} activeIndex={active} onHits={updateHits} onPick={pick} listId={listId} />}

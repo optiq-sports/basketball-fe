@@ -5,6 +5,7 @@ import { decideGate } from './auth/gateDecision';
 import { useQueryClient } from '@tanstack/react-query';
 import Login from './pages/login/login';
 import ForgotPassword from './pages/login/ForgotPassword';
+import ResetPassword from './pages/login/ResetPassword';
 import ChangePasswordRequired from './pages/login/ChangePasswordRequired';
 import ClientPortal from './pages/portal/ClientPortal';
 import Wrapper from './components/wrapper';
@@ -150,6 +151,8 @@ const AppRoutes: React.FC = () => {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+        {/* Where the emailed reset link lands: EmailService builds `${FRONTEND_URL}/reset-password?token=…`. */}
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/*" element={<AppGate />} />
       </Routes>

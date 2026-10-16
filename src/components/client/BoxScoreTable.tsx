@@ -195,7 +195,7 @@ export function BoxScoreTable({
           playerHref ? (
             <Link
               to={playerHref(row.original.playerId)}
-              className="rounded font-medium text-gray-900 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-court-400/50 dark:text-white"
+              className="rounded font-medium text-gray-900 outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-brand-500/50 dark:text-white"
             >
               {row.original.name}
             </Link>

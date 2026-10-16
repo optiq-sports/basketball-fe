@@ -8,8 +8,8 @@ export const badgeVariants = cva(
     variants: {
       variant: {
         neutral: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
-        court: 'bg-court-100 text-court-800 dark:bg-court-800 dark:text-court-100',
-        live: 'bg-signal-50 text-signal-700 dark:bg-signal-500/15 dark:text-signal-300',
+        court: 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-400',
+        live: 'bg-error-50 text-error-700 dark:bg-error-500/15 dark:text-error-500',
         success: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300',
         warning: 'bg-amber-50 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300',
         danger: 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300',

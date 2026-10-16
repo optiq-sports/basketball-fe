@@ -59,15 +59,18 @@ describe('Users', () => {
   it('lists admins with role and status, and marks the signed-in one', () => {
     renderAt();
     expect(screen.getByText('ann@x.com')).toBeInTheDocument();
-    expect(screen.getByText('You')).toBeInTheDocument();
+    expect(screen.getByText('(you)')).toBeInTheDocument();
     expect(screen.getAllByText('Inactive').length).toBeGreaterThan(0);
   });
 
   it('filters by role, status and search through the URL', () => {
     renderAt('/users?role=ADMIN&status=active');
-    expect(screen.getByText('ann@x.com')).toBeInTheDocument();
-    expect(screen.queryByText('bob@x.com')).not.toBeInTheDocument();
-    expect(screen.queryByText('root@x.com')).not.toBeInTheDocument();
+    // Scoped to the table: the restored header also prints "Logged in as <your email>", and the
+    // signed-in account in these fixtures is root@x.com.
+    const table = within(screen.getByRole('table'));
+    expect(table.getByText('ann@x.com')).toBeInTheDocument();
+    expect(table.queryByText('bob@x.com')).not.toBeInTheDocument();
+    expect(table.queryByText('root@x.com')).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Filter by status'), { target: { value: '' } });
     expect(screen.getByTestId('where')).toHaveTextContent('role=ADMIN');
     expect(screen.getByTestId('where')).not.toHaveTextContent('status');
@@ -78,12 +81,13 @@ describe('Users', () => {
     expect(screen.getByRole('button', { name: 'Deactivate ROOT' })).toBeDisabled();
   });
 
-  it('asks before deactivating someone else, then deactivates', () => {
+  it('asks before deactivating someone else, then deactivates', async () => {
     renderAt();
     fireEvent.click(screen.getByRole('button', { name: 'Deactivate ANN' }));
     expect(h.deactivate.mutate).not.toHaveBeenCalled();
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Deactivate' }));
-    expect(h.deactivate.mutate).toHaveBeenCalledWith('ann', expect.any(Object));
+    // The confirm is promise-based, so the mutation lands a microtask after the click.
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Deactivate' }));
+    await waitFor(() => expect(h.deactivate.mutate).toHaveBeenCalledWith('ann', expect.any(Object)));
   });
 
   it('reactivates an inactive admin', () => {
@@ -103,17 +107,17 @@ describe('Users', () => {
 
   it('offers only the two admin roles', () => {
     renderAt();
-    fireEvent.click(screen.getByRole('button', { name: 'Add admin' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add User' }));
     const options = within(within(screen.getByRole('dialog')).getByLabelText('Role')).getAllByRole('option');
     expect(options.map((o) => o.textContent)).toEqual(['Super administrator', 'Administrator']);
   });
 
   it('creates with no password so the backend emails one', async () => {
     renderAt();
-    fireEvent.click(screen.getByRole('button', { name: 'Add admin' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add User' }));
     const dialog = screen.getByRole('dialog');
     fireEvent.change(within(dialog).getByLabelText(/^Email/), { target: { value: 'new@x.com' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Add admin' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add User' }));
     await waitFor(() =>
       expect(h.create.mutate).toHaveBeenCalledWith({ email: 'new@x.com', role: 'ADMIN', status: 'ACTIVE' }, expect.any(Object)),
     );
@@ -121,11 +125,11 @@ describe('Users', () => {
 
   it('will not create without a valid email, or with a short password', async () => {
     renderAt();
-    fireEvent.click(screen.getByRole('button', { name: 'Add admin' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add User' }));
     const dialog = screen.getByRole('dialog');
     fireEvent.change(within(dialog).getByLabelText(/^Email/), { target: { value: 'nope' } });
     fireEvent.change(within(dialog).getByLabelText(/^Password/), { target: { value: 'abc' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Add admin' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add User' }));
     expect(await within(dialog).findByText('Enter a valid email address.')).toBeInTheDocument();
     expect(within(dialog).getByText(/at least 8 characters/)).toBeInTheDocument();
     expect(h.create.mutate).not.toHaveBeenCalled();

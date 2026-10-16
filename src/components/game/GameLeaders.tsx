@@ -32,7 +32,7 @@ function Leader({ row, value, label, side, playerHref }: { row: BoxScoreRow | nu
   );
   const cls = cn('flex min-h-24 min-w-0 items-center gap-3 rounded-xl p-4', dark ? 'text-white' : 'text-gray-900');
   return row && playerHref ? (
-    <Link to={playerHref(row.playerId)} className={cn(cls, 'outline-none focus-visible:ring-[3px] focus-visible:ring-court-400/60')} style={{ backgroundColor: side.color }}>{body}</Link>
+    <Link to={playerHref(row.playerId)} className={cn(cls, 'outline-none focus-visible:ring-[3px] focus-visible:ring-brand-500/60')} style={{ backgroundColor: side.color }}>{body}</Link>
   ) : (
     <div className={cls} style={{ backgroundColor: side.color }}>{body}</div>
   );
@@ -54,8 +54,8 @@ export function GameLeaders({ home, away, homeRows, awayRows, playerHref }: { ho
             aria-pressed={key === c.key}
             onClick={() => setKey(c.key)}
             className={cn(
-              'h-8 rounded-md px-3 text-xs font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-court-400/50',
-              key === c.key ? 'bg-court-700 text-white dark:bg-court-400 dark:text-court-950' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200',
+              'h-8 rounded-md px-3 text-xs font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-brand-500/50',
+              key === c.key ? 'bg-brand-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200',
             )}
           >
             {c.label}

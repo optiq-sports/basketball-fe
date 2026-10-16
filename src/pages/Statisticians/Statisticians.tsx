@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { FiChevronDown, FiFilter, FiSearch } from 'react-icons/fi';
 import {
   useCreateStatistician,
   useDeleteStatistician,
@@ -7,39 +8,50 @@ import {
   useUpdateStatistician,
 } from '../../api/hooks';
 import { useToast } from '../../hooks/useToast';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import type { Statistician, StatisticianCreateBody, StatisticianUpdateBody } from '../../types/api';
-import { PageHeader, ListSkeleton, EmptyState, ErrorState, NoResultsState } from '../../components/admin/page-states';
 import Pagination from '../../components/ui/Pagination';
-import { Button } from '../../components/ui/primitives/button';
+import { btnPrimaryLg, errorBanner } from '../../components/ui/formStyles';
 import { StatisticianCard, STATISTICIAN_GRID } from '../../components/statisticians/StatisticianCard';
 import StatisticianFormDialog from '../../components/statisticians/StatisticianFormDialog';
 import DeactivateStatisticianDialog, { type DeactivateTarget } from '../../components/statisticians/DeactivateStatisticianDialog';
 import { displayName, locationOf } from '../../components/statisticians/statistician-form';
-import { cn } from '../../lib/utils';
+import StatisticianProfileModal from './StatisticianProfileModal';
 
-const PAGE_SIZE = 12;
+const PAGE_SIZE = 9;
 
-const TABS = [
-  { key: 'active', label: 'Active', status: 'ACTIVE' },
-  { key: 'inactive', label: 'Inactive', status: 'INACTIVE' },
+const FILTERS = [
+  { value: 'all', label: 'All' },
+  { value: 'active', label: 'Active' },
+  { value: 'inactive', label: 'Inactive' },
 ] as const;
+type FilterValue = (typeof FILTERS)[number]['value'];
+const isFilter = (v: string | null): v is FilterValue => !!v && FILTERS.some((f) => f.value === v);
 
 /**
- * Every statistician, one status at a time. The status tab, search and page live in the URL, so a
- * refresh or a shared link shows the same list.
+ * Every statistician, back to the pre-redesign layout: the full-bleed white panel, the large title, the
+ * `brand` Add button beside a wide search box, the status filter framed by its funnel and chevron, and
+ * the square photo tiles nine to a page. Clicking a tile opens their profile in a modal, as it did.
  *
- * Unlike players, search and paging happen here rather than on the server: `GET /statistician` takes
- * a `search` parameter but never applies it, so asking the server would return the same page whatever
- * was typed. The full list for a status is fetched once (statisticians are people, not thousands of
- * rows) and filtered in the browser, which is accurate across every page. When the backend applies
- * `search` (Gap 39), this can move to server-side paging like the players list.
+ * **"All" now actually works.** `StatisticianService.findAll` defaults `where.status` to ACTIVE when no
+ * status is asked for, so the old page's "All" option filtered a list that only ever contained active
+ * accounts — an inactive statistician was unreachable from this screen. Both statuses are fetched here
+ * and combined, so All means all.
+ *
+ * **Deactivate, not delete.** `DELETE /statistician/:id` only sets the status to INACTIVE. The old tile
+ * offered "Delete … This cannot be undone", which was never what happened. An inactive statistician can
+ * be reactivated from their tile.
+ *
+ * Search and paging happen in the browser. `GET /statistician` does apply `search` now (on name and
+ * email), but the whole list is already here — `ApiClient.statistician.getAll` walks every page — and
+ * filtering locally also matches a phone number and a location, which the server does not.
  */
 const Statisticians: React.FC = () => {
   const [params, setParams] = useSearchParams();
   const toast = useToast();
 
-  const tab = TABS.find((t) => t.key === params.get('status')) ?? TABS[0];
-  const q = params.get('q') ?? '';
+  const statusParam = params.get('status');
+  const filter: FilterValue = isFilter(statusParam) ? statusParam : 'all';
   const pageParam = Number(params.get('page'));
   const page = Number.isInteger(pageParam) && pageParam >= 1 ? pageParam : 1;
 
@@ -52,85 +64,86 @@ const Statisticians: React.FC = () => {
     setParams(p, { replace: true });
   };
 
-  // Search types locally and writes to the URL after a pause, so each keystroke doesn't re-filter the URL.
-  const [draft, setDraft] = useState(q);
-  useEffect(() => setDraft(q), [q]);
-  useEffect(() => {
-    if (draft === q) return;
-    const id = window.setTimeout(() => setParam({ q: draft.trim() || null, page: null }), 300);
-    return () => window.clearTimeout(id);
-    // setParam is stable enough for this debounce; q and draft are the real inputs
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft]);
+  const [searchQuery, setSearchQuery] = useState(params.get('q') ?? '');
+  const search = useDebouncedValue(searchQuery.trim(), 300);
 
-  const query = useStatisticians(tab.status);
+  // Two cached queries, one per status. "All" combines them; either tab uses just the one.
+  const activeQuery = useStatisticians('ACTIVE');
+  const inactiveQuery = useStatisticians('INACTIVE');
+  const wanted = filter === 'active' ? [activeQuery] : filter === 'inactive' ? [inactiveQuery] : [activeQuery, inactiveQuery];
+  const isPending = wanted.some((q) => q.isPending);
+  const error = wanted.find((q) => q.error)?.error as Error | undefined;
+
   const createStatistician = useCreateStatistician();
   const updateStatistician = useUpdateStatistician();
   const deactivate = useDeleteStatistician();
 
-  const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState<Statistician | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingStatistician, setEditingStatistician] = useState<Statistician | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<DeactivateTarget | null>(null);
   const [reactivatingId, setReactivatingId] = useState<string | null>(null);
+  const [selectedStatisticianId, setSelectedStatisticianId] = useState<string | null>(null);
 
-  const all: Statistician[] = useMemo(() => query.data ?? [], [query.data]);
+  const statisticians = useMemo(() => {
+    const byId = new Map<string, Statistician>();
+    for (const q of wanted) for (const s of q.data ?? []) byId.set(s.id, s);
+    return [...byId.values()];
+    // `wanted` is rebuilt each render from the two queries; their data is the real input.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, activeQuery.data, inactiveQuery.data]);
 
   const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
+    const needle = search.toLowerCase();
     const matches = needle
-      ? all.filter((s) =>
+      ? statisticians.filter((s) =>
           [displayName(s), s.email ?? '', locationOf(s), s.profile?.phone ?? ''].some((f) => f.toLowerCase().includes(needle)),
         )
-      : all;
+      : statisticians;
     return [...matches].sort((a, b) => displayName(a).localeCompare(displayName(b)));
-  }, [all, q]);
+  }, [statisticians, search]);
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(page, pageCount);
-  const rows = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paginated = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
-  const openCreate = () => {
-    setEditing(null);
+  const handleAddStatistician = () => {
+    setEditingStatistician(null);
     setFormError(null);
-    setFormOpen(true);
+    setIsModalOpen(true);
   };
-  const openEdit = (s: Statistician) => {
-    setEditing(s);
+
+  const handleEditStatistician = (s: Statistician) => {
+    setEditingStatistician(s);
     setFormError(null);
-    setFormOpen(true);
+    setIsModalOpen(true);
   };
+
   const closeForm = () => {
-    setFormOpen(false);
-    setEditing(null);
+    setIsModalOpen(false);
+    setEditingStatistician(null);
   };
 
   const create = (body: StatisticianCreateBody) => {
     setFormError(null);
     createStatistician.mutate(body, {
-      onSuccess: (created) => {
-        toast.success(`${displayName(created)} added.`);
-        closeForm();
-      },
+      onSuccess: (created) => { toast.success(`${displayName(created)} added.`); closeForm(); },
       onError: (err) => setFormError(err.message),
     });
   };
 
   const update = (body: StatisticianUpdateBody) => {
-    if (!editing) return;
+    if (!editingStatistician) return;
     setFormError(null);
     if (Object.keys(body).length === 0) {
       closeForm();
       return;
     }
-    const target = editing;
+    const target = editingStatistician;
     updateStatistician.mutate(
       { id: target.id, data: body },
       {
-        onSuccess: () => {
-          toast.success(`${displayName(target)} saved.`);
-          closeForm();
-        },
+        onSuccess: () => { toast.success(`${displayName(target)} saved.`); closeForm(); },
         onError: (err) => setFormError(err.message),
       },
     );
@@ -140,14 +153,8 @@ const Statisticians: React.FC = () => {
     if (!deactivateTarget) return;
     const target = deactivateTarget;
     deactivate.mutate(target.id, {
-      onSuccess: () => {
-        toast.success(`${target.name} deactivated.`);
-        setDeactivateTarget(null);
-      },
-      onError: (err) => {
-        toast.error(`Couldn’t deactivate ${target.name}: ${err.message}`);
-        setDeactivateTarget(null);
-      },
+      onSuccess: () => { toast.success(`${target.name} deactivated.`); setDeactivateTarget(null); },
+      onError: (err) => { toast.error(`Couldn’t deactivate ${target.name}: ${err.message}`); setDeactivateTarget(null); },
     });
   };
 
@@ -163,102 +170,90 @@ const Statisticians: React.FC = () => {
     );
   };
 
-  const showEmpty = !query.isPending && !query.isError && all.length === 0;
-  const showNoResults = !query.isPending && !query.isError && all.length > 0 && filtered.length === 0;
-
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Statisticians"
-        description="The people who score games. Assign them to matches from a fixture."
-        actions={<Button onClick={openCreate}>Add statistician</Button>}
-      />
+    <div className="min-h-screen bg-white p-8 dark:bg-gray-950">
+      <div className="mb-8 flex items-center justify-between">
+        <h1 className="text-4xl font-bold text-gray-900 dark:text-white">Statisticians</h1>
+      </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div role="tablist" aria-label="Status" className="flex gap-1.5">
-          {TABS.map((t) => {
-            const active = t.key === tab.key;
-            return (
-              <button
-                key={t.key}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => setParam({ status: t.key === 'active' ? null : t.key, page: null })}
-                className={cn(
-                  'h-9 rounded-md px-3 text-sm font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-court-400/50',
-                  active
-                    ? 'bg-court-700 text-white dark:bg-court-400 dark:text-court-950'
-                    : 'bg-white text-gray-700 hover:bg-gray-100 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800',
-                )}
-              >
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
+      {error && <div className={`mb-6 ${errorBanner}`}>{error.message}</div>}
 
-        <div className="w-full md:max-w-sm">
+      <div className="mb-8 flex flex-wrap items-center gap-4">
+        <button type="button" onClick={handleAddStatistician} className={btnPrimaryLg}>
+          Add Statistician
+        </button>
+
+        <div className="relative min-w-[16rem] flex-1">
           <label htmlFor="statistician-search" className="sr-only">Search statisticians</label>
+          <FiSearch aria-hidden className="absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400 dark:text-gray-500" size={20} />
           <input
             id="statistician-search"
-            type="search"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="Search by name, email or place"
-            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-court-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+            type="text"
+            placeholder="Search Statistician"
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setParam({ q: e.target.value.trim() || null, page: null }); }}
+            className="w-full rounded-lg border border-gray-300 bg-white py-3 pl-10 pr-4 text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-500"
           />
+        </div>
+
+        <div className="relative">
+          <label htmlFor="statistician-status" className="sr-only">Filter by status</label>
+          <select
+            id="statistician-status"
+            value={filter}
+            onChange={(e) => setParam({ status: e.target.value === 'all' ? null : e.target.value, page: null })}
+            className="min-w-[140px] cursor-pointer appearance-none rounded-lg border border-gray-300 bg-white py-3 pl-10 pr-8 text-gray-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+          >
+            {FILTERS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+          </select>
+          <FiFilter aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 transform text-gray-400 dark:text-gray-500" size={18} />
+          <FiChevronDown aria-hidden className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 transform text-gray-400 dark:text-gray-500" size={18} />
         </div>
       </div>
 
-      {query.isPending && <ListSkeleton columns={3} rows={6} label="Loading statisticians" />}
-      {query.isError && <ErrorState message={(query.error as Error).message} onRetry={() => void query.refetch()} />}
-      {showEmpty && tab.key === 'active' && (
-        <EmptyState
-          title="No statisticians yet"
-          description="Add the people who will score your games. They sign in with the email and password you set."
-          action={{ label: 'Add statistician', onClick: openCreate }}
-        />
-      )}
-      {showEmpty && tab.key === 'inactive' && (
-        <EmptyState title="No inactive statisticians" description="Anyone you deactivate shows up here, and can be reactivated." />
-      )}
-      {showNoResults && (
-        <NoResultsState query={q} onClear={() => { setDraft(''); setParam({ q: null, page: null }); }} />
-      )}
-
-      {!query.isPending && !query.isError && rows.length > 0 && (
+      {isPending ? (
+        <div className="py-12 text-center text-gray-500 dark:text-gray-400">Loading statisticians...</div>
+      ) : (
         <>
-          <ul className={cn(STATISTICIAN_GRID, query.isFetching && 'opacity-70 transition-opacity')} aria-label="Statisticians">
-            {rows.map((s) => (
-              <li key={s.id} className="min-w-0">
+          <div className={`mb-8 ${STATISTICIAN_GRID}`}>
+            {paginated.length > 0 ? (
+              paginated.map((s) => (
                 <StatisticianCard
+                  key={s.id}
                   statistician={s}
-                  onEdit={() => openEdit(s)}
+                  onOpen={() => setSelectedStatisticianId(s.id)}
+                  onEdit={() => handleEditStatistician(s)}
                   onDeactivate={() => setDeactivateTarget({ id: s.id, name: displayName(s) })}
                   onReactivate={() => reactivate(s)}
                   busy={reactivatingId === s.id}
                 />
-              </li>
-            ))}
-          </ul>
+              ))
+            ) : (
+              <div className="col-span-full py-12 text-center">
+                <p className="text-lg text-gray-500 dark:text-gray-400">No statisticians found</p>
+                <p className="mt-2 text-sm text-gray-400 dark:text-gray-500">
+                  {statisticians.length === 0
+                    ? 'Add the people who will score your games. They sign in with the email and password you set.'
+                    : 'Try adjusting your search or filter'}
+                </p>
+              </div>
+            )}
+          </div>
 
-          {pageCount > 1 && (
-            <Pagination
-              currentPage={safePage}
-              totalPages={pageCount}
-              totalItems={filtered.length}
-              pageSize={PAGE_SIZE}
-              onPageChange={(p) => setParam({ page: p <= 1 ? null : String(p) })}
-            />
-          )}
+          <Pagination
+            currentPage={safePage}
+            totalPages={totalPages}
+            onPageChange={(p) => setParam({ page: p <= 1 ? null : String(p) })}
+            totalItems={filtered.length}
+            pageSize={PAGE_SIZE}
+          />
         </>
       )}
 
       <StatisticianFormDialog
-        open={formOpen}
+        open={isModalOpen}
         onClose={closeForm}
-        initial={editing}
+        initial={editingStatistician}
         isSaving={createStatistician.isPending || updateStatistician.isPending}
         serverError={formError}
         onCreate={create}
@@ -271,6 +266,8 @@ const Statisticians: React.FC = () => {
         onCancel={() => setDeactivateTarget(null)}
         onConfirm={confirmDeactivate}
       />
+
+      <StatisticianProfileModal statisticianId={selectedStatisticianId} onClose={() => setSelectedStatisticianId(null)} />
     </div>
   );
 };

@@ -1,7 +1,6 @@
 import React from 'react';
 import Modal from '../ui/Modal';
 import Spinner from '../ui/Spinner';
-import { Button } from '../ui/primitives/button';
 
 export interface ReleaseTarget {
   id: string;
@@ -24,7 +23,7 @@ const ReleasePlayerDialog: React.FC<{
 }> = ({ target, isReleasing, onCancel, onConfirm }) => (
   <Modal open={!!target} onClose={onCancel} title="Release player?" size="sm" closeOnBackdropClick={!isReleasing} closeOnEscape={!isReleasing}>
     {target && (
-      <div className="flex flex-col gap-4">
+      <div className="space-y-4">
         <p className="text-sm text-gray-700 dark:text-gray-300">
           This takes <strong>{target.name}</strong>
           {target.teams.length > 0 ? (
@@ -34,12 +33,24 @@ const ReleasePlayerDialog: React.FC<{
           )}
           . Their profile and everything they've recorded stay — you can sign them to a team again later.
         </p>
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" type="button" onClick={onCancel} disabled={isReleasing}>Cancel</Button>
-          <Button variant="destructive" type="button" onClick={onConfirm} disabled={isReleasing}>
+        <div className="flex justify-end gap-3 border-t border-gray-200 pt-4 dark:border-gray-800">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isReleasing}
+            className="cursor-pointer rounded-lg border border-gray-300 bg-white px-5 py-2.5 font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-70 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-white/5"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isReleasing}
+            className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg bg-brand-500 px-5 py-2.5 font-medium text-white transition-colors hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-70"
+          >
             {isReleasing && <Spinner />}
-            {isReleasing ? 'Releasing…' : 'Release player'}
-          </Button>
+            {isReleasing ? 'Releasing...' : 'Release player'}
+          </button>
         </div>
       </div>
     )}

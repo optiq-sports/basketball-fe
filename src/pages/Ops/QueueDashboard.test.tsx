@@ -1,6 +1,15 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+/**
+ * This page renders three count cards, a table and two action cards, which makes it the heaviest render
+ * in the suite — and `findBy*` computes accessible roles across all of it. Alone that is comfortably
+ * under a second; in the full parallel run it has overrun Testing Library's 1s default and timed out on
+ * the first lookup. The logic was never at fault, so this gives it a realistic wait rather than
+ * loosening an assertion. Same reasoning as the note in `Fixtures.delete.test.tsx`.
+ */
+configure({ asyncUtilTimeout: 10_000 });
 
 const h = vi.hoisted(() => ({
   health: null as unknown,
@@ -108,5 +117,29 @@ describe('QueueDashboard', () => {
     h.health = q(undefined, { isError: true, isPending: false });
     render(<QueueDashboard />);
     expect(screen.getByText(/Couldn’t load queue data/)).toBeInTheDocument();
+  });
+
+  it('flags failed jobs with a total, a per-queue breakdown, and what they mean', () => {
+    render(<QueueDashboard />);
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('6 failed jobs across 2 queues');
+    expect(alert).toHaveTextContent('Projection rebuild: 3');
+    expect(alert).toHaveTextContent('Match stat sync: 3');
+    // Session recompute has none, so it isn't named.
+    expect(alert).not.toHaveTextContent('Session recompute');
+    expect(alert).toHaveTextContent(/finished game's score can stay off the match record/);
+  });
+
+  it('says nothing about failures when every queue is clean', () => {
+    h.health = q({
+      enabled: true,
+      queues: {
+        'statdash-projections': counts({ failed: 0 }),
+        'statdash-recompute': counts({ failed: 0 }),
+        'statdash-matchstat-sync': counts({ failed: 0 }),
+      },
+    });
+    render(<QueueDashboard />);
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });

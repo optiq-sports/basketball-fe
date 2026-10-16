@@ -4,7 +4,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Country } from 'country-state-city';
 import Modal from '../ui/Modal';
 import Spinner from '../ui/Spinner';
-import { Button } from '../ui/primitives/button';
 import { PlayerAvatar } from './PlayerAvatar';
 import { useTeams, useUploadFile } from '../../api/hooks';
 import { useToast } from '../../hooks/useToast';
@@ -21,28 +20,49 @@ import {
 import type { Player, PlayerCreateForTeam, PlayerUpdateBody } from '../../types/api';
 
 const inputClass =
-  'w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-court-400 aria-[invalid=true]:border-rose-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white';
+  'w-full px-4 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent aria-[invalid=true]:border-error-500 disabled:bg-gray-100 disabled:cursor-not-allowed dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:disabled:bg-white/5';
+const labelClass = 'block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300';
 
-function Field({ id, label, error, required, hint, children }: { id: string; label: string; error?: string; required?: boolean; hint?: string; children: React.ReactNode }) {
+function Field({
+  id,
+  label,
+  error,
+  required,
+  hint,
+  children,
+}: {
+  id: string;
+  label: string;
+  error?: string;
+  required?: boolean;
+  hint?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-gray-700 dark:text-gray-300">
+    <div>
+      <label htmlFor={id} className={labelClass}>
         {label}
-        {required && <span aria-hidden className="text-rose-600"> *</span>}
+        {required && <span aria-hidden className="text-error-600"> *</span>}
       </label>
       {children}
-      {hint && !error && <p className="text-xs text-gray-500">{hint}</p>}
-      {error && <p id={`${id}-error`} className="text-xs text-rose-600">{error}</p>}
+      {hint && !error && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{hint}</p>}
+      {error && <p id={`${id}-error`} className="mt-1 text-xs text-error-600 dark:text-error-500">{error}</p>}
     </div>
   );
 }
 
 /**
- * Create or edit a player. A create goes to `POST /players/team`, which needs a team and a jersey
- * number; an edit goes to `PATCH /players/:id` and sends only what changed.
+ * Create or edit a player, back in its pre-redesign shape: one column of `brand`-toned fields, the
+ * portrait picker at the top, and plain Cancel / Create buttons on a divided footer.
+ *
+ * What the redesign added stays: Zod rules shared with the page (`player-form`), a create that goes
+ * to `POST /players/team` with the team and jersey number it requires, an edit that goes to
+ * `PATCH /players/:id` carrying only what changed, and a prompt before unsaved changes are thrown
+ * away.
  *
  * The photo is uploaded as soon as it's picked, so a failed upload is reported before the player is
- * saved rather than after. Save stays busy until the server accepts it, and only then closes.
+ * saved rather than after — the old page uploaded on save and could leave a player created without
+ * their portrait and no clear way to tell.
  */
 const PlayerFormDialog: React.FC<{
   open: boolean;
@@ -50,7 +70,8 @@ const PlayerFormDialog: React.FC<{
   initial?: Player | null;
   isSaving: boolean;
   serverError?: string | null;
-  onCreate: (body: PlayerCreateForTeam) => void;
+  /** Omitted where the dialog only ever edits, as on a team's roster. */
+  onCreate?: (body: PlayerCreateForTeam) => void;
   onUpdate: (body: PlayerUpdateBody) => void;
 }> = ({ open, onClose, initial, isSaving, serverError, onCreate, onUpdate }) => {
   const editing = !!initial;
@@ -109,7 +130,7 @@ const PlayerFormDialog: React.FC<{
 
   const submit = handleSubmit((values) => {
     if (editing) onUpdate(toUpdatePayload(values, baseline));
-    else onCreate(toCreatePayload(values));
+    else onCreate?.(toCreatePayload(values));
   });
 
   const invalid = (k: keyof PlayerFormValues) => (errors[k] ? true : undefined);
@@ -120,53 +141,95 @@ const PlayerFormDialog: React.FC<{
   const noJersey = editing && !baseline.teamId;
 
   return (
-    <Modal open={open} onClose={requestClose} title={editing ? 'Edit player' : 'Add player'} size="lg" closeOnBackdropClick={!busy} closeOnEscape={!busy}>
-      <form onSubmit={submit} className="flex flex-col gap-6" noValidate aria-busy={busy}>
+    <Modal
+      open={open}
+      onClose={requestClose}
+      title={editing ? 'Edit player' : 'Add player'}
+      size="lg"
+      closeOnBackdropClick={!busy}
+      closeOnEscape={!busy}
+    >
+      <form onSubmit={submit} className="space-y-6" noValidate aria-busy={busy}>
         {serverError && (
-          <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
+          <p role="alert" className="rounded-lg border border-error-100 bg-error-50 px-4 py-3 text-sm text-error-700 dark:border-error-500/30 dark:bg-error-500/10 dark:text-error-500">
             {serverError}
           </p>
         )}
 
-        <div className="flex items-center gap-4">
-          <PlayerAvatar
-            firstName={firstName}
-            lastName={lastName}
-            photo={photo}
-            size="lg"
-            className={uploadFile.isPending ? 'opacity-50' : undefined}
-          />
-          <div className="flex flex-col gap-1">
-            <label className="inline-flex w-fit items-center gap-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">
-              {uploadFile.isPending && <Spinner className="size-3.5" />}
-              {uploadFile.isPending ? 'Uploading…' : photo ? 'Replace photo' : 'Upload photo'}
-              <input type="file" accept="image/*" className="sr-only" onChange={pickPhoto} disabled={busy} />
-            </label>
-            <span className="text-xs text-gray-500">Without one, their initials are shown.</span>
+        <div>
+          <span className={labelClass}>Player portrait (optional)</span>
+          <div className="flex items-center gap-4">
+            <PlayerAvatar
+              firstName={firstName}
+              lastName={lastName}
+              photo={photo}
+              size="lg"
+              className={uploadFile.isPending ? 'opacity-50' : undefined}
+            />
+            <div className="flex-1">
+              <label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5">
+                {uploadFile.isPending && <Spinner className="size-3.5" />}
+                {uploadFile.isPending ? 'Uploading…' : photo ? 'Replace photo' : 'Upload photo'}
+                <input type="file" accept="image/*" className="sr-only" onChange={pickPhoto} disabled={busy} />
+              </label>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                PNG or JPEG recommended. Without one, their initials are shown.
+              </p>
+            </div>
           </div>
         </div>
 
-        <fieldset className="grid gap-4 md:grid-cols-2" disabled={busy}>
+        <fieldset className="space-y-6" disabled={busy}>
           <legend className="sr-only">Player details</legend>
-          <Field id="firstName" label="First name" required error={msg('firstName')}>
-            <input id="firstName" className={inputClass} {...register('firstName')} aria-invalid={invalid('firstName')} aria-describedby={describedBy('firstName')} autoFocus />
+
+          <Field id="firstName" label="First Name" required error={msg('firstName')}>
+            <input
+              id="firstName"
+              className={inputClass}
+              placeholder="Enter first name"
+              {...register('firstName')}
+              aria-invalid={invalid('firstName')}
+              aria-describedby={describedBy('firstName')}
+              autoFocus
+            />
           </Field>
-          <Field id="lastName" label="Last name" required error={msg('lastName')}>
-            <input id="lastName" className={inputClass} {...register('lastName')} aria-invalid={invalid('lastName')} aria-describedby={describedBy('lastName')} />
+
+          <Field id="lastName" label="Last Name" required error={msg('lastName')}>
+            <input
+              id="lastName"
+              className={inputClass}
+              placeholder="Enter last name"
+              {...register('lastName')}
+              aria-invalid={invalid('lastName')}
+              aria-describedby={describedBy('lastName')}
+            />
           </Field>
+
+          <Field
+            id="jerseyNumber"
+            label="Jersey Number"
+            required={!editing}
+            error={msg('jerseyNumber')}
+            hint={noJersey ? 'They need a team before they can have a number.' : undefined}
+          >
+            <input
+              id="jerseyNumber"
+              inputMode="numeric"
+              placeholder="Enter jersey number"
+              className={inputClass}
+              {...(noJersey ? { value: '', disabled: true, onChange: () => undefined } : register('jerseyNumber'))}
+              aria-invalid={invalid('jerseyNumber')}
+              aria-describedby={describedBy('jerseyNumber')}
+            />
+          </Field>
+
           <Field id="position" label="Position" error={msg('position')}>
-            <select id="position" className={inputClass} {...register('position')}>
+            <select id="position" className={`cursor-pointer ${inputClass}`} {...register('position')}>
               <option value="">Not set</option>
               {POSITIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
             </select>
           </Field>
-          <Field id="height" label="Height" hint="However you record it — 6'4&quot; or 193cm.">
-            <input id="height" className={inputClass} {...register('height')} />
-          </Field>
-        </fieldset>
 
-        <fieldset className="grid gap-4 md:grid-cols-2" disabled={busy}>
-          <legend className="mb-2 text-sm font-semibold text-gray-900 dark:text-white">Team</legend>
           <Field
             id="teamId"
             label="Team"
@@ -174,49 +237,86 @@ const PlayerFormDialog: React.FC<{
             error={msg('teamId')}
             hint={editing ? 'Where they play now. Transfers are done from the team’s roster, not here.' : undefined}
           >
-            <select id="teamId" className={inputClass} {...(editing ? { value: baseline.teamId, disabled: true, onChange: () => undefined } : register('teamId'))} aria-invalid={invalid('teamId')} aria-describedby={describedBy('teamId')}>
-              <option value="">{teamsQuery.isPending ? 'Loading teams…' : 'Select a team'}</option>
+            <select
+              id="teamId"
+              className={`cursor-pointer ${inputClass}`}
+              {...(editing ? { value: baseline.teamId, disabled: true, onChange: () => undefined } : register('teamId'))}
+              aria-invalid={invalid('teamId')}
+              aria-describedby={describedBy('teamId')}
+            >
+              <option value="">{teamsQuery.isPending ? 'Loading teams…' : 'Select team'}</option>
               {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </Field>
-          <Field id="jerseyNumber" label="Jersey number" required={!editing} error={msg('jerseyNumber')} hint={noJersey ? 'They need a team before they can have a number.' : undefined}>
-            <input id="jerseyNumber" inputMode="numeric" className={inputClass} {...(noJersey ? { value: '', disabled: true, onChange: () => undefined } : register('jerseyNumber'))} aria-invalid={invalid('jerseyNumber')} aria-describedby={describedBy('jerseyNumber')} />
-          </Field>
-        </fieldset>
 
-        <fieldset className="grid gap-4 md:grid-cols-2" disabled={busy}>
-          <legend className="mb-2 text-sm font-semibold text-gray-900 dark:text-white">Personal</legend>
           <Field id="nationality" label="Nationality">
             <input id="nationality" className={inputClass} {...register('nationality')} list="player-nationalities" autoComplete="off" />
             <datalist id="player-nationalities">
               {countries.map((c) => <option key={c} value={c} />)}
             </datalist>
           </Field>
-          <Field id="dateOfBirth" label="Date of birth">
-            <input id="dateOfBirth" type="date" className={inputClass} {...register('dateOfBirth')} />
+
+          <Field id="height" label="Height" hint="However you record it — 6'4&quot; or 193cm.">
+            <input id="height" className={inputClass} placeholder="e.g., 6'3&quot;" {...register('height')} />
           </Field>
+
+          <Field id="dateOfBirth" label="Date of Birth">
+            <input id="dateOfBirth" type="date" className={`${inputClass} dark:[color-scheme:dark]`} {...register('dateOfBirth')} />
+          </Field>
+
           <Field id="email" label="Email" error={msg('email')}>
-            <input id="email" type="email" className={inputClass} {...register('email')} aria-invalid={invalid('email')} aria-describedby={describedBy('email')} />
+            <input
+              id="email"
+              type="email"
+              className={inputClass}
+              {...register('email')}
+              aria-invalid={invalid('email')}
+              aria-describedby={describedBy('email')}
+            />
           </Field>
+
           <Field id="phone" label="Phone">
             <input id="phone" className={inputClass} {...register('phone')} />
           </Field>
         </fieldset>
 
-        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-gray-200 pt-4 dark:border-gray-800">
+        <div className="flex flex-wrap items-center justify-end gap-4 border-t border-gray-200 pt-6 dark:border-gray-800">
           {confirmingDiscard ? (
             <div role="alertdialog" aria-label="Discard unsaved changes" className="mr-auto flex flex-wrap items-center gap-3 text-sm">
               <span className="text-gray-700 dark:text-gray-300">Discard your unsaved changes?</span>
-              <Button variant="secondary" type="button" onClick={() => setConfirmingDiscard(false)}>Keep editing</Button>
-              <Button variant="destructive" type="button" onClick={onClose}>Discard</Button>
+              <button
+                type="button"
+                onClick={() => setConfirmingDiscard(false)}
+                className="cursor-pointer rounded-lg border border-gray-300 bg-white px-4 py-2 font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-white/5"
+              >
+                Keep editing
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="cursor-pointer rounded-lg bg-error-500 px-4 py-2 font-medium text-white transition-colors hover:bg-error-600"
+              >
+                Discard
+              </button>
             </div>
           ) : (
-            <Button variant="secondary" type="button" onClick={requestClose} disabled={busy}>Cancel</Button>
+            <button
+              type="button"
+              onClick={requestClose}
+              disabled={busy}
+              className="cursor-pointer rounded-lg border border-gray-300 bg-white px-6 py-2.5 font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-70 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-white/5"
+            >
+              Cancel
+            </button>
           )}
-          <Button type="submit" disabled={busy || confirmingDiscard} className="min-w-28">
+          <button
+            type="submit"
+            disabled={busy || confirmingDiscard}
+            className="inline-flex min-w-28 cursor-pointer items-center justify-center gap-2 rounded-lg bg-brand-500 px-6 py-2.5 font-medium text-white transition-colors hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-70"
+          >
             {isSaving && <Spinner />}
-            {isSaving ? 'Saving…' : editing ? 'Save changes' : 'Add player'}
-          </Button>
+            {isSaving ? 'Saving...' : editing ? 'Update' : 'Create'}
+          </button>
         </div>
       </form>
     </Modal>

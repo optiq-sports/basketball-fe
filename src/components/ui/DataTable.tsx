@@ -25,6 +25,24 @@ export interface DataTableProps<T> {
   error?: string | null;
   onRetry?: () => void;
   emptyMessage?: string;
+  /** Accessible name for the table, for screen readers and for finding it in tests. */
+  label?: string;
+  /**
+   * Server-driven sorting. Passing `sorting` hands the order over to the caller: a header click
+   * reports through `onSortingChange` and the table leaves the rows exactly as given, because the
+   * server already sorted the page it sent. Without it the table sorts its own rows as before.
+   */
+  sorting?: SortingState;
+  onSortingChange?: (next: SortingState) => void;
+  /**
+   * Server-driven pagination. Passing `pageIndex` says `data` is already one page: the footer counts
+   * from `pageCount`/`totalItems` and a page change reports through `onPageChange` rather than
+   * slicing rows here. The rows-per-page picker is hidden, since the page size is the caller's.
+   */
+  pageIndex?: number;
+  pageCount?: number;
+  totalItems?: number;
+  onPageChange?: (page: number) => void;
 }
 
 function DataTable<T>({
@@ -37,55 +55,89 @@ function DataTable<T>({
   error = null,
   onRetry,
   emptyMessage = 'No results found.',
+  label,
+  sorting,
+  onSortingChange,
+  pageIndex,
+  pageCount,
+  totalItems,
+  onPageChange,
 }: DataTableProps<T>) {
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize });
+  const manualSorting = sorting !== undefined;
+  const manualPagination = pageIndex !== undefined;
+
+  const [localSorting, setLocalSorting] = useState<SortingState>([]);
+  const [localPagination, setLocalPagination] = useState<PaginationState>({ pageIndex: 0, pageSize });
+
+  const sortingState = sorting ?? localSorting;
+  const paginationState: PaginationState = manualPagination
+    ? { pageIndex, pageSize }
+    : localPagination;
 
   const table = useReactTable({
     data,
     columns,
-    state: { sorting, pagination },
-    onSortingChange: setSorting,
-    onPaginationChange: setPagination,
+    state: { sorting: sortingState, pagination: paginationState },
+    manualSorting,
+    manualPagination,
+    // A server sort is always on one column or another, so a third click can't turn it off.
+    enableSortingRemoval: !manualSorting,
+    ...(manualPagination ? { pageCount: pageCount ?? 1 } : {}),
+    onSortingChange: (updater) => {
+      const next = typeof updater === 'function' ? updater(sortingState) : updater;
+      if (manualSorting) onSortingChange?.(next);
+      else setLocalSorting(next);
+    },
+    onPaginationChange: manualPagination ? undefined : setLocalPagination,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
   });
 
   const rows = table.getRowModel().rows;
-  const pageIndex = table.getState().pagination.pageIndex;
   const currentPageSize = table.getState().pagination.pageSize;
-  const pageCount = table.getPageCount();
+  const shownPage = (manualPagination ? pageIndex : table.getState().pagination.pageIndex) + 1;
+  const shownPageCount = manualPagination ? (pageCount ?? 1) : table.getPageCount();
+  const shownTotal = manualPagination ? (totalItems ?? data.length) : data.length;
 
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
       <div className="relative overflow-x-auto">
-        <table className="w-full divide-y divide-gray-200 dark:divide-gray-800">
+        <table aria-label={label} className="w-full divide-y divide-gray-200 dark:divide-gray-800">
           <thead className="bg-gray-50 dark:bg-white/[0.02]">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
                   const canSort = header.column.getCanSort();
                   const sortDir = header.column.getIsSorted();
+                  const arrow =
+                    sortDir === 'asc' ? (
+                      <LuArrowUp aria-hidden className="size-3.5" />
+                    ) : sortDir === 'desc' ? (
+                      <LuArrowDown aria-hidden className="size-3.5" />
+                    ) : (
+                      <LuArrowUpDown aria-hidden className="size-3.5 opacity-40" />
+                    );
                   return (
                     <th
                       key={header.id}
-                      onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
-                      className={`whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 ${
-                        canSort ? 'cursor-pointer select-none' : ''
-                      }`}
+                      scope="col"
+                      aria-sort={canSort ? (sortDir === 'asc' ? 'ascending' : sortDir === 'desc' ? 'descending' : 'none') : undefined}
+                      className="whitespace-nowrap px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400"
                     >
-                      {header.isPlaceholder ? null : (
+                      {header.isPlaceholder ? null : canSort ? (
+                        // A button, not a clickable `th`, so the sort can be reached by keyboard.
+                        <button
+                          type="button"
+                          onClick={header.column.getToggleSortingHandler()}
+                          className="inline-flex cursor-pointer select-none items-center gap-1.5 rounded uppercase tracking-wide outline-none hover:text-gray-700 focus-visible:ring-2 focus-visible:ring-brand-500 dark:hover:text-gray-200"
+                        >
+                          {flexRender(header.column.columnDef.header, header.getContext())}
+                          {arrow}
+                        </button>
+                      ) : (
                         <span className="inline-flex items-center gap-1.5">
                           {flexRender(header.column.columnDef.header, header.getContext())}
-                          {canSort &&
-                            (sortDir === 'asc' ? (
-                              <LuArrowUp className="size-3.5" />
-                            ) : sortDir === 'desc' ? (
-                              <LuArrowDown className="size-3.5" />
-                            ) : (
-                              <LuArrowUpDown className="size-3.5 opacity-40" />
-                            ))}
                         </span>
                       )}
                     </th>
@@ -154,12 +206,12 @@ function DataTable<T>({
       </div>
       {!isLoading && !error && rows.length > 0 && (
         <Pagination
-          currentPage={pageIndex + 1}
-          totalPages={pageCount}
-          onPageChange={(page) => table.setPageIndex(page - 1)}
-          totalItems={data.length}
+          currentPage={shownPage}
+          totalPages={shownPageCount}
+          onPageChange={(page) => (manualPagination ? onPageChange?.(page) : table.setPageIndex(page - 1))}
+          totalItems={shownTotal}
           pageSize={currentPageSize}
-          onPageSizeChange={(size) => table.setPageSize(size)}
+          onPageSizeChange={manualPagination ? undefined : (size) => table.setPageSize(size)}
           pageSizeOptions={pageSizeOptions}
         />
       )}

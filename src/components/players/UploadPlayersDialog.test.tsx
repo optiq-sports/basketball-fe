@@ -31,7 +31,7 @@ describe('UploadPlayersDialog: picking a file', () => {
 
   it('refuses anything that is not .xlsx, and says why', () => {
     open();
-    fireEvent.change(screen.getByLabelText(/^Spreadsheet/), { target: { files: [file('squad.csv')] } });
+    fireEvent.change(screen.getByLabelText(/^Excel file/), { target: { files: [file('squad.csv')] } });
     expect(screen.getByText(/Only .xlsx files can be read/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Upload' })).toBeDisabled();
   });
@@ -40,7 +40,7 @@ describe('UploadPlayersDialog: picking a file', () => {
     open();
     fireEvent.change(screen.getByLabelText(/^Team/), { target: { value: 'team-1' } });
     const xlsx = file('squad.xlsx');
-    fireEvent.change(screen.getByLabelText(/^Spreadsheet/), { target: { files: [xlsx] } });
+    fireEvent.change(screen.getByLabelText(/^Excel file/), { target: { files: [xlsx] } });
     fireEvent.click(screen.getByRole('button', { name: 'Upload' }));
     expect(h.upload.mutate).toHaveBeenCalledWith({ teamId: 'team-1', file: xlsx }, expect.anything());
   });
@@ -57,7 +57,7 @@ describe('UploadPlayersDialog: the result', () => {
     h.upload.mutate = vi.fn((_vars, opts: { onSuccess: (d: unknown) => void }) => opts.onSuccess(result));
     open();
     fireEvent.change(screen.getByLabelText(/^Team/), { target: { value: 'team-1' } });
-    fireEvent.change(screen.getByLabelText(/^Spreadsheet/), { target: { files: [file('squad.xlsx')] } });
+    fireEvent.change(screen.getByLabelText(/^Excel file/), { target: { files: [file('squad.xlsx')] } });
     fireEvent.click(screen.getByRole('button', { name: 'Upload' }));
   };
 

@@ -39,7 +39,7 @@ export function PlayerCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
             {player.jerseyNumber != null && (
-              <span className="text-sm font-bold tabular-nums text-signal-600 dark:text-signal-400">
+              <span className="text-sm font-bold tabular-nums text-brand-600 dark:text-brand-400">
                 #{player.jerseyNumber}
               </span>
             )}
@@ -70,7 +70,7 @@ export function PlayerCard({
       <Link
         to={`/players-management/${player.id}`}
         aria-label={`Open ${name}`}
-        className="absolute inset-0 rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-court-400/60"
+        className="absolute inset-0 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
       >
         <span className="sr-only">Open player</span>
       </Link>

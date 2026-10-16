@@ -65,12 +65,20 @@ describe('Results', () => {
     expect(h.lastArgs).toEqual({ tournamentId: undefined, status: 'COMPLETED' });
   });
 
-  it('shows the real scores from homeScore and awayScore', () => {
+  it('shows the real scores from homeScore and awayScore, not the totalHome/totalAway the backend never sends', () => {
     renderAt();
-    const card = screen.getAllByRole('article')[0];
-    expect(within(card).getByText('88')).toBeInTheDocument();
-    expect(within(card).getByText('79')).toBeInTheDocument();
-    expect(within(card).getByText('Marktown Flyers')).toBeInTheDocument();
+    const row = screen.getAllByRole('link')[0];
+    expect(within(row).getByText('88')).toBeInTheDocument();
+    expect(within(row).getByText('79')).toBeInTheDocument();
+    expect(within(row).getByText('Marktown Flyers')).toBeInTheDocument();
+    expect(within(row).getByText('Main Court')).toBeInTheDocument();
+  });
+
+  it('emphasises the winner, which the old row did not', () => {
+    renderAt();
+    const row = screen.getAllByRole('link')[0];
+    expect(within(row).getByText('88').className).toMatch(/font-bold/);
+    expect(within(row).getByText('79').className).not.toMatch(/font-bold/);
   });
 
   it('puts each day under its own heading, newest day first', () => {
@@ -99,39 +107,50 @@ describe('Results', () => {
     renderAt();
     fireEvent.change(screen.getByLabelText(/Search by team, venue or tournament/), { target: { value: 'riverside' } });
     await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('q=riverside'));
-    expect(screen.getAllByRole('article')).toHaveLength(1);
+    expect(screen.getAllByRole('link')).toHaveLength(1);
     expect(screen.getByText('Riverside Kings')).toBeInTheDocument();
   });
 
   it('finds a game by its venue too', async () => {
     renderAt();
     fireEvent.change(screen.getByLabelText(/Search by team, venue or tournament/), { target: { value: 'main court' } });
-    await waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByRole('link')).toHaveLength(2));
   });
 
-  it('filters to one day, from the date picker, and goes back to page 1', async () => {
+  it('filters to one day, and goes back to page 1', async () => {
     renderAt('/results?page=2');
     fireEvent.change(screen.getByLabelText('Filter by date'), { target: { value: '2026-09-17' } });
     await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('date=2026-09-17'));
     expect(screen.getByTestId('where')).not.toHaveTextContent('page=');
-    expect(screen.getAllByRole('article')).toHaveLength(1);
+    expect(screen.getAllByRole('link')).toHaveLength(1);
     expect(screen.getByText('Charlie')).toBeInTheDocument();
+  });
+
+  it('offers only the days that actually have a result, not an open date field', () => {
+    renderAt();
+    const select = screen.getByLabelText('Filter by date') as HTMLSelectElement;
+    expect(select.tagName).toBe('SELECT');
+    const values = [...select.options].map((o) => o.value);
+    expect(values).toEqual(['', '2026-09-21', '2026-09-17']); // newest day first
   });
 
   it('says so, with a way back, when no game was played on the chosen day', () => {
     renderAt('/results?date=2026-01-01');
-    expect(screen.getByText('Nothing matches the current filters.')).toBeInTheDocument();
+    expect(screen.getByText('No results found')).toBeInTheDocument();
+    expect(screen.getByText('Try adjusting your search or filter criteria')).toBeInTheDocument();
   });
 
-  it('says there are no finished games yet', () => {
+  it('says there are no finished games yet, without offering filters to clear', () => {
     h.matches = ok([]);
     renderAt();
-    expect(screen.getByText('No finished games yet')).toBeInTheDocument();
+    expect(screen.getByText('No results found')).toBeInTheDocument();
+    expect(screen.getByText(/once the scorer has finished it/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /clear filters/i })).toBeNull();
   });
 
   it('says so, distinctly, when a tournament filter matches nothing — not the plain empty state', () => {
     renderAt('/results?tournament=tour-8');
-    expect(screen.getByText('Nothing matches the current filters.')).toBeInTheDocument();
+    expect(screen.getByText('Try adjusting your search or filter criteria')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /clear filters/i }));
     expect(screen.getByTestId('where')).not.toHaveTextContent('tournament=');
   });
@@ -145,12 +164,12 @@ describe('Results', () => {
   it('shows the first page of 12 when there are more finished games than that', () => {
     h.matches = ok(Array.from({ length: 14 }, (_, i) => match(`m${i}`, { scheduledDate: new Date(2026, 8, 1 + i, 18, 0).toISOString() })));
     renderAt();
-    expect(screen.getAllByRole('article')).toHaveLength(12);
+    expect(screen.getAllByRole('link')).toHaveLength(12);
   });
 
   it('paginates the filtered list in the browser, not from the server', () => {
     h.matches = ok(Array.from({ length: 14 }, (_, i) => match(`m${i}`, { scheduledDate: new Date(2026, 8, 1 + i, 18, 0).toISOString() })));
     renderAt('/results?page=2');
-    expect(screen.getAllByRole('article')).toHaveLength(2);
+    expect(screen.getAllByRole('link')).toHaveLength(2);
   });
 });

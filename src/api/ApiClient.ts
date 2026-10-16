@@ -216,6 +216,33 @@ class ApiClient {
     },
 
     /**
+     * `POST /auth/forgot-password` — stores a one-hour reset token against the account and emails it
+     * as `${FRONTEND_URL}/reset-password?token=…`.
+     *
+     * It answers `{ success: true }` whether or not the email belongs to an account, deliberately, so
+     * the response can't be used to find out who has one. That means a success here is *not* evidence
+     * that anything was sent, and the page must not claim otherwise.
+     */
+    forgotPassword: async (email: string): Promise<ApiResponse<{ success: boolean }>> => {
+      return this.request<{ success: boolean }>('/auth/forgot-password', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      });
+    },
+
+    /**
+     * `POST /auth/reset-password` — exchanges the emailed token for a new password. The backend answers
+     * 401 `Invalid or expired password reset token` for a token that is wrong, already used or more
+     * than an hour old, and requires at least 8 characters.
+     */
+    resetPassword: async (token: string, newPassword: string): Promise<ApiResponse<{ success: boolean }>> => {
+      return this.request<{ success: boolean }>('/auth/reset-password', {
+        method: 'POST',
+        body: JSON.stringify({ token, newPassword }),
+      });
+    },
+
+    /**
      * `POST /auth/change-password` — the one route exempt from the `PASSWORD_CHANGE_REQUIRED`
      * lock (`@BypassPasswordChange()` on the backend), so it can be called by an account that's
      * currently forced into it. See `src/auth/gateDecision.ts`.

@@ -12,16 +12,16 @@ import { SidebarProvider } from '../../contexts/SidebarContext';
 describe('cn', () => {
   it('merges conflicting Tailwind classes, later wins', () => {
     expect(cn('px-2 text-sm', 'px-4')).toBe('text-sm px-4');
-    expect(cn('bg-court-700', false && 'hidden', undefined, 'text-white')).toBe('bg-court-700 text-white');
+    expect(cn('bg-brand-500', false && 'hidden', undefined, 'text-white')).toBe('bg-brand-500 text-white');
   });
 });
 
 describe('Button', () => {
-  it('uses the court primary style by default and the destructive style when asked', () => {
+  it('uses the brand primary style by default and the destructive style when asked', () => {
     const { rerender } = render(<Button>Save</Button>);
-    expect(screen.getByRole('button', { name: 'Save' }).className).toMatch(/bg-court-700/);
+    expect(screen.getByRole('button', { name: 'Save' }).className).toMatch(/bg-brand-500/);
     rerender(<Button variant="destructive">Delete</Button>);
-    expect(screen.getByRole('button', { name: 'Delete' }).className).toMatch(/bg-rose-600/);
+    expect(screen.getByRole('button', { name: 'Delete' }).className).toMatch(/bg-error-500/);
   });
 
   it('cannot be clicked while disabled', () => {
@@ -35,7 +35,7 @@ describe('Button', () => {
 describe('Badge', () => {
   it('applies the live variant for in-play state', () => {
     render(<Badge variant="live">LIVE</Badge>);
-    expect(screen.getByText('LIVE').className).toMatch(/text-signal-700/);
+    expect(screen.getByText('LIVE').className).toMatch(/text-error-700/);
   });
 });
 

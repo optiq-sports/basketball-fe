@@ -79,21 +79,41 @@ beforeEach(() => {
   h.toast = { success: vi.fn(), error: vi.fn() };
 });
 
+/** A fixture card, found by the "Game N" label in its header. */
+const gameCard = (n: number) => screen.getByText(`Game ${n}`).closest('div.group') as HTMLElement;
+
 describe('Fixtures: list', () => {
   it('lists fixtures with teams, venue, statistician and status', () => {
     renderAt();
-    const table = screen.getByRole('list', { name: 'Fixtures' });
-    expect(within(table).getAllByText(/Alpha/).length).toBeGreaterThan(0);
-    expect(within(table).getAllByText('Main Arena')).toHaveLength(2);
-    expect(within(table).getByText('Unassigned')).toBeTruthy();
-    expect(within(table).getByText('Sam Scorer')).toBeTruthy();
-    expect(within(table).getByText('Live')).toBeTruthy();
+    const first = gameCard(1);
+    expect(within(first).getByText('Alpha')).toBeTruthy();
+    expect(within(first).getByText('Bravo')).toBeTruthy();
+    expect(within(first).getByText('Main Arena')).toBeTruthy();
+    expect(within(first).getByText('No statistician')).toBeTruthy();
+    expect(within(first).getByText('Scheduled')).toBeTruthy();
+
+    const second = gameCard(2);
+    expect(within(second).getByText('Sam Scorer')).toBeTruthy();
+    // "Live" is also a filter pill, so look inside the card.
+    expect(within(second).getByText('Live')).toBeTruthy();
+  });
+
+  it('numbers each game across the whole list, not within the page', () => {
+    renderAt();
+    expect(screen.getByText('Game 1')).toBeTruthy();
+    expect(screen.getByText('Game 2')).toBeTruthy();
   });
 
   it('offers a copy-code button on every fixture, for handing the game to a statistician', () => {
     renderAt();
-    const cards = screen.getAllByRole('article');
-    for (const card of cards) expect(within(card).getByRole('button', { name: /^Copy match code for/ })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /^Copy match code for/ })).toHaveLength(2);
+  });
+
+  it('offers no Format or Round select: the old ones were local state nothing ever read', () => {
+    renderAt();
+    expect(screen.queryByLabelText(/^Format/)).toBeNull();
+    expect(screen.queryByLabelText(/^Round/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Group A' })).toBeNull();
   });
 
   it('filters by status through the URL and returns to page one', () => {
@@ -103,33 +123,38 @@ describe('Fixtures: list', () => {
     expect(h.lastPageParams).toMatchObject({ tournamentId: 't1', status: 'LIVE' });
   });
 
-  it('says there are no fixtures yet, and offers the first one', () => {
+  it('says there are no games scheduled yet, and Add Game opens the form', () => {
     h.page = pageOf([]);
     renderAt();
-    expect(screen.getByText('No fixtures yet')).toBeTruthy();
-    fireEvent.click(screen.getAllByRole('button', { name: 'New fixture' })[0]);
+    expect(screen.getByText('No games scheduled yet.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Add Game' }));
     expect(screen.getByRole('dialog', { name: 'New fixture' })).toBeTruthy();
   });
 
   it('says nothing matches the filter, distinct from empty', () => {
     h.page = pageOf([]);
     renderAt('/tournaments/t1/fixtures?status=CANCELLED');
-    expect(screen.getByText('No matches')).toBeTruthy();
-    expect(screen.queryByText('No fixtures yet')).toBeNull();
+    expect(screen.getByText('No cancelled games.')).toBeTruthy();
+    expect(screen.queryByText('No games scheduled yet.')).toBeNull();
   });
 
-  it('won’t offer a new fixture until two teams are in the tournament', () => {
+  it('won’t offer a new game until two teams are in the tournament', () => {
     h.tournament = q({ id: 't1', name: 'Summer Cup', teams: [teams[0]] });
     renderAt();
-    expect((screen.getAllByRole('button', { name: 'New fixture' })[0] as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Add Game' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/needs two teams/)).toBeTruthy();
+  });
+
+  it('links back to the tournament by name', () => {
+    renderAt();
+    expect(screen.getByRole('button', { name: 'Summer Cup' })).toBeTruthy();
   });
 });
 
 describe('Fixtures: create', () => {
   it('blocks a fixture with the same team on both sides', async () => {
     renderAt();
-    fireEvent.click(screen.getAllByRole('button', { name: 'New fixture' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add Game' }));
     fireEvent.change(screen.getByLabelText(/^Home team/), { target: { value: 'a' } });
     fireEvent.change(screen.getByLabelText(/^Away team/), { target: { value: 'a' } });
     fireEvent.change(screen.getByLabelText(/^Date/), { target: { value: '2026-10-10' } });
@@ -140,7 +165,7 @@ describe('Fixtures: create', () => {
 
   it('creates a fixture with the teams, the time as an instant, and the status scheduled', async () => {
     renderAt();
-    fireEvent.click(screen.getAllByRole('button', { name: 'New fixture' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add Game' }));
     fireEvent.change(screen.getByLabelText(/^Home team/), { target: { value: 'a' } });
     fireEvent.change(screen.getByLabelText(/^Away team/), { target: { value: 'c' } });
     fireEvent.change(screen.getByLabelText(/^Date/), { target: { value: '2026-10-10' } });
@@ -157,7 +182,7 @@ describe('Fixtures: create', () => {
   it('keeps the form open with the server’s reason when it is refused', async () => {
     h.create.mutate = vi.fn((_b: unknown, opts: { onError: (e: Error) => void }) => opts.onError(new Error('Home team is not part of this tournament')));
     renderAt();
-    fireEvent.click(screen.getAllByRole('button', { name: 'New fixture' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add Game' }));
     fireEvent.change(screen.getByLabelText(/^Home team/), { target: { value: 'a' } });
     fireEvent.change(screen.getByLabelText(/^Away team/), { target: { value: 'c' } });
     fireEvent.change(screen.getByLabelText(/^Date/), { target: { value: '2026-10-10' } });

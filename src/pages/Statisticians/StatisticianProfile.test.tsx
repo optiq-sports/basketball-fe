@@ -57,7 +57,7 @@ describe('Statistician profile', () => {
     expect(within(first).getByText(/Main Court/)).toBeInTheDocument();
     // a game with no teams, date or venue still renders something sensible
     expect(games.getAllByRole('link')[1]).toHaveTextContent('Home vs Away');
-    expect(screen.getByText('Games scored', { selector: 'dt' }).nextSibling).toHaveTextContent('2');
+    expect(screen.getByText('Games recorded', { selector: 'dt' }).nextSibling).toHaveTextContent('2');
   });
 
   it('never links to a hardcoded tournament', () => {
@@ -68,7 +68,7 @@ describe('Statistician profile', () => {
   it('says when they have not scored anything', () => {
     h.stat = ok({ ...stat, gamesOfficiated: [] });
     renderProfile();
-    expect(screen.getByText(/No games scored yet/)).toBeInTheDocument();
+    expect(screen.getByText(/No games officiated yet/)).toBeInTheDocument();
   });
 
   it('marks an inactive statistician', () => {

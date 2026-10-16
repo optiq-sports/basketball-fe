@@ -45,7 +45,7 @@ export function MatchCard({ match, href, actions }: { match: MatchCardData; href
 
   return (
     <article className="group relative flex min-w-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white transition-shadow hover:shadow-md dark:border-gray-800 dark:bg-gray-900">
-      <div className={cn('flex items-center justify-between gap-3 px-4 py-2', live ? 'bg-signal-500 text-white' : 'bg-gray-50 text-gray-600 dark:bg-gray-800/70 dark:text-gray-300')}>
+      <div className={cn('flex items-center justify-between gap-3 px-4 py-2', live ? 'bg-error-500 text-white' : 'bg-gray-50 text-gray-600 dark:bg-gray-800/70 dark:text-gray-300')}>
         <span className="truncate text-xs font-semibold uppercase tracking-wide">{match.eyebrow ? normalizeName(match.eyebrow) : formatMatchDate(match.scheduledDate)}</span>
         <span className="flex shrink-0 items-center gap-1.5 text-xs font-bold uppercase tracking-wide">
           {live && <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-white" />}
@@ -66,7 +66,7 @@ export function MatchCard({ match, href, actions }: { match: MatchCardData; href
       <Link
         to={href}
         aria-label={label}
-        className="absolute inset-0 rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-court-400/60"
+        className="absolute inset-0 rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-brand-500/60"
       >
         <span className="sr-only">Open match</span>
       </Link>

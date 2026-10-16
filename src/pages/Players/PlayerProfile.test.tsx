@@ -43,7 +43,9 @@ beforeEach(() => {
 describe('Player profile', () => {
   it('shows who they are, with names in normal case', () => {
     renderPage();
-    expect(screen.getByRole('heading', { name: 'Teddy Okereafor' })).toBeInTheDocument();
+    // The restored hero stacks the first and last name as two headings, as it did before the redesign.
+    expect(screen.getByRole('heading', { name: 'Teddy' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Okereafor' })).toBeInTheDocument();
     expect(screen.getByText('#5')).toBeInTheDocument();
     expect(screen.getByText('Captain')).toBeInTheDocument();
     expect(screen.getByText('Point guard')).toBeInTheDocument();
@@ -81,9 +83,11 @@ describe('Player profile', () => {
     expect(screen.getByText('No team')).toBeInTheDocument();
   });
 
-  it('links back to the players list', () => {
+  it('links back to the players list, at the top and under the profile', () => {
     renderPage();
-    expect(screen.getByRole('link', { name: /Players/ })).toHaveAttribute('href', '/players-management');
+    const back = screen.getAllByRole('link', { name: /Back to Players/ });
+    expect(back).toHaveLength(2);
+    for (const link of back) expect(link).toHaveAttribute('href', '/players-management');
   });
 
   it('shows the error with a retry when the player will not load', () => {

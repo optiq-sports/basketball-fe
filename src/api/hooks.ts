@@ -244,6 +244,32 @@ export function useChangePassword() {
   });
 }
 
+/**
+ * `POST /auth/forgot-password`. The backend answers `{ success: true }` for an unknown email too, so
+ * that a response can't be used to discover who has an account — a success here means the request was
+ * accepted, not that an email went anywhere.
+ */
+export function useForgotPassword() {
+  return useMutation({
+    mutationFn: async (email: string) => {
+      const res = await apiClient.auth.forgotPassword(email);
+      if (!res.ok) throw new Error(res.message ?? 'Couldn’t send a reset link');
+      return res;
+    },
+  });
+}
+
+/** `POST /auth/reset-password` — the emailed token plus a new password of at least 8 characters. */
+export function useResetPassword() {
+  return useMutation({
+    mutationFn: async ({ token, newPassword }: { token: string; newPassword: string }) => {
+      const res = await apiClient.auth.resetPassword(token, newPassword);
+      if (!res.ok) throw new Error(res.message ?? 'Couldn’t reset your password');
+      return res;
+    },
+  });
+}
+
 export function useUploadFile() {
   return useMutation({
     mutationFn: async (file: File) => {

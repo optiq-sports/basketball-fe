@@ -145,6 +145,42 @@ describe('Match: scoreboard and assignment', () => {
   });
 });
 
+describe('Match: the status control (Fix 147)', () => {
+  it('locks a completed game’s status and says the scorer sets it', () => {
+    renderAt();
+    const select = screen.getByLabelText('Status') as HTMLSelectElement;
+    expect(select.value).toBe('COMPLETED');
+    expect(select.disabled).toBe(true);
+    expect(screen.getByText(/set by the scorer, from the plays they record/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Save status' })).toBeNull();
+  });
+
+  it('lets an admin postpone a scheduled game, and saves only on submit', () => {
+    h.match = ok({ ...matchBase(), status: 'SCHEDULED' });
+    renderAt();
+    const select = screen.getByLabelText('Status') as HTMLSelectElement;
+    expect(select.disabled).toBe(false);
+
+    const save = screen.getByRole('button', { name: 'Save status' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true); // nothing changed yet
+
+    fireEvent.change(select, { target: { value: 'POSTPONED' } });
+    expect(h.update.mutate).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save status' }));
+    expect(h.update.mutate).toHaveBeenCalledWith({ id: 'm1', data: { status: 'POSTPONED' } }, expect.anything());
+  });
+
+  it('offers live and completed but will not let them be picked', () => {
+    h.match = ok({ ...matchBase(), status: 'SCHEDULED' });
+    renderAt();
+    const options = within(screen.getByLabelText('Status')).getAllByRole('option') as HTMLOptionElement[];
+    const settable = options.filter((o) => !o.disabled).map((o) => o.value);
+    expect(settable).toEqual(['SCHEDULED', 'CANCELLED', 'POSTPONED']);
+    expect(options.some((o) => o.value === 'LIVE')).toBe(false);
+  });
+});
+
 describe('Match: game data', () => {
   it('splits the box score into the two teams by roster', () => {
     renderAt('/tournaments/t1/match/m1?tab=box');

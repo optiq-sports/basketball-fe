@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { cn } from '../../lib/utils';
 import { normalizeName } from '../../lib/text';
 
-const SIZES = { sm: 'size-8 text-[10px]', md: 'size-12 text-sm', lg: 'size-16 text-lg' } as const;
+const SIZES = { sm: 'size-8 text-[10px]', md: 'size-12 text-sm', lg: 'size-16 text-lg', full: 'size-full text-3xl' } as const;
+const ROUNDING = { full: 'rounded-full', none: 'rounded-none' } as const;
 
 const initialsOf = (firstName: string, lastName: string) =>
   `${firstName.trim()[0] ?? ''}${lastName.trim()[0] ?? ''}`.toUpperCase() || '?';
@@ -16,12 +17,15 @@ export function PlayerAvatar({
   lastName,
   photo,
   size = 'md',
+  rounded = 'full',
   className,
 }: {
   firstName: string;
   lastName: string;
   photo?: string | null;
   size?: keyof typeof SIZES;
+  /** `none` for a square portrait tile, where the card already does the rounding. */
+  rounded?: keyof typeof ROUNDING;
   className?: string;
 }) {
   const [broken, setBroken] = useState(false);
@@ -32,7 +36,7 @@ export function PlayerAvatar({
         src={photo}
         alt=""
         onError={() => setBroken(true)}
-        className={cn(SIZES[size], 'shrink-0 rounded-full bg-gray-100 object-cover dark:bg-gray-800', className)}
+        className={cn(SIZES[size], ROUNDING[rounded], 'shrink-0 bg-gray-100 object-cover dark:bg-gray-800', className)}
       />
     );
   }
@@ -42,7 +46,8 @@ export function PlayerAvatar({
       aria-hidden
       className={cn(
         SIZES[size],
-        'flex shrink-0 items-center justify-center rounded-full bg-court-100 font-bold text-court-700 dark:bg-court-800 dark:text-court-200',
+        ROUNDING[rounded],
+        'flex shrink-0 items-center justify-center bg-brand-50 font-bold text-brand-700 dark:bg-brand-500/10 dark:text-brand-400',
         className,
       )}
     >

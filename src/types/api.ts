@@ -391,6 +391,10 @@ export interface Team {
   state?: string;
   coach?: string;
   assistantCoach?: string;
+  /** Live as of the 14 Oct 2026 migration (`20261014074000_…`), which resolved Gap 54. */
+  arena?: string | null;
+  foundedYear?: number | null;
+  contactEmail?: string | null;
   [key: string]: unknown;
 }
 
@@ -408,6 +412,9 @@ export interface TeamCreate {
   state?: string;
   coach?: string;
   assistantCoach?: string;
+  arena?: string;
+  foundedYear?: number;
+  contactEmail?: string;
 }
 
 export interface TeamUpdate {
@@ -506,7 +513,28 @@ export interface MatchStatRecord {
   fouls: number;
   turnovers: number;
   minutesPlayed?: number;
-  player?: { id: string; firstName: string; lastName: string; position?: string; dateOfBirth?: string; height?: string };
+  /**
+   * The advanced columns, live as of the 14 Oct 2026 migration (Gap 54). `MatchesService` includes
+   * `stats` without a `select`, so every column comes back once a row exists — but a row only exists
+   * once `statdash-matchstat-sync` succeeds, which it currently never does (Gap 47), so treat them as
+   * optional rather than assumed.
+   */
+  fga?: number;
+  fgm?: number;
+  fg3a?: number;
+  fg3m?: number;
+  twoPa?: number;
+  twoPm?: number;
+  threePa?: number;
+  threePm?: number;
+  fta?: number;
+  ftm?: number;
+  oreb?: number;
+  dreb?: number;
+  plusMinus?: number;
+  eff?: number;
+  secondsPlayed?: number;
+  player?: { id: string; firstName: string; lastName: string; position?: string; dateOfBirth?: string; height?: string; photo?: string };
   match?: { id: string; homeTeam?: { id: string; name: string }; awayTeam?: { id: string; name: string } };
 }
 

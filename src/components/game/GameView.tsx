@@ -75,8 +75,20 @@ const pctText = (n: number) => `${Number.isInteger(n) ? n : n.toFixed(1)}%`;
 
 /**
  * Everything about one game that both the admin and the client portal show: scoreboard, tabs
- * (Overview, Box score, Shot chart, Game stats) and the data behind them. The pages around it add only
- * what is theirs, such as the admin's statistician and delete controls, passed as `children`.
+ * (Overview, Box score, Play by play, Shot chart, Game stats) and the data behind them. The pages around
+ * it add only what is theirs, such as the admin's statistician and delete controls, passed as `children`.
+ *
+ * **Restored to the pre-redesign look** (Fix 144): the light `#FCFEFF` scoreboard rather than the dark
+ * band, the team names large and grey with the winner picked out, the venue-and-time line centred
+ * underneath, the `brand-50` quarter-score header, and the centred pill tabs.
+ *
+ * This component is shared with the client portal, which has no pre-redesign version of its own, so the
+ * portal follows the admin side here rather than keeping a second look.
+ *
+ * What the old admin page had and this does not, because it wasn't real: a green **"Q1"** pill that was
+ * hardcoded to Q1 whatever period the game was in, `/ball1.png` and `/ball2.png` in place of team
+ * crests, and a Game Stats panel of fixed numbers. The structure is Fix 127's, built against the FIBA
+ * box-score reference; only its clothes have changed.
  */
 export function GameView({ match, sessionId, tab, onTab, playerHref, children }: {
   match: Match;
@@ -184,37 +196,42 @@ export function GameView({ match, sessionId, tab, onTab, playerHref, children }:
   return (
     <div className="flex flex-col gap-6">
       <Card className="overflow-hidden p-0">
-        <div className="relative bg-court-950 px-5 py-6 text-white md:px-8">
-          <div aria-hidden className="pointer-events-none absolute inset-0 opacity-30" style={{ background: `linear-gradient(90deg, ${colors.home} 0%, transparent 45%, transparent 55%, ${colors.away} 100%)` }} />
+        <div className="relative bg-[#FCFEFF] px-5 py-8 dark:bg-gray-900 md:px-8">
+          <div aria-hidden className="pointer-events-none absolute inset-0 opacity-10" style={{ background: `linear-gradient(90deg, ${colors.home} 0%, transparent 45%, transparent 55%, ${colors.away} 100%)` }} />
           <div className="relative">
-            <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-court-200">
+            <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-gray-500 dark:text-gray-400">
               <span>{match.tournament?.name ?? 'Tournament'}</span>
               <span className="flex items-center gap-2">
                 {isLive && <span role="status" className="text-xs">Updating live</span>}
-                <Badge variant={STATUS_VARIANT[match.status] ?? 'neutral'} className={match.status === 'SCHEDULED' ? 'bg-white/10 text-white' : undefined}>{statusLabel(match.status)}</Badge>
+                <Badge variant={STATUS_VARIANT[match.status] ?? 'neutral'}>{statusLabel(match.status)}</Badge>
               </span>
             </div>
-            <div className="mt-5 grid grid-cols-[1fr_auto_1fr] items-center gap-3 md:gap-6">
+            <div className="mt-6 grid grid-cols-[1fr_auto_1fr] items-center gap-3 md:gap-8">
               <div className="flex min-w-0 flex-col items-start gap-2 md:flex-row md:items-center md:gap-3">
                 <TeamCrest name={home} code={match.homeTeam?.code} logo={match.homeTeam?.logo} color={match.homeTeam?.color} size="lg" />
-                <p className={cn('truncate text-base md:text-xl', homeWon ? 'font-bold' : 'font-semibold')}>{home}</p>
+                <p className={cn('truncate text-base text-gray-500 dark:text-gray-400 md:text-2xl', homeWon && 'font-bold text-gray-900 dark:text-white')}>{home}</p>
               </div>
-              <p className="tabular-nums text-4xl font-bold md:text-5xl" aria-label={started ? `${home} ${homeScore}, ${away} ${awayScore}` : 'Not started'}>
+              <p
+                className="text-4xl font-bold tabular-nums text-gray-900 dark:text-white md:text-5xl"
+                aria-label={started ? `${home} ${homeScore}, ${away} ${awayScore}` : 'Not started'}
+              >
                 {started ? `${homeScore} – ${awayScore}` : 'vs'}
               </p>
               <div className="flex min-w-0 flex-col items-end gap-2 md:flex-row-reverse md:items-center md:gap-3">
                 <TeamCrest name={away} code={match.awayTeam?.code} logo={match.awayTeam?.logo} color={match.awayTeam?.color} size="lg" />
-                <p className={cn('truncate text-right text-base md:text-xl', awayWon ? 'font-bold' : 'font-semibold')}>{away}</p>
+                <p className={cn('truncate text-right text-base text-gray-500 dark:text-gray-400 md:text-2xl', awayWon && 'font-bold text-gray-900 dark:text-white')}>{away}</p>
               </div>
             </div>
-            <p className="mt-5 text-sm text-court-200">{formatMatchDate(match.scheduledDate)}{match.venue ? ` · ${match.venue}` : ''}</p>
+            <p className="mt-6 text-center text-xs text-gray-400 dark:text-gray-500">
+              {match.venue || '—'} | {formatMatchDate(match.scheduledDate)}
+            </p>
           </div>
         </div>
         {quarters.length > 0 && (
-          <div className="relative overflow-x-auto px-5 py-3 md:px-8">
+          <div className="relative overflow-x-auto border-t border-gray-100 px-5 py-3 dark:border-gray-800 md:px-8">
             <table className="w-full text-sm tabular-nums">
               <caption className="sr-only">Scores by quarter</caption>
-              <thead className="text-xs uppercase text-gray-500">
+              <thead className="bg-brand-50 text-xs uppercase text-gray-700 dark:bg-brand-500/10 dark:text-gray-300">
                 <tr>
                   <th scope="col" className="py-1.5 text-left font-semibold">Team</th>
                   {quarters.map((x) => <th key={x.q} scope="col" className="py-1.5 text-right font-semibold">{periodLabel(x.q)}</th>)}
@@ -232,7 +249,7 @@ export function GameView({ match, sessionId, tab, onTab, playerHref, children }:
 
       {children}
 
-      <div role="tablist" aria-label="Game data" className="flex gap-1 overflow-x-auto border-b border-gray-200 dark:border-gray-800">
+      <div role="tablist" aria-label="Game data" className="flex flex-wrap justify-center gap-3 overflow-x-auto">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -240,10 +257,14 @@ export function GameView({ match, sessionId, tab, onTab, playerHref, children }:
             type="button"
             aria-selected={tab === t.id}
             onClick={() => onTab(t.id)}
-            className={cn('relative h-11 shrink-0 px-4 text-sm font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-court-400/50', tab === t.id ? 'text-court-900 dark:text-white' : 'text-gray-500 hover:text-gray-800 dark:hover:text-gray-200')}
+            className={cn(
+              'shrink-0 cursor-pointer rounded-lg px-6 py-2.5 font-medium transition-all outline-none focus-visible:ring-[3px] focus-visible:ring-brand-500/50',
+              tab === t.id
+                ? 'bg-brand-900 text-white shadow-md'
+                : 'border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-white/5',
+            )}
           >
             {t.label}
-            {tab === t.id && <span aria-hidden className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-signal-500" />}
           </button>
         ))}
       </div>

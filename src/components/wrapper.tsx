@@ -88,7 +88,7 @@ const WrapperContent: React.FC = () => {
   const mainContentMargin = isMobileOpen ? 'ml-0' : isExpanded || isHovered ? 'lg:ml-[290px]' : 'lg:ml-[90px]';
 
   return (
-    <div className="admin-shell min-h-screen bg-court-50 xl:flex dark:bg-court-950">
+    <div className="admin-shell min-h-screen xl:flex">
       <AdminSidebar userRole={rawRole} />
       <Backdrop />
       <div className={`min-w-0 flex-1 transition-all duration-300 ease-in-out ${mainContentMargin}`}>

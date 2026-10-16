@@ -1,0 +1,68 @@
+/*
+ * Sidebar menu-item utility classes and a few shell-wide defaults.
+ *
+ * Restored with the pre-redesign admin shell (Fix 145). The redesign deleted this file when it made the
+ * sidebar a navy rail with its classes inline — but `no-scrollbar` went with it while
+ * `AdminSidebar` kept using the class, so the sidebar's hidden scrollbar has been quietly broken since.
+ *
+ * All `@utility` blocks are class-scoped, so importing this globally is safe.
+ */
+
+@utility menu-item {
+  @apply relative flex items-center w-full gap-3 px-3.5 py-3 font-medium rounded-lg text-theme-sm;
+}
+
+@utility menu-item-active {
+  @apply bg-brand-50 text-brand-500 dark:bg-brand-500/[0.12] dark:text-brand-400;
+}
+
+@utility menu-item-inactive {
+  @apply text-gray-700 hover:bg-gray-100 group-hover:text-gray-700 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-gray-300;
+}
+
+@utility menu-item-icon {
+  @apply text-gray-500 group-hover:text-gray-700 dark:text-gray-400;
+}
+
+@utility menu-item-icon-active {
+  @apply text-brand-500 dark:text-brand-400;
+}
+
+@utility menu-item-icon-inactive {
+  @apply text-gray-500 group-hover:text-gray-700 dark:text-gray-400 dark:group-hover:text-gray-300;
+}
+
+@utility menu-item-text {
+  @apply whitespace-nowrap;
+}
+
+@utility no-scrollbar {
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/*
+ * The default border color changed to `currentColor` in Tailwind v4 — this restores the v3-style
+ * explicit gray default, so a `border` utility with no colour looks right. Purely cosmetic: it only
+ * affects elements that already opt into a `border` utility without naming a colour.
+ */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+}
+
+/*
+ * The admin page background. Scoped to `.admin-shell` (the Wrapper root) so it cannot leak into the
+ * isolated Statistician/StatDash route tree, which never renders Wrapper.
+ */
+.admin-shell {
+  @apply bg-gray-50 dark:bg-gray-900;
+}

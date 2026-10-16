@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import Modal from '../ui/Modal';
 import Spinner from '../ui/Spinner';
-import { Button } from '../ui/primitives/button';
+import { btnDanger, btnPrimary, btnSecondary, dialogFooter, errorBanner, fieldErrorClass, hintClass, inputClass, labelClass, selectClass } from '../ui/formStyles';
 import {
   ADMIN_SETTABLE_STATUSES,
   EMPTY_FIXTURE_FORM,
@@ -17,18 +17,15 @@ import {
 import type { Match, MatchCreate, MatchStatus } from '../../types/api';
 import { normalizeName } from '../../lib/text';
 
-const inputClass =
-  'w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-court-400 aria-[invalid=true]:border-rose-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white';
-
 function Field({ id, label, error, required, children }: { id: string; label: string; error?: string; required?: boolean; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-gray-700 dark:text-gray-300">
+    <div>
+      <label htmlFor={id} className={labelClass}>
         {label}
-        {required && <span aria-hidden className="text-rose-600"> *</span>}
+        {required && <span aria-hidden className="text-error-600"> *</span>}
       </label>
       {children}
-      {error && <p id={`${id}-error`} className="text-xs text-rose-600">{error}</p>}
+      {error && <p id={`${id}-error`} className={fieldErrorClass}>{error}</p>}
     </div>
   );
 }
@@ -109,24 +106,24 @@ const FixtureFormDialog: React.FC<{
   return (
     <Modal open={open} onClose={requestClose} title={editing ? 'Edit fixture' : 'New fixture'} size="md" closeOnBackdropClick={!isSaving} closeOnEscape={!isSaving}>
       <form onSubmit={submit} className="flex flex-col gap-5" noValidate aria-busy={isSaving}>
-        {serverError && <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">{serverError}</p>}
+        {serverError && <p role="alert" className={errorBanner}>{serverError}</p>}
 
-        <fieldset className="grid gap-4 sm:grid-cols-2" disabled={isSaving}>
+        <fieldset className="grid gap-5 sm:grid-cols-2" disabled={isSaving}>
           <legend className="sr-only">Teams and time</legend>
           {editing ? (
-            <div className="sm:col-span-2 rounded-md bg-gray-50 px-3 py-2.5 text-sm font-semibold text-gray-900 dark:bg-gray-800 dark:text-white">
+            <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-semibold text-gray-900 sm:col-span-2 dark:border-gray-800 dark:bg-white/[0.02] dark:text-white">
               {teamName(baseline.homeTeamId)} <span className="font-normal text-gray-400">vs</span> {teamName(baseline.awayTeamId)}
             </div>
           ) : (
             <>
               <Field id="homeTeamId" label="Home team" required error={msg('homeTeamId')}>
-                <select id="homeTeamId" className={inputClass} {...register('homeTeamId')} aria-invalid={invalid('homeTeamId')} aria-describedby={describedBy('homeTeamId')}>
+                <select id="homeTeamId" className={selectClass} {...register('homeTeamId')} aria-invalid={invalid('homeTeamId')} aria-describedby={describedBy('homeTeamId')}>
                   <option value="">Choose…</option>
                   {teams.map((t) => <option key={t.id} value={t.id}>{normalizeName(t.name)}</option>)}
                 </select>
               </Field>
               <Field id="awayTeamId" label="Away team" required error={msg('awayTeamId')}>
-                <select id="awayTeamId" className={inputClass} {...register('awayTeamId')} aria-invalid={invalid('awayTeamId')} aria-describedby={describedBy('awayTeamId')}>
+                <select id="awayTeamId" className={selectClass} {...register('awayTeamId')} aria-invalid={invalid('awayTeamId')} aria-describedby={describedBy('awayTeamId')}>
                   <option value="">Choose…</option>
                   {teams.map((t) => <option key={t.id} value={t.id}>{normalizeName(t.name)}</option>)}
                 </select>
@@ -143,7 +140,7 @@ const FixtureFormDialog: React.FC<{
             <input id="venue" className={inputClass} {...register('venue')} aria-invalid={invalid('venue')} aria-describedby={describedBy('venue')} />
           </Field>
           <Field id="statisticianId" label="Statistician">
-            <select id="statisticianId" className={inputClass} {...register('statisticianId')}>
+            <select id="statisticianId" className={selectClass} {...register('statisticianId')}>
               <option value="">Unassigned</option>
               {statisticians.map((s) => <option key={s.id} value={s.id}>{s.name || s.email}</option>)}
             </select>
@@ -151,31 +148,31 @@ const FixtureFormDialog: React.FC<{
           {editing && (
             <div className="sm:col-span-2">
               <Field id="status" label="Status" error={msg('status')}>
-                <select id="status" className={inputClass} {...(statusLocked ? { value: baseline.status, disabled: true, onChange: () => undefined } : register('status'))} aria-invalid={invalid('status')} aria-describedby={describedBy('status')}>
+                <select id="status" className={selectClass} {...(statusLocked ? { value: baseline.status, disabled: true, onChange: () => undefined } : register('status'))} aria-invalid={invalid('status')} aria-describedby={describedBy('status')}>
                   {statusOptions.map((s) => (
                     <option key={s} value={s} disabled={!ADMIN_SETTABLE_STATUSES.includes(s) && s !== match?.status}>{STATUS_LABELS[s]}{!ADMIN_SETTABLE_STATUSES.includes(s) ? ' (set by the scorer)' : ''}</option>
                   ))}
                 </select>
               </Field>
-              {statusLocked && <p className="mt-1 text-xs text-gray-500">Live and completed games are set by the scorer.</p>}
+              {statusLocked && <p className={hintClass}>Live and completed games are set by the scorer.</p>}
             </div>
           )}
         </fieldset>
 
-        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-gray-200 pt-4 dark:border-gray-800">
+        <div className={dialogFooter}>
           {confirmingDiscard ? (
             <div role="alertdialog" aria-label="Discard unsaved changes" className="mr-auto flex flex-wrap items-center gap-3 text-sm">
               <span className="text-gray-700 dark:text-gray-300">Discard your unsaved changes?</span>
-              <Button variant="secondary" type="button" onClick={() => setConfirmingDiscard(false)}>Keep editing</Button>
-              <Button variant="destructive" type="button" onClick={onClose}>Discard</Button>
+              <button type="button" className={btnSecondary} onClick={() => setConfirmingDiscard(false)}>Keep editing</button>
+              <button type="button" className={btnDanger} onClick={onClose}>Discard</button>
             </div>
           ) : (
-            <Button variant="secondary" type="button" onClick={requestClose} disabled={isSaving}>Cancel</Button>
+            <button type="button" className={btnSecondary} onClick={requestClose} disabled={isSaving}>Cancel</button>
           )}
-          <Button type="submit" disabled={isSaving || confirmingDiscard} className="min-w-28">
+          <button type="submit" className={`${btnPrimary} min-w-28`} disabled={isSaving || confirmingDiscard}>
             {isSaving && <Spinner />}
-            {isSaving ? 'Saving…' : editing ? 'Save changes' : 'Create fixture'}
-          </Button>
+            {isSaving ? 'Saving...' : editing ? 'Save changes' : 'Create fixture'}
+          </button>
         </div>
       </form>
     </Modal>

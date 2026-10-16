@@ -107,8 +107,8 @@ export function ShotChartCourt({
                 aria-pressed={period === p}
                 onClick={() => setPeriod(p)}
                 className={cn(
-                  'h-8 rounded-md px-3 text-xs font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-court-400/50',
-                  period === p ? 'bg-court-700 text-white' : 'bg-white text-gray-700 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200',
+                  'h-8 rounded-md px-3 text-xs font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-brand-500/50',
+                  period === p ? 'bg-brand-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200',
                 )}
               >
                 {p === 'all' ? 'All' : `Q${p}`}
@@ -123,7 +123,7 @@ export function ShotChartCourt({
             type="button"
             aria-pressed={showMade}
             onClick={() => setShowMade((v) => !v)}
-            className={cn('h-8 rounded-md px-3 text-xs font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-court-400/50', showMade ? 'bg-white text-gray-900 dark:bg-gray-800 dark:text-white' : 'text-gray-400')}
+            className={cn('h-8 rounded-md px-3 text-xs font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-brand-500/50', showMade ? 'bg-white text-gray-900 dark:bg-gray-800 dark:text-white' : 'text-gray-400')}
           >
             Made
           </button>
@@ -131,7 +131,7 @@ export function ShotChartCourt({
             type="button"
             aria-pressed={showMissed}
             onClick={() => setShowMissed((v) => !v)}
-            className={cn('h-8 rounded-md px-3 text-xs font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-court-400/50', showMissed ? 'bg-white text-gray-900 dark:bg-gray-800 dark:text-white' : 'text-gray-400')}
+            className={cn('h-8 rounded-md px-3 text-xs font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-brand-500/50', showMissed ? 'bg-white text-gray-900 dark:bg-gray-800 dark:text-white' : 'text-gray-400')}
           >
             Missed
           </button>
@@ -146,8 +146,8 @@ export function ShotChartCourt({
             aria-pressed={team === v}
             onClick={() => { setTeam(v); setPicked([]); }}
             className={cn(
-              'h-8 rounded-md px-3 text-xs font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-court-400/50',
-              team === v ? 'bg-court-700 text-white' : 'bg-white text-gray-700 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200',
+              'h-8 rounded-md px-3 text-xs font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-brand-500/50',
+              team === v ? 'bg-brand-500 text-white' : 'bg-white text-gray-700 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200',
             )}
           >
             {text}
@@ -155,7 +155,7 @@ export function ShotChartCourt({
         ))}
       </div>
 
-      <div className="relative overflow-hidden rounded-xl bg-court-900 p-3 md:p-5">
+      <div className="relative overflow-hidden rounded-xl bg-brand-900 p-3 md:p-5">
         <svg viewBox="-2 -2 98 54" role="img" aria-label={`Shot chart: ${visible.length} shots shown`} className="block h-auto w-full">
           <rect x={-2} y={-2} width={98} height={54} fill="none" />
           <CourtLines id={courtId} />
@@ -197,8 +197,8 @@ export function ShotChartCourt({
                   aria-pressed={on}
                   onClick={() => setPicked((cur) => (cur.includes(p.id) ? cur.filter((x) => x !== p.id) : [...cur, p.id]))}
                   className={cn(
-                    'flex h-8 items-center gap-2 rounded-md border px-2.5 text-xs font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-court-400/50',
-                    on ? 'border-court-700 bg-court-700 text-white' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200',
+                    'flex h-8 items-center gap-2 rounded-md border px-2.5 text-xs font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-brand-500/50',
+                    on ? 'border-brand-500 bg-brand-500 text-white' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200',
                   )}
                 >
                   <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: p.home ? homeColor : awayColor }} />

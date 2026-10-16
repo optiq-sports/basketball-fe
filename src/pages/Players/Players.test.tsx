@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 type Q<T> = { data?: T; isPending: boolean; isError: boolean; isFetching: boolean; error: unknown; refetch: () => void };
 const ok = <T,>(data: T): Q<T> => ({ data, isPending: false, isError: false, isFetching: false, error: null, refetch: vi.fn() });
+const idle = <T,>(): Q<T> => ({ data: undefined, isPending: false, isError: false, isFetching: false, error: null, refetch: vi.fn() });
 
 const h = vi.hoisted(() => ({
   page: null as unknown,
@@ -15,6 +16,8 @@ const h = vi.hoisted(() => ({
   merge: { mutate: vi.fn(), isPending: false },
   upload: { mutate: vi.fn(), isPending: false, reset: vi.fn(), isError: false, error: null },
   uploadFile: { mutate: vi.fn(), isPending: false },
+  player: null as unknown,
+  team: null as unknown,
   toast: { success: vi.fn(), error: vi.fn() },
   lastQuery: null as unknown,
 }));
@@ -28,6 +31,8 @@ vi.mock('../../api/hooks', () => ({
   useMergePlayers: () => h.merge,
   useUploadPlayersExcel: () => h.upload,
   useUploadFile: () => h.uploadFile,
+  usePlayer: () => h.player,
+  useTeam: () => h.team,
 }));
 vi.mock('../../hooks/useToast', () => ({ useToast: () => h.toast }));
 
@@ -44,6 +49,8 @@ const player = (id: string, firstName: string, lastName: string, over: Record<st
   jerseyNumber: 5,
   teamId: 'team-1',
   teamName: 'Marktown Flyers',
+  nationality: 'Nigeria',
+  height: "6'2\"",
   playerTeams: [{ id: 'pt1', teamId: 'team-1', isActive: true, joinedAt: '2026-01-01', team: { id: 'team-1', name: 'Marktown Flyers', code: 'MTF' } }],
   ...over,
 });
@@ -62,6 +69,10 @@ function renderAt(path = '/players-management') {
   );
 }
 
+/** The row for a named player, from the restored table. */
+const rowFor = (name: string) =>
+  within(screen.getByRole('table', { name: 'Players' })).getByText(name).closest('tr') as HTMLElement;
+
 beforeEach(() => {
   localStorage.clear();
   h.page = page([player('a', 'Teddy', 'Okereafor'), player('b', 'Fahro', 'Alihodzic', { id: 'b', jerseyNumber: 15, position: 'CENTER' })]);
@@ -72,18 +83,23 @@ beforeEach(() => {
   h.merge = { mutate: vi.fn(), isPending: false };
   h.upload = { mutate: vi.fn(), isPending: false, reset: vi.fn(), isError: false, error: null };
   h.uploadFile = { mutate: vi.fn(), isPending: false };
+  h.player = idle();
+  h.team = idle();
   h.toast = { success: vi.fn(), error: vi.fn() };
 });
 
 describe('Players: list', () => {
-  it('shows players as cards with their number, position and team', () => {
+  it('shows each player as a row with their number, position, team, nationality and height', () => {
     renderAt();
-    const cards = screen.getAllByRole('article');
-    expect(cards).toHaveLength(2);
-    expect(within(cards[0]).getByText('#5')).toBeInTheDocument();
-    expect(within(cards[0]).getByText('Teddy Okereafor')).toBeInTheDocument();
-    expect(within(cards[0]).getByText('Point guard')).toBeInTheDocument();
-    expect(within(cards[0]).getByText('Marktown Flyers')).toBeInTheDocument();
+    const table = screen.getByRole('table', { name: 'Players' });
+    const rows = within(table).getAllByRole('row');
+    expect(rows).toHaveLength(3); // header + two players
+    const row = rowFor('Teddy Okereafor');
+    expect(within(row).getByText('5')).toBeInTheDocument();
+    expect(within(row).getByText('Point guard')).toBeInTheDocument();
+    expect(within(row).getByText('Marktown Flyers')).toBeInTheDocument();
+    expect(within(row).getByText('Nigeria')).toBeInTheDocument();
+    expect(within(row).getByText("6'2\"")).toBeInTheDocument();
   });
 
   it('asks the server for the first page sorted by surname', () => {
@@ -100,21 +116,29 @@ describe('Players: list', () => {
   it('says "No team" rather than leaving a blank for an unassigned player', () => {
     h.page = page([player('a', 'Ada', 'Eze', { teamId: null, teamName: null, jerseyNumber: null, playerTeams: [] })]);
     renderAt();
-    const card = screen.getByRole('article');
-    expect(within(card).getByText('No team')).toBeInTheDocument();
-    expect(within(card).queryByText(/^#/)).not.toBeInTheDocument();
+    const row = rowFor('Ada Eze');
+    expect(within(row).getByText('No team')).toBeInTheDocument();
+    expect(within(row).getByText('—')).toBeInTheDocument();
   });
 
-  it('says a position is not set instead of showing a blank line', () => {
-    h.page = page([player('a', 'Ada', 'Eze', { position: null })]);
+  it('shows a dash rather than a blank cell when a position is not set', () => {
+    h.page = page([player('a', 'Ada', 'Eze', { position: null, nationality: null, height: null })]);
     renderAt();
-    expect(screen.getByText('Position not set')).toBeInTheDocument();
+    const row = rowFor('Ada Eze');
+    expect(within(row).getAllByText('—')).toHaveLength(3);
   });
 
   it('offers no Release button for a player who is on no team', () => {
     h.page = page([player('a', 'Ada', 'Eze', { teamId: null, teamName: null, playerTeams: [] })]);
     renderAt();
     expect(screen.queryByRole('button', { name: /^Release/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Edit Ada Eze/ })).toBeInTheDocument();
+  });
+
+  it('opens the player profile when their row is clicked', () => {
+    renderAt();
+    fireEvent.click(rowFor('Teddy Okereafor'));
+    expect(screen.getByRole('dialog', { name: 'Player Profile' })).toBeInTheDocument();
   });
 });
 
@@ -145,16 +169,31 @@ describe('Players: search, filter and sort go through the URL', () => {
     expect(within(select).getByRole('option', { name: 'Marktown Flyers' })).toBeInTheDocument();
   });
 
+  it('sorts from a column header by asking the server, not by reordering the page', () => {
+    renderAt();
+    fireEvent.click(within(screen.getByRole('table')).getByRole('button', { name: /^Position/ }));
+    expect(screen.getByTestId('where')).toHaveTextContent('sort=position');
+    expect(h.lastQuery).toMatchObject({ sortBy: 'position' });
+  });
+
   it('flips direction when the active sort is pressed again', () => {
     renderAt();
-    fireEvent.click(screen.getByRole('button', { name: /Sort by Name/ }));
+    fireEvent.click(within(screen.getByRole('table')).getByRole('button', { name: /^Player/ }));
     expect(screen.getByTestId('where').textContent).toContain('dir=desc');
   });
 
-  it('offers no position sort, because the backend answers 400 for one', () => {
+  it('marks the sorted column, and gives jersey, team and height no sort control since the backend refuses them', () => {
     renderAt();
-    expect(screen.queryByRole('button', { name: /Sort by Jersey/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Sort by Team/ })).not.toBeInTheDocument();
+    const table = screen.getByRole('table');
+    expect(within(table).getByRole('columnheader', { name: /Player/ })).toHaveAttribute('aria-sort', 'ascending');
+    expect(within(table).queryByRole('button', { name: /^#/ })).not.toBeInTheDocument();
+    expect(within(table).queryByRole('button', { name: /^Team/ })).not.toBeInTheDocument();
+    expect(within(table).queryByRole('button', { name: /^Height/ })).not.toBeInTheDocument();
+  });
+
+  it('offers no position filter, because the backend answers 400 for one', () => {
+    renderAt();
+    expect(screen.queryByLabelText(/position/i)).not.toBeInTheDocument();
   });
 
   it('drops back to page 1 when the filter changes', () => {
@@ -162,118 +201,96 @@ describe('Players: search, filter and sort go through the URL', () => {
     fireEvent.change(screen.getByLabelText('Filter by team'), { target: { value: 'team-2' } });
     expect(screen.getByTestId('where').textContent).not.toContain('page=3');
   });
+
+  it('pages through the server pages rather than slicing one in the browser', () => {
+    h.page = page([player('a', 'Teddy', 'Okereafor')], 30, 3, 1);
+    renderAt();
+    fireEvent.click(screen.getByRole('button', { name: '2' }));
+    expect(screen.getByTestId('where').textContent).toContain('page=2');
+  });
+});
+
+describe('Players: the cards ⇄ table toggle', () => {
+  it('starts on the table, as the page always has', () => {
+    renderAt();
+    expect(screen.getByRole('table', { name: 'Players' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cards' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Table' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('switches to cards, writes the choice to the URL and remembers it', () => {
+    renderAt();
+    fireEvent.click(screen.getByRole('button', { name: 'Cards' }));
+
+    expect(screen.queryByRole('table', { name: 'Players' })).toBeNull();
+    expect(screen.getByRole('list', { name: 'Players' })).toBeInTheDocument();
+    expect(screen.getByTestId('where').textContent).toContain('view=cards');
+    expect(localStorage.getItem('players_view')).toBe('cards');
+  });
+
+  it('opens on cards when the URL says so, even with nothing remembered', () => {
+    renderAt('/players-management?view=cards');
+    expect(screen.getByRole('list', { name: 'Players' })).toBeInTheDocument();
+    const cards = within(screen.getByRole('list', { name: 'Players' })).getAllByRole('listitem');
+    expect(cards).toHaveLength(2);
+    expect(within(cards[0]).getByText('Teddy Okereafor')).toBeInTheDocument();
+  });
+
+  it('shows the sort buttons only on cards, since the table sorts from its headers', () => {
+    renderAt();
+    expect(screen.queryByRole('button', { name: /^Sort by Position/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cards' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Sort by Position/ }));
+    expect(h.lastQuery).toMatchObject({ sortBy: 'position', sortOrder: 'asc' });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Sort by Position/ }));
+    expect(h.lastQuery).toMatchObject({ sortBy: 'position', sortOrder: 'desc' });
+  });
 });
 
 describe('Players: releasing', () => {
   it('explains that releasing clears their team and keeps the profile', () => {
     renderAt();
-    fireEvent.click(screen.getAllByRole('button', { name: /^Release Teddy Okereafor/ })[0]);
-    const dialog = screen.getByRole('dialog');
-    expect(within(dialog).getByText('Release player?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Release Teddy Okereafor/ }));
+    const dialog = screen.getByRole('dialog', { name: 'Release player?' });
     expect(within(dialog).getByText(/profile and everything they've recorded stay/i)).toBeInTheDocument();
     expect(within(dialog).getByText('Marktown Flyers')).toBeInTheDocument();
   });
 
   it('never calls it a delete, because the backend does not delete the player', () => {
     renderAt();
-    fireEvent.click(screen.getAllByRole('button', { name: /^Release Teddy Okereafor/ })[0]);
-    const dialog = screen.getByRole('dialog');
+    fireEvent.click(screen.getByRole('button', { name: /^Release Teddy Okereafor/ }));
+    const dialog = screen.getByRole('dialog', { name: 'Release player?' });
     expect(within(dialog).queryByText(/can’t be undone/i)).not.toBeInTheDocument();
     expect(within(dialog).queryByText(/permanently/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Delete/ })).not.toBeInTheDocument();
   });
 
   it('releases the player on confirmation', () => {
     renderAt();
-    fireEvent.click(screen.getAllByRole('button', { name: /^Release Teddy Okereafor/ })[0]);
+    fireEvent.click(screen.getByRole('button', { name: /^Release Teddy Okereafor/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Release player' }));
     expect(h.release.mutate).toHaveBeenCalledWith('a', expect.anything());
   });
-});
 
-describe('Players: cards and table views', () => {
-  it('starts on cards and offers both views', () => {
+  it('does not open the profile when a row action is used', () => {
     renderAt();
-    expect(screen.getAllByRole('article')).toHaveLength(2);
-    expect(screen.queryByRole('table')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'cards' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'table' })).toHaveAttribute('aria-pressed', 'false');
-  });
-
-  it('switches to a table of the same players, and puts the choice in the URL', () => {
-    renderAt();
-    fireEvent.click(screen.getByRole('button', { name: 'table' }));
-    expect(screen.getByTestId('where')).toHaveTextContent('view=table');
-    const table = screen.getByRole('table', { name: 'Players' });
-    expect(screen.queryByRole('article')).not.toBeInTheDocument();
-    const rows = within(table).getAllByRole('row');
-    expect(rows).toHaveLength(3); // header + two players
-    expect(within(rows[1]).getByText('Teddy Okereafor')).toBeInTheDocument();
-    expect(within(rows[1]).getByText('#5')).toBeInTheDocument();
-    expect(within(rows[1]).getByText('Point guard')).toBeInTheDocument();
-    expect(within(rows[1]).getByText('Marktown Flyers')).toBeInTheDocument();
-  });
-
-  it('opens on the table when the URL says so', () => {
-    renderAt('/players-management?view=table');
-    expect(screen.getByRole('table', { name: 'Players' })).toBeInTheDocument();
-  });
-
-  it('remembers the last view on this device when the URL has none', () => {
-    const first = renderAt();
-    fireEvent.click(screen.getByRole('button', { name: 'table' }));
-    first.unmount();
-    renderAt();
-    expect(screen.getByRole('table', { name: 'Players' })).toBeInTheDocument();
-  });
-
-  it('sorts from a column header by asking the server, not by reordering the page', () => {
-    renderAt('/players-management?view=table');
-    fireEvent.click(within(screen.getByRole('table')).getByRole('button', { name: /^Position/ }));
-    expect(screen.getByTestId('where')).toHaveTextContent('sort=position');
-    expect(h.lastQuery).toMatchObject({ sortBy: 'position' });
-  });
-
-  it('marks the sorted column, and gives jersey and team no sort control since the backend refuses them', () => {
-    renderAt('/players-management?view=table');
-    const table = screen.getByRole('table');
-    expect(within(table).getByRole('columnheader', { name: /Player/ })).toHaveAttribute('aria-sort', 'ascending');
-    expect(within(table).queryByRole('button', { name: /^#/ })).not.toBeInTheDocument();
-    expect(within(table).queryByRole('button', { name: /^Team/ })).not.toBeInTheDocument();
-  });
-
-  it('hides the card sort buttons in the table, where the headers do that job', () => {
-    renderAt('/players-management?view=table');
-    expect(screen.queryByRole('group', { name: 'Sort by' })).not.toBeInTheDocument();
-  });
-
-  it('edits and releases from a table row just as from a card', () => {
-    renderAt('/players-management?view=table');
     fireEvent.click(screen.getByRole('button', { name: /^Release Teddy Okereafor/ }));
-    expect(screen.getByRole('dialog', { name: 'Release player?' })).toBeInTheDocument();
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
-    fireEvent.click(screen.getByRole('button', { name: /^Edit Teddy Okereafor/ }));
-    expect(screen.getByRole('dialog', { name: 'Edit player' })).toBeInTheDocument();
-  });
-
-  it('says No team and shows a dash for a player with no team or number', () => {
-    h.page = page([player('a', 'Ada', 'Eze', { teamId: null, teamName: null, jerseyNumber: null, playerTeams: [] })]);
-    renderAt('/players-management?view=table');
-    const row = within(screen.getByRole('table')).getAllByRole('row')[1];
-    expect(within(row).getByText('No team')).toBeInTheDocument();
-    expect(within(row).queryByRole('button', { name: /^Release/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Player Profile' })).not.toBeInTheDocument();
   });
 });
 
 describe('Players: adding and editing', () => {
   it('creates a player with the team and jersey number the backend needs', async () => {
     renderAt();
-    fireEvent.click(screen.getByRole('button', { name: 'Add player' }));
-    const dialog = screen.getByRole('dialog');
-    fireEvent.change(within(dialog).getByLabelText(/^First name/), { target: { value: 'Ada' } });
-    fireEvent.change(within(dialog).getByLabelText(/^Last name/), { target: { value: 'Eze' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Player' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add player' });
+    fireEvent.change(within(dialog).getByLabelText(/^First Name/), { target: { value: 'Ada' } });
+    fireEvent.change(within(dialog).getByLabelText(/^Last Name/), { target: { value: 'Eze' } });
     fireEvent.change(within(dialog).getByLabelText(/^Team/), { target: { value: 'team-2' } });
-    fireEvent.change(within(dialog).getByLabelText(/^Jersey number/), { target: { value: '7' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Add player' }));
+    fireEvent.change(within(dialog).getByLabelText(/^Jersey Number/), { target: { value: '7' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create' }));
 
     await waitFor(() =>
       expect(h.create.mutate).toHaveBeenCalledWith(
@@ -285,11 +302,11 @@ describe('Players: adding and editing', () => {
 
   it('refuses to create without a team, and says so on the field', async () => {
     renderAt();
-    fireEvent.click(screen.getByRole('button', { name: 'Add player' }));
-    const dialog = screen.getByRole('dialog');
-    fireEvent.change(within(dialog).getByLabelText(/^First name/), { target: { value: 'Ada' } });
-    fireEvent.change(within(dialog).getByLabelText(/^Last name/), { target: { value: 'Eze' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Add player' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add Player' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add player' });
+    fireEvent.change(within(dialog).getByLabelText(/^First Name/), { target: { value: 'Ada' } });
+    fireEvent.change(within(dialog).getByLabelText(/^Last Name/), { target: { value: 'Eze' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create' }));
 
     expect(await within(dialog).findByText('Choose a team.')).toBeInTheDocument();
     expect(h.create.mutate).not.toHaveBeenCalled();
@@ -297,16 +314,16 @@ describe('Players: adding and editing', () => {
 
   it('sends only the changed field when editing', async () => {
     renderAt();
-    fireEvent.click(screen.getAllByRole('button', { name: /^Edit Teddy Okereafor/ })[0]);
+    fireEvent.click(screen.getByRole('button', { name: /^Edit Teddy Okereafor/ }));
     fireEvent.change(screen.getByLabelText(/^Height/), { target: { value: "6'5\"" } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
 
     await waitFor(() => expect(h.update.mutate).toHaveBeenCalledWith({ id: 'a', data: { height: "6'5\"" } }, expect.anything()));
   });
 
   it('will not let an edit move a player between teams, since the backend cannot', () => {
     renderAt();
-    fireEvent.click(screen.getAllByRole('button', { name: /^Edit Teddy Okereafor/ })[0]);
+    fireEvent.click(screen.getByRole('button', { name: /^Edit Teddy Okereafor/ }));
     expect(screen.getByLabelText(/^Team/)).toBeDisabled();
   });
 });
@@ -314,8 +331,22 @@ describe('Players: adding and editing', () => {
 describe('Players: merging duplicates', () => {
   it('warns that the duplicate is deleted for good and asks for its name', () => {
     renderAt();
-    fireEvent.click(screen.getByRole('button', { name: 'Merge duplicates' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Merge Players' }));
     expect(screen.getByText(/duplicate profile is then deleted for good/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Merge and delete duplicate' })).toBeDisabled();
+  });
+});
+
+describe('Players: uploading a squad', () => {
+  it('cannot be opened before there is a team to upload into', () => {
+    h.teams = ok([]);
+    renderAt();
+    expect(screen.getByRole('button', { name: 'Upload Excel' })).toBeDisabled();
+  });
+
+  it('opens the spreadsheet dialog', () => {
+    renderAt();
+    fireEvent.click(screen.getByRole('button', { name: 'Upload Excel' }));
+    expect(screen.getByRole('dialog', { name: 'Upload player list (Excel)' })).toBeInTheDocument();
   });
 });

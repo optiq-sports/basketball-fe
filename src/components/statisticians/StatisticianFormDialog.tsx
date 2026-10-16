@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Country } from 'country-state-city';
 import Modal from '../ui/Modal';
 import Spinner from '../ui/Spinner';
-import { Button } from '../ui/primitives/button';
+import { btnDanger, btnPrimary, btnSecondary, dialogFooter, errorBanner, fieldErrorClass, hintClass, inputClass, labelClass, selectClass } from '../ui/formStyles';
 import { PlayerAvatar } from '../players/PlayerAvatar';
 import { useUploadFile } from '../../api/hooks';
 import { useToast } from '../../hooks/useToast';
@@ -19,19 +19,16 @@ import {
 } from './statistician-form';
 import type { Statistician, StatisticianCreateBody, StatisticianUpdateBody } from '../../types/api';
 
-const inputClass =
-  'w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-court-400 aria-[invalid=true]:border-rose-500 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-900 dark:text-white';
-
 function Field({ id, label, error, required, hint, children, className }: { id: string; label: string; error?: string; required?: boolean; hint?: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className={`flex flex-col gap-1.5 ${className ?? ''}`}>
-      <label htmlFor={id} className="text-sm font-medium text-gray-700 dark:text-gray-300">
+    <div className={className}>
+      <label htmlFor={id} className={labelClass}>
         {label}
-        {required && <span aria-hidden className="text-rose-600"> *</span>}
+        {required && <span aria-hidden className="text-error-600"> *</span>}
       </label>
       {children}
-      {hint && !error && <p className="text-xs text-gray-500">{hint}</p>}
-      {error && <p id={`${id}-error`} className="text-xs text-rose-600">{error}</p>}
+      {hint && !error && <p className={hintClass}>{hint}</p>}
+      {error && <p id={`${id}-error`} className={fieldErrorClass}>{error}</p>}
     </div>
   );
 }
@@ -133,7 +130,7 @@ const StatisticianFormDialog: React.FC<{
     <Modal open={open} onClose={requestClose} title={editing ? 'Edit statistician' : 'Add statistician'} size="lg" closeOnBackdropClick={!busy} closeOnEscape={!busy}>
       <form onSubmit={submit} className="flex flex-col gap-6" noValidate aria-busy={busy}>
         {serverError && (
-          <p role="alert" className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
+          <p role="alert" className={errorBanner}>
             {serverError}
           </p>
         )}
@@ -147,16 +144,16 @@ const StatisticianFormDialog: React.FC<{
             className={uploadFile.isPending ? 'opacity-50' : undefined}
           />
           <div className="flex flex-col gap-1">
-            <label className="inline-flex w-fit items-center gap-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">
+            <label className="inline-flex w-fit cursor-pointer items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/5">
               {uploadFile.isPending && <Spinner className="size-3.5" />}
-              {uploadFile.isPending ? 'Uploading…' : photo ? 'Replace photo' : 'Upload photo'}
+              {uploadFile.isPending ? 'Uploading...' : photo ? 'Replace photo' : 'Upload photo'}
               <input type="file" accept="image/*" className="sr-only" onChange={pickPhoto} disabled={busy} />
             </label>
-            <span className="text-xs text-gray-500">Without one, their initials are shown.</span>
+            <span className={hintClass}>PNG or JPEG recommended. Without one, their initials are shown.</span>
           </div>
         </div>
 
-        <fieldset className="grid gap-4 md:grid-cols-2" disabled={busy}>
+        <fieldset className="grid gap-5 md:grid-cols-2" disabled={busy}>
           <legend className="sr-only">Statistician details</legend>
           <Field id="firstName" label="First name" required error={msg('firstName')}>
             <input id="firstName" className={inputClass} {...register('firstName')} aria-invalid={invalid('firstName')} aria-describedby={describedBy('firstName')} autoFocus />
@@ -165,11 +162,11 @@ const StatisticianFormDialog: React.FC<{
             <input id="lastName" className={inputClass} {...register('lastName')} aria-invalid={invalid('lastName')} aria-describedby={describedBy('lastName')} />
           </Field>
           <Field id="email" label="Email" required={!editing} error={msg('email')} hint={editing ? 'The email is their sign-in, so it can’t be changed here.' : undefined} className="md:col-span-2">
-            <input id="email" type="email" {...register('email')} aria-invalid={invalid('email')} aria-describedby={describedBy('email')} readOnly={editing} className={`${inputClass} ${editing ? 'bg-gray-50 text-gray-500 dark:bg-gray-800' : ''}`} />
+            <input id="email" type="email" {...register('email')} aria-invalid={invalid('email')} aria-describedby={describedBy('email')} readOnly={editing} className={`${inputClass} ${editing ? 'bg-gray-100 text-gray-500 dark:bg-white/5' : ''}`} />
           </Field>
         </fieldset>
 
-        <fieldset className="grid gap-4 md:grid-cols-2" disabled={busy}>
+        <fieldset className="grid gap-5 md:grid-cols-2" disabled={busy}>
           <legend className="mb-2 text-sm font-semibold text-gray-900 dark:text-white">Contact</legend>
           <Field id="phone" label="Phone" error={msg('phone')}>
             <input id="phone" className={inputClass} {...register('phone')} aria-invalid={invalid('phone')} aria-describedby={describedBy('phone')} />
@@ -209,9 +206,9 @@ const StatisticianFormDialog: React.FC<{
                 aria-describedby={describedBy('password')}
                 autoComplete="new-password"
               />
-              <Button type="button" variant="secondary" onClick={() => setShowPassword((s) => !s)}>{showPassword ? 'Hide' : 'Show'}</Button>
-              <Button type="button" variant="secondary" onClick={regenerate}>Generate</Button>
-              <Button type="button" variant="secondary" onClick={() => void copyPassword()} disabled={!password}>{copied ? 'Copied' : 'Copy'}</Button>
+              <button type="button" className={`${btnSecondary} px-3 py-2 text-sm`} onClick={() => setShowPassword((s) => !s)}>{showPassword ? 'Hide' : 'Show'}</button>
+              <button type="button" className={`${btnSecondary} px-3 py-2 text-sm`} onClick={regenerate}>Generate</button>
+              <button type="button" className={`${btnSecondary} px-3 py-2 text-sm`} onClick={() => void copyPassword()} disabled={!password}>{copied ? 'Copied' : 'Copy'}</button>
             </div>
           </Field>
         </fieldset>
@@ -219,7 +216,7 @@ const StatisticianFormDialog: React.FC<{
         {editing && (
           <fieldset disabled={busy}>
             <Field id="status" label="Status" hint="An inactive statistician can’t sign in or be assigned to matches.">
-              <select id="status" className={inputClass} {...register('status')}>
+              <select id="status" className={selectClass} {...register('status')}>
                 <option value="ACTIVE">Active</option>
                 <option value="INACTIVE">Inactive</option>
               </select>
@@ -227,20 +224,20 @@ const StatisticianFormDialog: React.FC<{
           </fieldset>
         )}
 
-        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-gray-200 pt-4 dark:border-gray-800">
+        <div className={dialogFooter}>
           {confirmingDiscard ? (
             <div role="alertdialog" aria-label="Discard unsaved changes" className="mr-auto flex flex-wrap items-center gap-3 text-sm">
               <span className="text-gray-700 dark:text-gray-300">Discard your unsaved changes?</span>
-              <Button variant="secondary" type="button" onClick={() => setConfirmingDiscard(false)}>Keep editing</Button>
-              <Button variant="destructive" type="button" onClick={onClose}>Discard</Button>
+              <button type="button" className={btnSecondary} onClick={() => setConfirmingDiscard(false)}>Keep editing</button>
+              <button type="button" className={btnDanger} onClick={onClose}>Discard</button>
             </div>
           ) : (
-            <Button variant="secondary" type="button" onClick={requestClose} disabled={busy}>Cancel</Button>
+            <button type="button" className={btnSecondary} onClick={requestClose} disabled={busy}>Cancel</button>
           )}
-          <Button type="submit" disabled={busy || confirmingDiscard} className="min-w-28">
+          <button type="submit" className={`${btnPrimary} min-w-28`} disabled={busy || confirmingDiscard}>
             {isSaving && <Spinner />}
-            {isSaving ? 'Saving…' : editing ? 'Save changes' : 'Add statistician'}
-          </Button>
+            {isSaving ? 'Saving...' : editing ? 'Update' : 'Create'}
+          </button>
         </div>
       </form>
     </Modal>

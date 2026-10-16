@@ -69,63 +69,60 @@ beforeEach(() => {
 });
 
 describe('TournamentsListing: states', () => {
-  it('lists tournaments as cards, with division, dates and the team and match counts', () => {
+  it('lists tournaments as flyer tiles, with division, dates, venue and the team and match counts', () => {
     renderAt();
-    const list = screen.getByRole('list', { name: 'Tournaments' });
-    expect(within(list).getByText('Summer Cup')).toBeTruthy();
-    expect(within(list).getByText('Division 1')).toBeTruthy();
-    expect(within(list).getByText('6')).toBeTruthy();
-    expect(within(list).getByText('12')).toBeTruthy();
+    const link = screen.getByRole('link', { name: 'Open Summer Cup' });
+    expect(within(link).getByText('Summer Cup')).toBeTruthy();
+    expect(within(link).getByText('Division 1')).toBeTruthy();
+    expect(within(link).getByText('6 teams · 12 matches')).toBeTruthy();
   });
 
-  it('says there are no tournaments yet, and offers the action that creates one', () => {
+  it('says there are no tournaments yet, and Add Tournament opens the form', () => {
     h.page = ok([], 0, 0);
     renderAt();
-    expect(screen.getByText('No tournaments yet')).toBeTruthy();
-    expect(screen.queryByText('No matches')).toBeNull();
-    fireEvent.click(screen.getAllByRole('button', { name: 'New tournament' })[0]);
+    expect(screen.getByText('No tournaments found')).toBeTruthy();
+    expect(screen.getByText(/Create your first tournament/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Add Tournament' }));
     expect(screen.getByRole('dialog', { name: 'New tournament' })).toBeTruthy();
   });
 
-  it('says nothing matches a search, distinct from empty, and clears it', () => {
+  it('says nothing matches a search, distinct from empty', () => {
     h.page = ok([], 0, 0);
     renderAt('/tournaments?q=harbor');
-    expect(screen.getByText('No matches')).toBeTruthy();
-    expect(screen.getByText(/Nothing matches “harbor”/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
-    expect(screen.getByTestId('where').textContent).toBe('');
+    expect(screen.getByText('No tournaments found')).toBeTruthy();
+    expect(screen.getByText('Try a different tournament name.')).toBeTruthy();
   });
 
-  it('shows a failure with a retry', () => {
-    const refetch = vi.fn();
-    h.page = { data: undefined, isPending: false, isError: true, isFetching: false, error: new Error('Server unavailable'), refetch };
+  it('shows the failure above the list', () => {
+    h.page = { data: undefined, isPending: false, isError: true, isFetching: false, error: new Error('Server unavailable'), refetch: vi.fn() };
     renderAt();
-    expect(screen.getByRole('alert').textContent).toMatch(/Server unavailable/);
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(refetch).toHaveBeenCalled();
+    expect(screen.getByText(/Server unavailable/)).toBeTruthy();
+  });
+
+  it('offers no Season filter: the old one had hardcoded options and no column behind them', () => {
+    renderAt();
+    expect(screen.queryByText('All Seasons')).toBeNull();
+    expect(screen.queryByText('2024-2025')).toBeNull();
   });
 });
 
 describe('TournamentsListing: URL state', () => {
-  it('sends the sort and direction the URL asks for, and defaults to newest first', () => {
+  it('asks the server for the newest first, and reads the page from the URL', () => {
     renderAt();
-    expect(h.lastQuery).toMatchObject({ sortBy: 'createdAt', sortOrder: 'desc', page: 1 });
-    renderAt('/tournaments?sort=name&dir=asc&page=3');
-    expect(h.lastQuery).toMatchObject({ sortBy: 'name', sortOrder: 'asc', page: 3 });
+    expect(h.lastQuery).toMatchObject({ sortBy: 'createdAt', sortOrder: 'desc', page: 1, limit: 12 });
+    renderAt('/tournaments?page=3');
+    expect(h.lastQuery).toMatchObject({ page: 3 });
   });
 
-  it('ignores a sort field the list does not offer', () => {
-    renderAt('/tournaments?sort=password');
-    expect(h.lastQuery).toMatchObject({ sortBy: 'createdAt' });
-  });
+  it('sorts by asking the server, with a name starting A–Z and a press of the active field flipping it', () => {
+    renderAt();
+    expect(h.lastQuery).toMatchObject({ sortBy: 'createdAt', sortOrder: 'desc' });
 
-  it('clicking a sort heading updates the URL and returns to page one', () => {
-    renderAt('/tournaments?page=4');
-    fireEvent.click(screen.getByRole('button', { name: 'Sort by Name' }));
-    const search = screen.getByTestId('where').textContent ?? '';
-    expect(search).toContain('sort=name');
-    expect(search).toContain('dir=asc');
-    expect(search).not.toContain('page=');
+    fireEvent.click(screen.getByRole('button', { name: /^Sort by Name/ }));
+    expect(h.lastQuery).toMatchObject({ sortBy: 'name', sortOrder: 'asc' });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Sort by Name/ }));
+    expect(h.lastQuery).toMatchObject({ sortBy: 'name', sortOrder: 'desc' });
   });
 
   it('searching waits for a pause in typing, then writes the search to the URL and resets the page', async () => {
@@ -137,6 +134,7 @@ describe('TournamentsListing: URL state', () => {
       await act(async () => {
         vi.advanceTimersByTime(350);
       });
+      await act(async () => undefined);
       const search = screen.getByTestId('where').textContent ?? '';
       expect(search).toContain('q=cup');
       expect(search).not.toContain('page=');
@@ -149,7 +147,7 @@ describe('TournamentsListing: URL state', () => {
 describe('TournamentsListing: create and edit', () => {
   it('blocks saving an empty form and marks what is missing', async () => {
     renderAt();
-    fireEvent.click(screen.getAllByRole('button', { name: 'New tournament' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add Tournament' }));
     fireEvent.click(screen.getByRole('button', { name: 'Create tournament' }));
     expect(await screen.findByText('Enter the tournament’s name.')).toBeTruthy();
     expect(screen.getByText('Choose a start date.')).toBeTruthy();
@@ -159,7 +157,7 @@ describe('TournamentsListing: create and edit', () => {
 
   it('refuses an end date before the start date, even while other fields are also wrong', async () => {
     renderAt();
-    fireEvent.click(screen.getAllByRole('button', { name: 'New tournament' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add Tournament' }));
     fireEvent.change(screen.getByLabelText(/^Start date/), { target: { value: '2026-11-10' } });
     fireEvent.change(screen.getByLabelText(/^End date/), { target: { value: '2026-11-01' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create tournament' }));
@@ -170,7 +168,7 @@ describe('TournamentsListing: create and edit', () => {
 
   it('refuses a games count that is not a whole number', async () => {
     renderAt();
-    fireEvent.click(screen.getAllByRole('button', { name: 'New tournament' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add Tournament' }));
     fireEvent.change(screen.getByLabelText(/^Games/), { target: { value: '2.5' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create tournament' }));
     expect(await screen.findByText(/Number of games must be a whole number/)).toBeTruthy();
@@ -178,7 +176,7 @@ describe('TournamentsListing: create and edit', () => {
 
   it('creates a tournament from a complete form', async () => {
     renderAt();
-    fireEvent.click(screen.getAllByRole('button', { name: 'New tournament' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add Tournament' }));
     fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Autumn Cup' } });
     fireEvent.change(screen.getByLabelText(/^Start date/), { target: { value: '2026-11-01' } });
     fireEvent.change(screen.getByLabelText(/^Venue/), { target: { value: 'Arena' } });
@@ -191,7 +189,7 @@ describe('TournamentsListing: create and edit', () => {
   it('keeps the form open and shows the server’s reason when the save is refused', async () => {
     h.create.mutate = vi.fn((_body: unknown, opts: { onError: (e: Error) => void }) => opts.onError(new Error('A tournament with this name already exists.')));
     renderAt();
-    fireEvent.click(screen.getAllByRole('button', { name: 'New tournament' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add Tournament' }));
     fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Summer Cup' } });
     fireEvent.change(screen.getByLabelText(/^Start date/), { target: { value: '2026-11-01' } });
     fireEvent.change(screen.getByLabelText(/^Venue/), { target: { value: 'Arena' } });
@@ -225,7 +223,7 @@ describe('TournamentsListing: Start New', () => {
   it('goes to the new tournament once it is created, so its teams are the next thing to add', async () => {
     h.create.mutate = vi.fn((_body: unknown, opts: { onSuccess: (t: unknown) => void }) => opts.onSuccess({ id: 'fresh-1', name: 'Autumn Cup' }));
     renderAt('/tournaments');
-    fireEvent.click(screen.getAllByRole('button', { name: 'New tournament' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add Tournament' }));
     fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: 'Autumn Cup' } });
     fireEvent.change(screen.getByLabelText(/^Start date/), { target: { value: '2026-11-01' } });
     fireEvent.change(screen.getByLabelText(/^Venue/), { target: { value: 'Arena' } });
@@ -233,7 +231,8 @@ describe('TournamentsListing: Start New', () => {
     fireEvent.change(screen.getByLabelText(/^Umpire 2/), { target: { value: 'M. Lee' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create tournament' }));
     expect(await screen.findByText('DETAIL')).toBeTruthy();
-    expect(screen.getByTestId('where')).toHaveTextContent('tab=teams');
+    // The tournament page has no tabs any more (Fix 134), so its teams are on the page itself.
+    expect(screen.getByTestId('where')).not.toHaveTextContent('tab=');
     expect(h.toast.success).toHaveBeenCalledWith(expect.stringContaining('Add its teams next'));
   });
 });
@@ -242,7 +241,7 @@ describe('TournamentsListing: flyer', () => {
   it('uploads a flyer and includes it in the create payload', async () => {
     h.upload.mutate = vi.fn((_file: File, opts: { onSuccess: (r: { url: string }) => void }) => opts.onSuccess({ url: 'https://cdn.test/flyer.png' }));
     renderAt();
-    fireEvent.click(screen.getAllByRole('button', { name: 'New tournament' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add Tournament' }));
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [new File(['x'], 'flyer.png', { type: 'image/png' })] } });
     expect(h.upload.mutate).toHaveBeenCalled();
