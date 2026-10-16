@@ -374,11 +374,21 @@ const TeamDetails: React.FC = () => {
   const tournamentCount = (team.tournamentTeams ?? []).length;
   const captainId = players.find((p) => p.isCaptain)?.id ?? '';
 
+  /**
+   * Tinted figures on the hero only work on a light background. The hero is filled with the team's own
+   * colour, which can be any hue, so a red "Losses" on a red team read as a slightly different red
+   * (Bug 205) and a green "Wins" on a green team would do the same. On a dark hero every figure is
+   * therefore white, which is legible on any colour; the label beside it already says which is which,
+   * so the tint was decoration rather than information. A pale hero keeps the tints, because dark ink
+   * on near-white is safe whatever the hue.
+   */
+  const tint = (semantic: string) => (pale ? semantic : ink);
+
   const heroTiles: Array<{ label: string; value: string; className?: string }> = [
     { label: 'Games Played', value: String(summary.played) },
-    { label: 'Wins', value: String(summary.wins), className: pale ? 'text-success-700' : 'text-green-300' },
-    { label: 'Losses', value: String(summary.losses), className: pale ? 'text-error-600' : 'text-red-300' },
-    { label: 'Tournaments', value: String(tournamentCount), className: pale ? 'text-warning-700' : 'text-yellow-300' },
+    { label: 'Wins', value: String(summary.wins), className: tint('text-success-700') },
+    { label: 'Losses', value: String(summary.losses), className: tint('text-error-600') },
+    { label: 'Tournaments', value: String(tournamentCount), className: tint('text-warning-700') },
     { label: 'Win %', value: summary.winPct == null ? '—' : `${summary.winPct}%` },
     { label: 'PPG', value: summary.ppg == null ? '—' : String(summary.ppg) },
     { label: 'PAPG', value: summary.papg == null ? '—' : String(summary.papg) },
@@ -387,9 +397,9 @@ const TeamDetails: React.FC = () => {
       value: summary.streak ? `${summary.streak.kind}${summary.streak.count}` : '—',
       className:
         summary.streak?.kind === 'W'
-          ? pale ? 'text-success-700' : 'text-green-300'
+          ? tint('text-success-700')
           : summary.streak?.kind === 'L'
-            ? pale ? 'text-error-600' : 'text-red-300'
+            ? tint('text-error-600')
             : undefined,
     },
   ];

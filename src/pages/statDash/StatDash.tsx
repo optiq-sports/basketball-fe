@@ -54,6 +54,8 @@ import {
   opponentOf,
 } from "./foulRecordingUtils";
 import { getRimPosition, isCourtClickThreePointer } from "./courtThreePoint";
+import { elementFractionToFeet } from "./courtGeometry";
+import { courtFeetToShot } from "../../lib/shot-coordinates";
 import type {
   ActiveTurnoverFlow,
   TurnoverFlowDraft,
@@ -364,14 +366,25 @@ const StatDash: React.FC = () => {
   const [courtShotMarkers, setCourtShotMarkers] = useState<CourtMarker[]>([]);
   const [courtFoulMarkers, setCourtFoulMarkers] = useState<CourtMarker[]>([]);
 
+  /**
+   * Where on the court the statistician tapped, in the form every shot has always been stored in.
+   *
+   * The tap is read off the court in real feet and then encoded back into that stored form. The court
+   * is drawn to true proportions now, so a tap and a real position are the same thing, but the wire
+   * format deliberately did not change: a shot recorded today and one recorded months ago mean exactly
+   * the same, so nothing has to tell them apart and no stored game has to be migrated. See
+   * `src/lib/shot-coordinates.ts`.
+   */
   const captureCourtPoint = useCallback((e: React.MouseEvent<Element>) => {
     const el = e.currentTarget;
     const r = el.getBoundingClientRect();
     if (r.width <= 0 || r.height <= 0) return;
-    pendingCourtClickRef.current = {
-      nx: (e.clientX - r.left) / r.width,
-      ny: (e.clientY - r.top) / r.height,
-    };
+    const { xFt, yFt } = elementFractionToFeet(
+      (e.clientX - r.left) / r.width,
+      (e.clientY - r.top) / r.height,
+    );
+    const { x, y } = courtFeetToShot(xFt, yFt);
+    pendingCourtClickRef.current = { nx: x, ny: y };
   }, []);
 
   const clearPendingCourtPoint = useCallback(() => {

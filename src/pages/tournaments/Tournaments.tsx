@@ -182,12 +182,20 @@ const Tournaments: React.FC = () => {
         id: 'name',
         accessorFn: (r) => r.name,
         header: 'Team',
+        /**
+         * The team name is capped and truncates. Standings sit in a half-width panel, every cell is
+         * `whitespace-nowrap`, and a long team name pushed the table wider than its column, which
+         * scrolled the last column (Points) out of sight (Bug 206). Capping the one wide column keeps
+         * every figure visible, and the full name stays available on hover and to a screen reader.
+         */
         cell: ({ row }) => {
           const t = teamById.get(row.original.id);
           return (
-            <div className="flex items-center gap-3">
+            <div className="flex min-w-0 items-center gap-3">
               <TeamCrest name={row.original.name} code={t?.code} logo={t?.logo} color={row.original.color} size="sm" />
-              <span className="text-sm text-gray-700 dark:text-gray-300">{row.original.name}</span>
+              <span className="max-w-[9rem] truncate text-sm text-gray-700 dark:text-gray-300" title={row.original.name}>
+                {row.original.name}
+              </span>
             </div>
           );
         },
@@ -196,7 +204,7 @@ const Tournaments: React.FC = () => {
       { id: 'w', accessorFn: (r) => r.w, header: 'W', cell: ({ row }) => <span className="tabular-nums">{row.original.w}</span> },
       { id: 'l', accessorFn: (r) => r.l, header: 'L', cell: ({ row }) => <span className="tabular-nums">{row.original.l}</span> },
       { id: 'pct', accessorFn: (r) => r.pct, header: '%', cell: ({ row }) => <span className="tabular-nums">{row.original.gp > 0 ? `${row.original.pct.toFixed(1)}%` : '—'}</span> },
-      { id: 'points', accessorFn: (r) => r.points, header: 'Points', cell: ({ row }) => <span className="font-semibold tabular-nums text-gray-900 dark:text-white">{row.original.points}</span> },
+      { id: 'points', accessorFn: (r) => r.points, header: 'PTS', cell: ({ row }) => <span className="font-semibold tabular-nums text-gray-900 dark:text-white">{row.original.points}</span> },
     ],
     [teamById],
   );

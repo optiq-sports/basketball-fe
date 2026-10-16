@@ -1,5 +1,6 @@
 import React, { useId, useMemo, useState } from 'react';
 import { cn } from '../../lib/utils';
+import { shotToCourtFeet } from '../../lib/shot-coordinates';
 
 export interface ShotPoint {
   eventId: string;
@@ -16,8 +17,9 @@ export interface ShotPoint {
  * Full court in feet (94 × 50). Only one end is drawn; the other is the same drawing rotated 180°
  * around the centre spot, which is how the real court is laid out.
  *
- * Assumption to verify against a real game: shot `x` and `y` are normalised 0–1 across the full
- * court width and length. Shots outside that range are dropped rather than drawn in the wrong place.
+ * Shot `x` and `y` arrive as a 0–1 fraction of StatDash's own court element, which is a different
+ * shape from this one, so they are converted by `shotToCourtFeet` before being plotted (Bug 207).
+ * Shots outside 0–1 are dropped rather than drawn in the wrong place.
  */
 function CourtLines({ id }: { id: string }) {
   return (
@@ -160,8 +162,7 @@ export function ShotChartCourt({
           <rect x={-2} y={-2} width={98} height={54} fill="none" />
           <CourtLines id={courtId} />
           {visible.map((s) => {
-            const x = (s.x as number) * 94;
-            const y = (s.y as number) * 50;
+            const { xFt: x, yFt: y } = shotToCourtFeet(s.x as number, s.y as number);
             const color = isHomeShot(s) ? homeColor : awayColor;
             return s.result === 'made' ? (
               <circle key={s.eventId} cx={x} cy={y} r={1.6} fill={color} stroke="#0a1224" strokeWidth={0.4} />

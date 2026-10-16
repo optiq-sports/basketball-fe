@@ -28,6 +28,7 @@ const PlayerProfile = lazy(() => import('../pages/Players/PlayerProfile'))
 const Users = lazy(() => import('../pages/Users/Users'))
 const Clients = lazy(() => import('../pages/Clients/Clients'))
 const QueueDashboard = lazy(() => import('../pages/Ops/QueueDashboard'))
+const NotFoundPanel = lazy(() => import('./admin/NotFoundPanel'))
 
 const ClientsRouteGuard: React.FC<{ rawRole?: string }> = ({ rawRole }) => {
   if (rawRole === undefined) {
@@ -120,6 +121,8 @@ const WrapperContent: React.FC = () => {
               <Route path="/clients" element={<ClientsRouteGuard rawRole={rawRole} />} />
               <Route path="/ops/queues" element={<QueueDashboard />} />
               <Route path="/" element={<Dashboard />} />
+              {/* Anything the routes above don't match. Without this the content area rendered empty (Bug 203). */}
+              <Route path="*" element={<NotFoundPanel />} />
             </Routes>
           </Suspense>
         </div>

@@ -1,52 +1,44 @@
 import type { TeamSide } from './types';
-
-/** Matches BasketballCourt viewBox 620×380. */
-const W = 620;
-const H = 380;
-
-const LEFT_ARC_CX = 85;
-const LEFT_ARC_CY = 190;
-const ARC_R = 148;
-const LEFT_X_SPLIT = 152;
-const ARC_TOP_Y = 58;
-const ARC_BOTTOM_Y = 322;
-
-const RIGHT_ARC_CX = W - LEFT_ARC_CX;
-const RIGHT_ARC_CY = LEFT_ARC_CY;
-const RIGHT_X_SPLIT = W - LEFT_X_SPLIT;
+import { courtFeetToShot, shotToCourtFeet } from '../../lib/shot-coordinates';
+import { COURT, COURT_LENGTH_FT, COURT_WIDTH_FT } from './courtGeometry';
 
 /**
- * Normalized x of the rim for the left basket, calibrated against where a statistician
- * actually tapped the court for a dunk (closer to the baseline than the schematic hoop
- * icon in BasketballCourt.tsx — this is where the rim really sits). The right basket is
- * the mirror of this value. Vertical position is the exact court center (0.5) — manual
- * taps land a few thousandths off-center, which this rounds back out.
+ * Whether a recorded shot was taken from behind the three-point line, and where the rim is.
+ *
+ * Both work in real feet now. They used to work in the units of the old schematic court, whose arc was
+ * a different shape and distance from the basket than a real one, so a shot could be scored by a line
+ * that is not where the real line is (Bug 207). The arguments and return values are unchanged: they are
+ * still the 0-to-1 pair that is stored for every shot, which is decoded here.
  */
-const RIM_NX_LEFT = 0.05593277881514174;
-const RIM_NY = 0.5;
+
+/** A shot within this many feet of a line is given to the shooter, as the old code did in its own units. */
+const EPS_FT = 0.12;
 
 function dist(ax: number, ay: number, bx: number, by: number): number {
   return Math.hypot(ax - bx, ay - by);
 }
 
+/** True when this side attacks the left basket, which decides which end to measure from. */
+function attacksLeft(shootingSide: TeamSide, homeAttacksLeft: boolean): boolean {
+  return (shootingSide === 'home' && homeAttacksLeft) || (shootingSide === 'away' && !homeAttacksLeft);
+}
+
 /**
- * Normalized court position of the rim a team shoots at — used for shots that always
- * happen at the basket (e.g. putbacks) where there's no real click to derive a spot from.
+ * Normalized court position of the rim a team shoots at, used for shots that always happen at the
+ * basket, such as a putback, where there is no real tap to take a spot from.
  */
 export function getRimPosition(
   shootingSide: TeamSide,
   homeAttacksLeft = true
 ): { nx: number; ny: number } {
-  const shootsLeft =
-    (shootingSide === 'home' && homeAttacksLeft) ||
-    (shootingSide === 'away' && !homeAttacksLeft);
-  const nx = shootsLeft ? RIM_NX_LEFT : 1 - RIM_NX_LEFT;
-  return { nx, ny: RIM_NY };
+  const xFt = attacksLeft(shootingSide, homeAttacksLeft) ? COURT.rimX : COURT_LENGTH_FT - COURT.rimX;
+  const { x, y } = courtFeetToShot(xFt, COURT.rimY);
+  return { nx: x, ny: y };
 }
 
 /**
- * Home attacks the left basket, away the right (same orientation as the schematic).
- * Returns true if the click is outside the 2pt arc region (counts as a three).
+ * Home attacks the left basket and away the right, unless `homeAttacksLeft` says otherwise.
+ * True when the shot is from outside the three-point line.
  */
 export function isCourtClickThreePointer(
   nx: number,
@@ -54,24 +46,16 @@ export function isCourtClickThreePointer(
   shootingSide: TeamSide,
   homeAttacksLeft = true
 ): boolean {
-  const x = nx * W;
-  const y = ny * H;
-  const eps = 0.75;
-  const shootsLeft =
-    (shootingSide === 'home' && homeAttacksLeft) ||
-    (shootingSide === 'away' && !homeAttacksLeft);
-  if (shootsLeft) {
-    if (x <= LEFT_X_SPLIT + eps && (y < ARC_TOP_Y - eps || y > ARC_BOTTOM_Y + eps)) {
-      return true;
-    }
-    const d = dist(x, y, LEFT_ARC_CX, LEFT_ARC_CY);
-    if (d > ARC_R + eps) return true;
-    return false;
-  }
-  if (x >= RIGHT_X_SPLIT - eps && (y < ARC_TOP_Y - eps || y > ARC_BOTTOM_Y + eps)) {
-    return true;
-  }
-  const d = dist(x, y, RIGHT_ARC_CX, RIGHT_ARC_CY);
-  if (d > ARC_R + eps) return true;
-  return false;
+  const { xFt, yFt } = shotToCourtFeet(nx, ny);
+
+  // Measure every shot against the left basket, mirroring the far half onto the near one.
+  const x = attacksLeft(shootingSide, homeAttacksLeft) ? xFt : COURT_LENGTH_FT - xFt;
+  const y = yFt;
+
+  // The corners: the line runs parallel to the sideline until the arc begins.
+  const inCorner = y < COURT.cornerInset - EPS_FT || y > COURT_WIDTH_FT - COURT.cornerInset + EPS_FT;
+  if (x <= COURT.cornerBreakX + EPS_FT && inCorner) return true;
+
+  // Everywhere else: beyond the radius struck from the rim.
+  return dist(x, y, COURT.rimX, COURT.rimY) > COURT.threeRadius + EPS_FT;
 }
